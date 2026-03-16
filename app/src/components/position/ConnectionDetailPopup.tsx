@@ -21,7 +21,7 @@ import {
   Clock,
   Phone,
   Heart,
-  MoreVertical,
+  MoreHorizontal,
 } from "lucide-react";
 import { CONNECTION_STAGE } from "@/lib/position/constants";
 import { ConnectionProgress } from "./ConnectionProgress";
@@ -234,7 +234,7 @@ export function ConnectionDetailPopup({
   const [dateValue, setDateValue] = useState("");
   const [selectedOutcome, setSelectedOutcome] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [view, setView] = useState<"details" | "availability" | "decline" | "schedule" | "match-summary" | "breakdown">("details");
+  const [view, setView] = useState<"details" | "availability" | "confirm-decline" | "decline" | "schedule" | "match-summary" | "breakdown">("details");
   const [declineReason, setDeclineReason] = useState("");
   const [confirmReject, setConfirmReject] = useState(false);
   const [selectedStartWeek, setSelectedStartWeek] = useState<string | null>(null);
@@ -243,6 +243,13 @@ export function ConnectionDetailPopup({
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   if (!intro) return null;
+
+  // Min date for trial date pickers: intro call day or today, whichever is later
+  const minTrialDate = (() => {
+    const introDay = intro.confirmedTime?.split('T')[0] || '';
+    const today = new Date().toISOString().split('T')[0];
+    return introDay > today ? introDay : today;
+  })();
 
   const handleAction = async (action: () => Promise<{ success: boolean; error: string | null }>, successMsg: string) => {
     setSubmitting(true);
@@ -295,10 +302,10 @@ export function ConnectionDetailPopup({
             )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                {role === "parent" && matchData?.nannyId ? (
+                {role === "parent" && (intro.nannyId || matchData?.nannyId) ? (
                   <DialogTitle>
                     <Link
-                      href={`/parent/position/matchmaking/nanny/${matchData.nannyId}`}
+                      href={`/nannies/${intro.nannyId || matchData?.nannyId}`}
                       className="hover:text-violet-600 transition-colors"
                     >
                       {intro.otherPartyName}
@@ -330,28 +337,34 @@ export function ConnectionDetailPopup({
                 )}
               </DialogDescription>
             </div>
-            {onRemoveConnection && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1.5 rounded-full hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-                {showMenu && (
-                  <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-50">
-                    <button
-                      onClick={() => { setShowMenu(false); setConfirmRemove(true); }}
-                      className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      Remove connection
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </DialogHeader>
+
+        {/* 3-dot menu — top right, left of X */}
+        {onRemoveConnection && (
+          <div className="absolute right-11 top-4">
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="rounded-sm opacity-70 hover:opacity-100 transition-opacity text-slate-500"
+              tabIndex={-1}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+            {showMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-50">
+                  <button
+                    onClick={() => { setShowMenu(false); setConfirmRemove(true); }}
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    Remove connection
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Remove connection confirmation */}
         {confirmRemove && onRemoveConnection && (
@@ -393,6 +406,21 @@ export function ConnectionDetailPopup({
               }
             }}
           />
+        )}
+
+        {role === "nanny" && isRequest && view === "confirm-decline" && (
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-slate-700">Are you sure you want to decline?</p>
+            <p className="text-sm text-slate-500">
+              This family is interested in working with you. Declining will remove this connection request.
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" className="flex-1" onClick={() => setView("details")} disabled={submitting}>Go Back</Button>
+              <Button size="sm" variant="destructive" className="flex-1" disabled={submitting} onClick={() => setView("decline")}>
+                Yes, Decline
+              </Button>
+            </div>
+          </div>
         )}
 
         {role === "nanny" && isRequest && view === "decline" && (
@@ -628,11 +656,11 @@ export function ConnectionDetailPopup({
                   <p className="text-xs text-blue-700">Accepting will lead to your phone number being shared with this family once they schedule an intro time.</p>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" variant="outline" className="flex-1" disabled={submitting} onClick={() => setView("decline")}>
-                    Decline
-                  </Button>
                   <Button size="sm" className="flex-1 bg-violet-600 hover:bg-violet-700" disabled={submitting} onClick={() => setView("availability")}>
                     Accept
+                  </Button>
+                  <Button size="sm" variant="outline" className="flex-1" disabled={submitting} onClick={() => setView("confirm-decline")}>
+                    Decline
                   </Button>
                 </div>
               </div>
@@ -707,7 +735,7 @@ export function ConnectionDetailPopup({
                     <div className="space-y-2 pl-6">
                       <p className="text-xs text-slate-500">Congratulations! When is your trial shift?</p>
                       <div className="flex items-center gap-2">
-                        <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
+                        <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} min={minTrialDate} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
                         <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700" disabled={!dateValue || submitting}
                           onClick={() => handleAction(() => onIntroOutcome(intro.connectionId, "trial", dateValue), "Trial arranged!")}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
@@ -870,7 +898,7 @@ export function ConnectionDetailPopup({
                     <div className="space-y-2 pl-6">
                       <p className="text-xs text-slate-500">When is the trial shift?</p>
                       <div className="flex items-center gap-2">
-                        <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
+                        <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} min={minTrialDate} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
                         <Button size="sm" className="bg-cyan-600 hover:bg-cyan-700" disabled={!dateValue || submitting}
                           onClick={() => handleAction(() => onParentOutcome(intro.connectionId, "trial", dateValue), "Trial arranged!")}>
                           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}
@@ -962,7 +990,7 @@ export function ConnectionDetailPopup({
                   <div className="space-y-2 pl-6">
                     <p className="text-xs text-slate-500">When should the trial be?</p>
                     <div className="flex items-center gap-2">
-                      <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
+                      <input type="date" value={dateValue} onChange={(e) => setDateValue(e.target.value)} min={minTrialDate} className="text-sm border rounded px-2 py-1 text-slate-700 flex-1" />
                       <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={!dateValue || submitting}
                         onClick={() => handleAction(() => onConfirmTrial(intro.connectionId, dateValue), "Trial confirmed!")}>
                         {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm"}

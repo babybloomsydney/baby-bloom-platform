@@ -27,7 +27,10 @@ import {
   Baby,
   Check,
   XCircle,
+  Sparkles,
+  Lock,
 } from "lucide-react";
+import Link from "next/link";
 
 // ── Helpers ──
 
@@ -68,9 +71,13 @@ interface NannyBabysittingClientProps {
   jobs: NannyBabysittingJob[];
   banned: boolean;
   banUntil: string | null;
+  hideHeader?: boolean;
+  shareUnlocked?: boolean;
+  cardsLocked?: boolean;
+  onLockedCardClick?: () => void;
 }
 
-export function NannyBabysittingClient({ jobs, banned, banUntil }: NannyBabysittingClientProps) {
+export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, shareUnlocked = false, cardsLocked = false, onLockedCardClick }: NannyBabysittingClientProps) {
   const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<NannyBabysittingJob | null>(null);
   const [showPast, setShowPast] = useState(false);
@@ -112,12 +119,14 @@ export function NannyBabysittingClient({ jobs, banned, banUntil }: NannyBabysitt
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Babysitting Jobs</h1>
-        <p className="mt-1 text-slate-500">
-          View and respond to one-time babysitting opportunities
-        </p>
-      </div>
+      {!hideHeader && (
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Babysitting Jobs</h1>
+          <p className="mt-1 text-slate-500">
+            View and respond to one-time babysitting opportunities
+          </p>
+        </div>
+      )}
 
       {/* Ban Banner */}
       {banned && banUntil && (
@@ -152,100 +161,128 @@ export function NannyBabysittingClient({ jobs, banned, banUntil }: NannyBabysitt
         />
       )}
 
-      {jobs.length === 0 ? (
-        <EmptyState
-          icon={Briefcase}
-          title="No babysitting jobs yet"
-          description="When families in your area need a babysitter, you'll be notified here. Request jobs and the family will choose their preferred babysitter."
-        />
-      ) : (
-        <div className="space-y-8">
-          {/* Available jobs */}
-          {available.length > 0 && (
-            <section className="space-y-4">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-violet-700">
-                <Briefcase className="h-5 w-5" />
-                Available ({available.length})
-              </h2>
-              <div className="grid gap-3">
-                {available.map((job) => (
-                  <JobTile
-                    key={job.id}
-                    job={job}
-                    type="available"
-                    onClick={() => setSelectedJob(job)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+      {/* ═══ UNIFIED CARD ═══ */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {/* Card header */}
+        <div className="flex items-center gap-2 mb-4">
+          <Briefcase className="h-5 w-5 text-violet-600" />
+          <p className="text-base font-semibold text-slate-800">Jobs</p>
+        </div>
 
-          {/* Requested — waiting for parent */}
-          {requested.length > 0 && (
-            <section className="space-y-4">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-amber-700">
-                <Clock className="h-5 w-5" />
-                Requested ({requested.length})
-              </h2>
-              <div className="grid gap-3">
-                {requested.map((job) => (
-                  <JobTile
-                    key={job.id}
-                    job={job}
-                    type="requested"
-                    onClick={() => setSelectedJob(job)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
+        {/* Empty state / share CTA when no current jobs */}
+        {available.length === 0 && requested.length === 0 && accepted.length === 0 && (
+          !shareUnlocked ? (
+            <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-4 text-center space-y-2">
+              <p className="text-sm text-slate-600">
+                Share your profile to start receiving babysitting job notifications
+              </p>
+              <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-700">
+                <Link href="/nanny/share">
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                  Unlock babysitting
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <p className="text-sm text-slate-400">
+                No babysitting jobs right now. When families in your area need a babysitter, they&apos;ll appear here.
+              </p>
+            </div>
+          )
+        )}
 
-          {/* Accepted jobs */}
-          {accepted.length > 0 && (
-            <section className="space-y-4">
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-green-700">
-                <CheckCircle className="h-5 w-5" />
-                Your Jobs ({accepted.length})
-              </h2>
-              <div className="grid gap-3">
-                {accepted.map((job) => (
-                  <JobTile
-                    key={job.id}
-                    job={job}
-                    type="accepted"
-                    onClick={() => setSelectedJob(job)}
-                  />
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Past (collapsible) */}
-          {past.length > 0 && (
-            <section className="space-y-4">
-              <button
-                onClick={() => setShowPast(!showPast)}
-                className="flex items-center gap-2 text-lg font-semibold text-slate-500 hover:text-slate-700 transition-colors"
-              >
-                {showPast ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-                Past ({past.length})
-              </button>
-              {showPast && (
-                <div className="grid gap-2">
-                  {past.map((job) => (
+        {jobs.length > 0 && (
+          <>
+            {/* ── Available ── */}
+            {available.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Available ({available.length})
+                </p>
+                <div className="grid gap-3">
+                  {available.map((job) => (
                     <JobTile
                       key={job.id}
                       job={job}
-                      type="past"
-                      onClick={() => setSelectedJob(job)}
+                      type="available"
+                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
+                      locked={cardsLocked}
                     />
                   ))}
                 </div>
-              )}
-            </section>
-          )}
-        </div>
-      )}
+              </div>
+            )}
+
+            {/* ── Requested ── */}
+            {requested.length > 0 && (
+              <div className={`${available.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Requested ({requested.length})
+                </p>
+                <div className="grid gap-3">
+                  {requested.map((job) => (
+                    <JobTile
+                      key={job.id}
+                      job={job}
+                      type="requested"
+                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
+                      locked={cardsLocked}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Your Jobs (accepted) ── */}
+            {accepted.length > 0 && (
+              <div className={`${available.length > 0 || requested.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+                  Your Jobs ({accepted.length})
+                </p>
+                <div className="grid gap-3">
+                  {accepted.map((job) => (
+                    <JobTile
+                      key={job.id}
+                      job={job}
+                      type="accepted"
+                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
+                      locked={cardsLocked}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Past (collapsible) ── */}
+            {past.length > 0 && (
+              <div className={`${available.length > 0 || requested.length > 0 || accepted.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
+                <button
+                  onClick={() => setShowPast(!showPast)}
+                  className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wide hover:text-slate-600 transition-colors"
+                >
+                  {showPast ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  Past ({past.length})
+                </button>
+                {showPast && (
+                  <div className="grid gap-2 mt-3">
+                    {past.map((job) => (
+                      <JobTile
+                        key={job.id}
+                        job={job}
+                        type="past"
+                        onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
+                        locked={cardsLocked}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {/* ═══ END UNIFIED CARD ═══ */}
     </div>
   );
 }
@@ -256,10 +293,12 @@ function JobTile({
   job,
   type,
   onClick,
+  locked,
 }: {
   job: NannyBabysittingJob;
   type: "available" | "requested" | "accepted" | "past";
   onClick: () => void;
+  locked?: boolean;
 }) {
   const { text: timeLeft, urgent } = formatTimeLeft(job.expires_at);
   const hasClashes = job.clashSlotIds.length > 0;
@@ -305,10 +344,17 @@ function JobTile({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-lg border ${borderColor} bg-white p-4 hover:bg-slate-50 transition-colors cursor-pointer ${
+      className={`relative w-full text-left rounded-lg border ${borderColor} bg-white p-4 ${locked ? "" : "hover:bg-slate-50"} transition-colors cursor-pointer ${
         type === "past" ? "opacity-75" : ""
       }`}
     >
+      {locked && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none rounded-lg">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
+            <Lock className="h-4 w-4 text-slate-400" />
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 mb-1">

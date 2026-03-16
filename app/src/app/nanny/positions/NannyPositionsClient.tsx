@@ -11,8 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  MapPin, Clock, DollarSign, Calendar, Users, ChevronRight, Bell, Heart, Loader2, X, ClipboardList,
-  Baby, Phone, Mail, PawPrint, Pencil, Check, MoreVertical, Sparkles, CheckCircle, XCircle,
+  MapPin, Clock, DollarSign, Calendar, Users, ChevronRight, Bell, Heart, Loader2, X,
+  Baby, Phone, Mail, PawPrint, Pencil, Check, MoreHorizontal, Sparkles, CheckCircle, XCircle, Lock,
 } from "lucide-react";
 import { formatSydneyDate } from "@/lib/timezone";
 import { CONNECTION_STAGE, CONNECTION_STAGE_LABELS } from "@/lib/position/constants";
@@ -21,10 +21,11 @@ import { reportIntroOutcome, reportTrialOutcome, nannyConfirmPosition, nannyDism
 import type { UpcomingIntro } from "@/lib/actions/position-funnel";
 import { ConnectionDetailPopup } from "@/components/position/ConnectionDetailPopup";
 import { cancelConnectionRequest } from "@/lib/actions/connection";
-import { getDfyNotificationsForNanny, respondToDfyMatch, markDfyNotificationViewed } from "@/lib/actions/matching";
+import { respondToDfyMatch, markDfyNotificationViewed } from "@/lib/actions/matching";
 import type { DfyNotification } from "@/lib/actions/matching";
 import { PositionAccordion } from "@/components/position/PositionAccordion";
 import { AvailabilityGrid } from "@/components/position/AvailabilityGrid";
+import Link from "next/link";
 
 function formatStartWeekDisplay(dateStr: string): string {
   if (dateStr === "tbc") return "Start week to be confirmed";
@@ -34,7 +35,7 @@ function formatStartWeekDisplay(dateStr: string): string {
   return isPast ? `Started week of ${label}` : `Starting week of ${label}`;
 }
 
-interface Placement {
+export interface Placement {
   id: string;
   parentName: string;
   parentLastName: string;
@@ -57,9 +58,13 @@ interface Placement {
 interface NannyPositionsClientProps {
   placements: Placement[];
   upcomingIntros?: UpcomingIntro[];
+  dfyNotificationsInitial?: DfyNotification[];
+  shareUnlocked?: boolean;
+  cardsLocked?: boolean;
+  onLockedCardClick?: () => void;
 }
 
-function getStageBadge(stage: number, fillInitiatedBy?: string | null): { label: string; color: string } {
+function getStageBadge(stage: number, fillInitiatedBy?: string | null, trialDate?: string | null): { label: string; color: string } {
   switch (stage) {
     case CONNECTION_STAGE.REQUEST_SENT:
       return { label: "New Request", color: "bg-amber-100 text-amber-700" };
@@ -71,10 +76,15 @@ function getStageBadge(stage: number, fillInitiatedBy?: string | null): { label:
       return { label: "Intro Completed", color: "bg-green-100 text-green-700" };
     case CONNECTION_STAGE.AWAITING_RESPONSE:
       return { label: "Awaiting Response", color: "bg-amber-100 text-amber-700" };
-    case CONNECTION_STAGE.TRIAL_ARRANGED:
-      return fillInitiatedBy === 'nanny'
-        ? { label: "Trial Pending", color: "bg-amber-100 text-amber-700" }
-        : { label: "Trial Arranged", color: "bg-cyan-100 text-cyan-700" };
+    case CONNECTION_STAGE.TRIAL_ARRANGED: {
+      if (fillInitiatedBy === 'nanny')
+        return { label: "Trial Pending", color: "bg-amber-100 text-amber-700" };
+      // Confirmed trial — check if date has elapsed
+      const today = new Date().toISOString().split('T')[0];
+      if (trialDate && trialDate < today)
+        return { label: "Trial Done", color: "bg-cyan-100 text-cyan-700" };
+      return { label: "Trial Arranged", color: "bg-cyan-100 text-cyan-700" };
+    }
     case CONNECTION_STAGE.TRIAL_COMPLETE:
       return { label: "Trial Done", color: "bg-cyan-100 text-cyan-700" };
     case CONNECTION_STAGE.OFFERED:
@@ -88,12 +98,12 @@ function getStageBadge(stage: number, fillInitiatedBy?: string | null): { label:
   }
 }
 
-export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyPositionsClientProps) {
+export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotificationsInitial = [], shareUnlocked = false, cardsLocked = false, onLockedCardClick }: NannyPositionsClientProps) {
   const router = useRouter();
   const active = placements.filter((p) => p.status === "active");
   const past = placements.filter((p) => p.status !== "active");
   const [selectedIntro, setSelectedIntro] = useState<UpcomingIntro | null>(null);
-  const [showFamilyPopup, setShowFamilyPopup] = useState(false);
+  const [activePlacementId, setActivePlacementId] = useState<string | null>(null);
   const [removeStep, setRemoveStep] = useState<"none" | "confirm" | "reason">("none");
   const [removeReason, setRemoveReason] = useState<string | null>(null);
   const [removeNotes, setRemoveNotes] = useState("");
@@ -111,9 +121,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
   const [savingNotes, setSavingNotes] = useState(false);
   const [showSpecificNeeds, setShowSpecificNeeds] = useState(false);
   const [rosterExpanded, setRosterExpanded] = useState(false);
-  const [dfyNotifications, setDfyNotifications] = useState<DfyNotification[]>([]);
-  const [dfyLoading, setDfyLoading] = useState(false);
-  const [dfyLoaded, setDfyLoaded] = useState(false);
+  const [dfyNotifications, setDfyNotifications] = useState<DfyNotification[]>(dfyNotificationsInitial);
   const [dfyRespondingId, setDfyRespondingId] = useState<string | null>(null);
   const [dfySuccess, setDfySuccess] = useState<string | null>(null);
   const [dfyInterestedId, setDfyInterestedId] = useState<string | null>(null);
@@ -123,16 +131,6 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
   // DFY intros from upcomingIntros (for ConnectionDetailPopup on responded DFY cards)
   const dfyIntros = upcomingIntros.filter(i => i.source === 'dfy');
   const dfyIntroMap = new Map(dfyIntros.map(i => [i.positionId, i]));
-
-  // Load DFY notifications
-  if (!dfyLoaded && !dfyLoading) {
-    setDfyLoading(true);
-    getDfyNotificationsForNanny().then((result) => {
-      if (result.data) setDfyNotifications(result.data);
-      setDfyLoading(false);
-      setDfyLoaded(true);
-    });
-  }
 
   const handleDfyRespond = async (notificationId: string, slots: string[]) => {
     if (slots.length === 0) return;
@@ -218,7 +216,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
     const result = await nannyEndPlacement(activePlacement.id, removeReason, removeNotes || undefined);
     setRemoving(false);
     if (result.success) {
-      setShowFamilyPopup(false);
+      setActivePlacementId(null);
       setRemoveStep("none");
       setRemoveReason(null);
       setRemoveNotes("");
@@ -265,106 +263,112 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
   };
 
   return (
-    <div className="space-y-8">
-      {/* Empty state — wait for DFY to load before deciding */}
-      {active.length === 0 && introRequests.length === 0 && activeConnections.length === 0 &&
-       endedConnections.length === 0 && past.length === 0 && dfyLoaded && dfyNotifications.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-sm text-slate-500">
-            No positions or connections yet. When families reach out, they&apos;ll appear here.
-          </p>
+    <div className="space-y-6">
+      {/* ═══ UNIFIED CARD — mirrors parent hub "Nannies" card ═══ */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {/* Card header */}
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="h-5 w-5 text-violet-600" />
+          <p className="text-base font-semibold text-slate-800">Families</p>
         </div>
-      )}
 
-      {/* My Family (active placement) */}
-      {active.length > 0 && (
-        <section className="space-y-4">
-          {active.map((placement) => (
-            <div key={placement.id}>
-              <Card
-                className="border-green-200 cursor-pointer hover:bg-green-50/50 transition-colors"
-                onClick={() => setShowFamilyPopup(true)}
+        {/* ── My Positions (active placements) ── */}
+        {active.length > 0 && (
+          <div className="mb-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              My Family
+            </p>
+            <div className="rounded-lg border border-slate-100 overflow-hidden divide-y divide-slate-100">
+            {active.map((placement) => (
+              <div
+                key={placement.id}
+                className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer ${cardsLocked ? "" : "hover:bg-slate-50/80"} transition-colors group`}
+                onClick={cardsLocked ? onLockedCardClick : () => setActivePlacementId(placement.id)}
               >
-                <CardContent className="py-5">
-                  <div className="flex items-center gap-4">
-                    {placement.parentPhoto ? (
-                      <img
-                        src={placement.parentPhoto}
-                        alt=""
-                        className="h-14 w-14 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
-                        <span className="text-lg font-semibold text-green-700">
-                          {placement.parentLastName.charAt(0) || placement.parentName.charAt(0)}
-                        </span>
-                      </div>
+                {cardsLocked && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
+                      <Lock className="h-4 w-4 text-slate-400" />
+                    </div>
+                  </div>
+                )}
+                {/* Avatar */}
+                {placement.parentPhoto ? (
+                  <img
+                    src={placement.parentPhoto}
+                    alt=""
+                    className="h-11 w-11 rounded-full object-cover shrink-0 ring-2 ring-green-200"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-green-50 ring-2 ring-green-200 shrink-0">
+                    <span className="text-sm font-semibold text-green-600">
+                      {placement.parentLastName.charAt(0) || placement.parentName.charAt(0)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 truncate">
+                    {placement.parentLastName || placement.parentName.split(" ").pop()} Family
+                  </p>
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-xs text-slate-500">
+                    {placement.parentSuburb && (
+                      <span className="flex items-center gap-0.5">
+                        <MapPin className="h-3 w-3" />
+                        {placement.parentSuburb}
+                      </span>
                     )}
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <p className="text-base font-semibold text-slate-900">{placement.parentLastName || placement.parentName.split(" ").pop()} Family</p>
-                        <ChevronRight className="h-4 w-4 text-green-300" />
-                      </div>
-                      {placement.parentSuburb && (
-                        <p className="flex items-center gap-1 text-sm text-slate-500">
-                          <MapPin className="h-3 w-3" />
-                          {placement.parentSuburb}
-                        </p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-slate-600">
-                        {placement.weeklyHours && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-slate-400" />
-                            {placement.weeklyHours}hrs/wk
-                          </span>
-                        )}
-                        {placement.hourlyRate && (
-                          <span className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-slate-400" />
-                            ${placement.hourlyRate}/hr
-                          </span>
-                        )}
-                        {placement.startDate && placement.startDate !== "tbc" && (
-                          (() => {
-                            const startMon = new Date(placement.startDate + "T00:00:00");
-                            const isPast = startMon <= new Date();
-                            const label = startMon.toLocaleDateString("en-AU", { day: "numeric", month: "long" });
-                            return (
-                              <span className={`flex items-center gap-1 ${isPast ? "text-slate-500" : "text-green-600"}`}>
-                                <Calendar className="h-3 w-3" />
-                                {isPast ? `Started week of ${label}` : `Starting week of ${label}`}
-                              </span>
-                            );
-                          })()
-                        )}
-                        {placement.startDate === "tbc" && (
-                          <span className="flex items-center gap-1 text-amber-600">
+                    {placement.weeklyHours && (
+                      <span className="flex items-center gap-0.5">
+                        <Clock className="h-3 w-3" />
+                        {placement.weeklyHours}hrs/wk
+                      </span>
+                    )}
+                    {placement.startDate && placement.startDate !== "tbc" && (
+                      (() => {
+                        const startMon = new Date(placement.startDate + "T00:00:00");
+                        const isPast = startMon <= new Date();
+                        const label = startMon.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+                        return (
+                          <span className="flex items-center gap-0.5">
                             <Calendar className="h-3 w-3" />
-                            Start week to be confirmed
+                            {isPast ? `Started ${label}` : `Starting ${label}`}
                           </span>
-                        )}
-                      </div>
-                    </div>
+                        );
+                      })()
+                    )}
+                    {placement.startDate === "tbc" && (
+                      <span className="flex items-center gap-0.5 text-amber-600">
+                        <Calendar className="h-3 w-3" />
+                        Start TBC
+                      </span>
+                    )}
                   </div>
-                  {/* Onboarding badge */}
-                  <div className="mt-4 rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5">
-                    <div className="flex items-center gap-2">
-                      <ClipboardList className="h-4 w-4 text-violet-500" />
-                      <p className="text-sm text-violet-700 font-medium">Onboarding</p>
-                    </div>
-                    <p className="text-xs text-violet-500 mt-1 ml-6">
-                      More onboarding steps coming soon to help you get started smoothly.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
+
+                {/* Active badge + chevron */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Active
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-500 transition-colors" />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* My Family Detail Popups — one per placement, rendered outside the container */}
+          {active.map((placement) => (
+            <div key={`popup-${placement.id}`}>
 
               {/* My Family Detail Popup */}
               <Dialog
-                open={showFamilyPopup}
+                open={activePlacementId === placement.id}
                 onOpenChange={(open) => {
                   if (!open) {
-                    setShowFamilyPopup(false);
+                    setActivePlacementId(null);
                     setRemoveStep("none");
                     setRemoveReason(null);
                     setRemoveNotes("");
@@ -389,57 +393,62 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                           </p>
                         )}
                       </div>
-                      {/* 3-dot menu + green tick */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {popupEditing && (
-                          <button
-                            onClick={async () => {
-                              if (placement.positionId) {
-                                setSavingNotes(true);
-                                await Promise.all([
-                                  updatePositionRosterNotes(placement.positionId, rosterNotesValue),
-                                  updatePositionNannyNotes(placement.positionId, nannyNotesValue),
-                                ]);
-                                setSavingNotes(false);
-                                router.refresh();
-                              }
-                              setPopupEditing(false);
-                              setEditingRate(false);
-                              setEditingHours(false);
-                            }}
-                            disabled={savingNotes}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                          >
-                            {savingNotes ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                          </button>
-                        )}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setShowPopupMenu((p) => !p)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                          {showPopupMenu && (
-                            <div className="absolute right-0 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-10">
-                              <button
-                                onClick={() => {
-                                  setShowPopupMenu(false);
-                                  setPopupEditing(true);
-                                  setRosterNotesValue(placement.rosterNotes || "");
-                                  setNannyNotesValue(placement.nannyNotes || "");
-                                }}
-                                className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
                     </div>
                   </DialogHeader>
+
+                  {/* 3-dot menu + green tick — top right, left of X */}
+                  <div className="absolute right-11 top-4 flex items-center gap-1">
+                    {popupEditing && (
+                      <button
+                        onClick={async () => {
+                          if (placement.positionId) {
+                            setSavingNotes(true);
+                            await Promise.all([
+                              updatePositionRosterNotes(placement.positionId, rosterNotesValue),
+                              updatePositionNannyNotes(placement.positionId, nannyNotesValue),
+                            ]);
+                            setSavingNotes(false);
+                            router.refresh();
+                          }
+                          setPopupEditing(false);
+                          setEditingRate(false);
+                          setEditingHours(false);
+                        }}
+                        disabled={savingNotes}
+                        className="rounded-sm text-green-600 opacity-70 hover:opacity-100 transition-opacity"
+                      >
+                        {savingNotes ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </button>
+                    )}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setShowPopupMenu((p) => !p)}
+                        className="rounded-sm opacity-70 hover:opacity-100 transition-opacity text-slate-500"
+                        tabIndex={-1}
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                      {showPopupMenu && (
+                        <>
+                          <div className="fixed inset-0 z-40" onClick={() => setShowPopupMenu(false)} />
+                          <div className="absolute right-0 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-50">
+                            <button
+                              onClick={() => {
+                                setShowPopupMenu(false);
+                                setPopupEditing(true);
+                                setRosterNotesValue(placement.rosterNotes || "");
+                                setNannyNotesValue(placement.nannyNotes || "");
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
 
                   {/* Children */}
                   {placement.positionFormData && (() => {
@@ -855,24 +864,29 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
               </Dialog>
             </div>
           ))}
+          </div>
+        )}
 
-        </section>
-      )}
-
-      {/* Intro Requests */}
-      {introRequests.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-amber-700">
-            <Bell className="h-5 w-5" />
-            Intro Requests ({introRequests.length})
-          </h2>
-          <div className="grid gap-3">
+        {/* ── Intro Requests ── */}
+        {introRequests.length > 0 && (
+          <div className={`${active.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Intro Requests ({introRequests.length})
+            </p>
+            <div className="grid gap-3">
             {introRequests.map((intro) => (
               <Card
                 key={intro.connectionId}
-                className="border-amber-200 bg-amber-50/50 cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition-colors"
-                onClick={() => setSelectedIntro(intro)}
+                className={`relative border-amber-200 bg-amber-50/50 cursor-pointer ${cardsLocked ? "" : "hover:bg-amber-50 hover:border-amber-300"} transition-colors`}
+                onClick={cardsLocked ? onLockedCardClick : () => setSelectedIntro(intro)}
               >
+                {cardsLocked && (
+                  <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none rounded-xl">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
+                      <Lock className="h-4 w-4 text-slate-400" />
+                    </div>
+                  </div>
+                )}
                 <CardContent className="py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -925,27 +939,37 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                 </CardContent>
               </Card>
             ))}
+            </div>
           </div>
-        </section>
-      )}
+        )}
 
-      {/* DFY Matched Families — always visible */}
-      {dfyLoaded && (
-        <section className="space-y-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-violet-700">
-            <Sparkles className="h-5 w-5" />
-            Matched Families{dfyNotifications.length > 0 ? ` (${dfyNotifications.length})` : ""}
-          </h2>
+        {/* ── Matched Families ── */}
+          <div className={`${active.length > 0 || introRequests.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Matched Families{dfyNotifications.length > 0 ? ` (${dfyNotifications.length})` : ""}
+            </p>
 
-          {dfyNotifications.length === 0 ? (
-            <Card className="border-slate-200 bg-slate-50/50">
-              <CardContent className="py-6 text-center">
-                <p className="text-sm text-slate-500">
+            {!shareUnlocked ? (
+              <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-4 text-center space-y-2">
+                <p className="text-sm text-slate-600">
+                You profile is live
+                </p><p className="text-sm text-slate-600">
+                Share your profile to appear in parent matchmaking results
+                </p>
+                <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-700">
+                  <Link href="/nanny/share">
+                    <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                    Be seen in parents matchmaking
+                  </Link>
+                </Button>
+              </div>
+            ) : dfyNotifications.length === 0 ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-slate-400">
                   When families match with you, they&apos;ll appear here.
                 </p>
-              </CardContent>
-            </Card>
-          ) : (
+              </div>
+            ) : (
             <div className="grid gap-3">
               {dfyNotifications.map((notification) => {
                 const score = Math.round(50 + (notification.matchScore / 100) * 50);
@@ -955,7 +979,14 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                 const parentSurname = notification.parent.lastName;
 
                 return (
-                  <Card key={notification.id} className="border-violet-200 bg-violet-50/30">
+                  <Card key={notification.id} className={`relative border-violet-200 bg-violet-50/30 ${cardsLocked ? "cursor-pointer" : ""}`} onClick={cardsLocked ? onLockedCardClick : undefined}>
+                    {cardsLocked && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none rounded-xl">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
+                          <Lock className="h-4 w-4 text-slate-400" />
+                        </div>
+                      </div>
+                    )}
                     <CardContent className="py-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -1016,7 +1047,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                       {isPending && (() => {
                         const matchingIntro = dfyIntroMap.get(notification.positionId);
                         if (matchingIntro) {
-                          const badge = getStageBadge(matchingIntro.connectionStage, matchingIntro.fillInitiatedBy);
+                          const badge = getStageBadge(matchingIntro.connectionStage, matchingIntro.fillInitiatedBy, matchingIntro.trialDate);
                           return (
                             <div
                               className="flex items-center justify-between gap-3 rounded-lg border border-violet-200 bg-white p-3 cursor-pointer hover:bg-violet-50 transition-colors"
@@ -1042,7 +1073,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                       })()}
 
                       {/* ── Step 1: "I'm interested" button ── */}
-                      {!isPending && !isLocallyInterested && (
+                      {!cardsLocked && !isPending && !isLocallyInterested && (
                         <Button
                           size="sm"
                           onClick={() => {
@@ -1059,7 +1090,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                       )}
 
                       {/* ── Step 2: Inline AvailabilityGrid (same as regular connections) ── */}
-                      {!isPending && isLocallyInterested && (
+                      {!cardsLocked && !isPending && isLocallyInterested && (
                         <AvailabilityGrid
                           submitting={isResponding}
                           onBack={() => setDfyInterestedId(null)}
@@ -1071,44 +1102,32 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                 );
               })}
             </div>
-          )}
-        </section>
-      )}
+            )}
+          </div>
 
-      {/* DFY success toast */}
-      {dfySuccess && (
-        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <CheckCircle className="w-4 h-4" />
-          Interest sent! The family will pick an intro time.
-        </div>
-      )}
+        {/* ── Connections ── */}
+        {activeConnections.length > 0 && (
+          <div className="mt-5 pt-5 border-t border-slate-100">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Connections ({activeConnections.length})
+            </p>
+            <div className="space-y-3">
+              {activeConnections.map((intro) => {
+                const badge = getStageBadge(intro.connectionStage, intro.fillInitiatedBy, intro.trialDate);
 
-      {/* DFY error toast */}
-      {dfyError && (
-        <div className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <XCircle className="w-4 h-4" />
-          {dfyError}
-        </div>
-      )}
-
-      {/* Active Connections */}
-      {activeConnections.length > 0 && (
-        <section className="space-y-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-violet-700">
-            <Users className="h-5 w-5" />
-            Connections ({activeConnections.length})
-          </h2>
-          <div className="grid gap-3">
-            {activeConnections.map((intro) => {
-              const badge = getStageBadge(intro.connectionStage, intro.fillInitiatedBy);
-
-              return (
-                <Card
-                  key={intro.connectionId}
-                  className="border-violet-100 cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition-colors"
-                  onClick={() => setSelectedIntro(intro)}
-                >
-                  <CardContent className="py-4">
+                return (
+                  <div
+                    key={intro.connectionId}
+                    className={`relative rounded-lg border border-slate-100 bg-white p-3 cursor-pointer ${cardsLocked ? "" : "hover:bg-violet-50 hover:border-violet-200"} transition-colors`}
+                    onClick={cardsLocked ? onLockedCardClick : () => setSelectedIntro(intro)}
+                  >
+                    {cardsLocked && (
+                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
+                          <Lock className="h-4 w-4 text-slate-400" />
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {intro.otherPartyPhoto ? (
@@ -1151,12 +1170,30 @@ export function NannyPositionsClient({ placements, upcomingIntros = [] }: NannyP
                         <ChevronRight className="h-4 w-4 text-slate-300" />
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </section>
+        )}
+
+      </div>
+      {/* ═══ END UNIFIED CARD ═══ */}
+
+      {/* DFY success toast */}
+      {dfySuccess && (
+        <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
+          <CheckCircle className="w-4 h-4" />
+          Interest sent! The family will pick an intro time.
+        </div>
+      )}
+
+      {/* DFY error toast */}
+      {dfyError && (
+        <div className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
+          <XCircle className="w-4 h-4" />
+          {dfyError}
+        </div>
       )}
 
       {/* Ended Connections */}
@@ -1378,7 +1415,7 @@ function PlacementCard({
                   onClick={(e) => { e.stopPropagation(); setShowMenu((p) => !p); }}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 >
-                  {dismissingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+                  {dismissingThis ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreHorizontal className="h-4 w-4" />}
                 </button>
                 {showMenu && (
                   <div className="absolute right-0 mt-1 w-36 rounded-lg border border-slate-200 bg-white shadow-lg z-10">
