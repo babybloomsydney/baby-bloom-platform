@@ -71,9 +71,9 @@ function getStageBadge(stage: number, fillInitiatedBy?: string | null, trialDate
     case CONNECTION_STAGE.ACCEPTED:
       return { label: "Scheduling", color: "bg-blue-100 text-blue-700" };
     case CONNECTION_STAGE.INTRO_SCHEDULED:
-      return { label: "Intro Scheduled", color: "bg-violet-100 text-violet-700" };
+      return { label: "Meet Scheduled", color: "bg-violet-100 text-violet-700" };
     case CONNECTION_STAGE.INTRO_COMPLETE:
-      return { label: "Intro Completed", color: "bg-green-100 text-green-700" };
+      return { label: "Meet Completed", color: "bg-green-100 text-green-700" };
     case CONNECTION_STAGE.AWAITING_RESPONSE:
       return { label: "Awaiting Response", color: "bg-amber-100 text-amber-700" };
     case CONNECTION_STAGE.TRIAL_ARRANGED: {
@@ -871,7 +871,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
         {introRequests.length > 0 && (
           <div className={`${active.length > 0 ? "mt-5 pt-5 border-t border-slate-100" : ""}`}>
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-              Intro Requests ({introRequests.length})
+              Meet Requests ({introRequests.length})
             </p>
             <div className="grid gap-3">
             {introRequests.map((intro) => (
@@ -1184,7 +1184,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
       {dfySuccess && (
         <div className="fixed bottom-4 right-4 bg-green-600 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 z-50 animate-in fade-in slide-in-from-bottom-4">
           <CheckCircle className="w-4 h-4" />
-          Interest sent! The family will pick an intro time.
+          Interest sent! The family will schedule a meet and greet.
         </div>
       )}
 

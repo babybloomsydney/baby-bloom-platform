@@ -66,6 +66,9 @@ export default async function UIShowcasePage() {
           languages: nanny.languages,
           role_types_preferred: nanny.role_types_preferred,
           ai_headline: (aiContent?.headline as string) ?? null,
+          under_3_experience_years: null,
+          newborn_experience_years: null,
+          highest_qualification: null,
         };
         nannyProfilePic = nannyProfile.profile_picture_url;
       }

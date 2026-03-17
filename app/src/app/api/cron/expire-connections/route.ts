@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
         type: 'connection_expired',
         title: 'Connection request expired',
         body: wasAccepted
-          ? 'Your accepted connection has expired because a call time was not scheduled in time.'
+          ? 'Your accepted connection has expired because a meet and greet was not scheduled in time.'
           : 'Your connection request has expired as the nanny did not respond in time.',
         actionUrl: '/parent/connections',
         referenceId: req.id,
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
         type: 'connection_expired',
         title: wasAccepted ? 'Accepted connection expired' : 'Missed connection request',
         body: wasAccepted
-          ? 'An accepted connection has expired because the family did not schedule a call time in time.'
+          ? 'An accepted connection has expired because the family did not schedule a meet and greet in time.'
           : 'A connection request has expired. Responding promptly helps families find the right nanny.',
         actionUrl: '/nanny/inbox',
         referenceId: req.id,

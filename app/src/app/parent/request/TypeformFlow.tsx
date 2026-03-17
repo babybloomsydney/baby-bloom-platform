@@ -196,7 +196,7 @@ export function TypeformFlow() {
       hasSaved.current = true;
       saveTypeformPosition(formData).then((result) => {
         if (result.success) {
-          router.push("/parent/position");
+          router.push("/parent");
         } else {
           setSubmitError(result.error);
         }

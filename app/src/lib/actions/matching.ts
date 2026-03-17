@@ -771,8 +771,8 @@ export async function respondToDfyMatch(
     await createInboxMessage({
       userId: parentData.user_id,
       type: 'dfy_nanny_interested',
-      title: `${nannyName} is interested and available for an intro!`,
-      body: `${nannyName} has shared their availability. Pick a time for a 15-minute intro call.`,
+      title: `${nannyName} is interested and available for a meet and greet!`,
+      body: `${nannyName} has shared their availability. Pick a time for a meet and greet.`,
       actionUrl: '/parent',
       referenceId: connection.id,
       referenceType: 'connection_request',
@@ -782,11 +782,11 @@ export async function respondToDfyMatch(
     if (parentEmailInfo) {
       sendEmail({
         to: parentEmailInfo.email,
-        subject: `${nannyName} is interested and available for an intro!`,
+        subject: `${nannyName} is interested and available for a meet and greet!`,
         html: `<div style="${BASE_STYLE}">
           <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">${nannyName} has expressed interest in your nanny position and shared their availability for an intro call.</p>
-          <p style="color: #374151; font-size: 14px;">Pick a time that works for you to schedule a 15-minute intro.</p>
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">${nannyName} has expressed interest in your nanny position and shared their availability for a meet and greet.</p>
+          <p style="color: #374151; font-size: 14px;">Pick a time that works for your meet and greet.</p>
           <p style="margin-top: 24px;"><a href="${APP_URL}/parent" style="${BTN_STYLE}">Pick a Time</a></p>
         </div>`,
         emailType: 'dfy_parent_applicant',

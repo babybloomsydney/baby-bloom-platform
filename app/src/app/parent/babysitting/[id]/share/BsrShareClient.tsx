@@ -167,6 +167,10 @@ export function BsrShareClient({ initialData }: Props) {
   const [isChecking, setIsChecking] = useState(false);
   const [sessionFailReason, setSessionFailReason] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
 
   // ── Step states ──
 
@@ -313,6 +317,10 @@ export function BsrShareClient({ initialData }: Props) {
       setUploadError(null);
       setError(null);
 
+      uploadAbortRef.current?.abort();
+      const uploadCtrl = new AbortController();
+      uploadAbortRef.current = uploadCtrl;
+
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -326,8 +334,10 @@ export function BsrShareClient({ initialData }: Props) {
         setUploadError("Upload timed out — please try again");
       }, 30000);
 
-      const result = await uploadFileWithProgress("share-screenshots", user.id, file, (p) =>
-        setUploadProgress(p)
+      const result = await uploadFileWithProgress(
+        "share-screenshots", user.id, file,
+        (p) => setUploadProgress(p),
+        uploadCtrl.signal
       );
 
       clearTimeout(uploadTimeout);
@@ -816,9 +826,9 @@ export function BsrShareClient({ initialData }: Props) {
                 <p className="text-sm text-green-600 mt-1">
                   We will notify you the first 5 responders so you can confirm your babysitter personally.
                 </p>
-                <a href={`/parent/babysitting/${initialData.bsrId}`}>
+                <a href="/parent">
                   <Button className="mt-3 w-full bg-violet-600 hover:bg-violet-700 text-white">
-                    Go to My Babysitting Request
+                    Back to Profile
                   </Button>
                 </a>
               </div>

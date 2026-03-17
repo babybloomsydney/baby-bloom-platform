@@ -130,7 +130,7 @@ async function expireStaleRequests(
         type: 'connection_expired',
         title: 'Connection request expired',
         body: expiredStatus === 'accepted'
-          ? 'Your accepted connection has expired because a call time was not scheduled in time.'
+          ? 'Your accepted connection has expired because a meet and greet was not scheduled in time.'
           : 'Your connection request has expired as the nanny did not respond in time.',
         actionUrl: '/parent/connections',
         referenceId: req.id,
@@ -144,7 +144,7 @@ async function expireStaleRequests(
         type: 'connection_expired',
         title: expiredStatus === 'accepted' ? 'Accepted connection expired' : 'Missed connection request',
         body: expiredStatus === 'accepted'
-          ? 'An accepted connection has expired because the family did not schedule a call time in time.'
+          ? 'An accepted connection has expired because the family did not schedule a meet and greet in time.'
           : 'A connection request has expired. Responding promptly helps families find the right nanny.',
         actionUrl: '/nanny/inbox',
         referenceId: req.id,
@@ -269,7 +269,7 @@ export async function createConnectionRequest(
       userId: nanny.user_id,
       type: 'connection_request',
       title: 'New connection request',
-      body: 'A family would like to connect with you for a 15-minute intro.',
+      body: 'A family would like to connect with you for a meet and greet.',
       actionUrl: '/nanny/inbox',
       referenceId: request.id,
       referenceType: 'connection_request',
@@ -296,7 +296,7 @@ export async function createConnectionRequest(
         subject: `New connection request from ${parentName}`,
         html: `<div style="${baseStyle}">
           <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">${parentName} from ${parentSuburb} would like to connect with you for a 15-minute intro. Review their request and respond within 3 days.</p>
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">${parentName} from ${parentSuburb} would like to connect with you for a meet and greet. Review their request and respond within 3 days.</p>
           <p style="margin-top: 24px;"><a href="${appUrl}/nanny/inbox" style="${btnStyle}">View Request</a></p>
         </div>`,
         emailType: 'interview_request',
@@ -416,7 +416,7 @@ export async function acceptConnectionRequest(
       userId: parentData.user_id,
       type: 'connection_accepted',
       title: `${nannyName} accepted your connection!`,
-      body: `${nannyName} has shared their available times. Pick a slot for your 15-minute intro.`,
+      body: `${nannyName} has shared their available times. Pick a slot for your meet and greet.`,
       actionUrl: '/parent/connections',
       referenceId: requestId,
       referenceType: 'connection_request',
@@ -434,7 +434,7 @@ export async function acceptConnectionRequest(
         subject: `${nannyName} accepted your connection request!`,
         html: `<div style="${baseStyle}">
           <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">Great news! ${nannyName} has accepted your connection request and shared their available times. Check their availability and pick a slot for your 15-minute intro.</p>
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">Great news! ${nannyName} has accepted your connection request and shared their available times. Check their availability and pick a slot for your meet and greet.</p>
           <p style="color: #6B7280; font-size: 14px; margin-top: 8px;">You have 3 days to schedule a time.</p>
           <p style="margin-top: 24px;"><a href="${appUrl}/parent/connections" style="${btnStyle}">Pick a Time</a></p>
         </div>`,
@@ -449,7 +449,7 @@ export async function acceptConnectionRequest(
     userId: nannyInfo.userId,
     type: 'connection_accepted_nanny',
     title: 'Connection accepted',
-    body: 'You accepted this connection. Waiting for the family to schedule a call time.',
+    body: 'You accepted this connection. Waiting for the family to schedule a meet and greet.',
     actionUrl: '/nanny/inbox',
     referenceId: requestId,
     referenceType: 'connection_request',
@@ -585,8 +585,8 @@ export async function scheduleConnectionTime(
     await createInboxMessage({
       userId: parentUserData.user_id,
       type: 'connection_confirmed',
-      title: `Intro call scheduled with ${nannyName}!`,
-      body: `Your intro is set for ${confirmedDate}. View contact details on your dashboard.`,
+      title: `Meet and greet scheduled with ${nannyName}!`,
+      body: `Your meet and greet is set for ${confirmedDate}. View contact details on your dashboard.`,
       actionUrl: '/parent/connections',
       referenceId: requestId,
       referenceType: 'connection_request',
@@ -602,14 +602,14 @@ export async function scheduleConnectionTime(
 
       sendEmail({
         to: parentEmailInfo.email,
-        subject: `Intro call scheduled with ${nannyName}!`,
+        subject: `Meet and greet scheduled with ${nannyName}!`,
         html: `<div style="${baseStyle}">
           <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your 15-minute intro with ${nannyName} is confirmed.</p>
+          <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your meet and greet with ${nannyName} is confirmed.</p>
           <div style="background: #F0FDF4; border: 1px solid #86EFAC; border-radius: 8px; padding: 16px; margin: 16px 0;">
-            <p style="margin: 0; font-weight: 600; color: #166534;">Call Time: ${confirmedDate}</p>
+            <p style="margin: 0; font-weight: 600; color: #166534;">Meet Time: ${confirmedDate}</p>
           </div>
-          <p style="color: #374151; font-size: 14px;">Contact details are available on your Baby Bloom dashboard.</p>
+          <p style="color: #374151; font-size: 14px;">Call ${nannyName} to confirm the location of your meet and greet. Contact details are available on your Baby Bloom dashboard.</p>
           <p style="margin-top: 24px;"><a href="${appUrl}/parent/connections" style="${btnStyle}">View Details</a></p>
         </div>`,
         emailType: 'interview_confirmed',
@@ -622,8 +622,8 @@ export async function scheduleConnectionTime(
   await createInboxMessage({
     userId: nannyData.user_id,
     type: 'connection_confirmed_nanny',
-    title: 'Intro call scheduled',
-    body: `Your intro is set for ${confirmedDate}. Your contact details will be available to the family on their dashboard.`,
+    title: 'Meet and greet scheduled',
+    body: `Your meet and greet is set for ${confirmedDate}. Your contact details will be available to the family on their dashboard.`,
     actionUrl: '/nanny/inbox',
     referenceId: requestId,
     referenceType: 'connection_request',
@@ -639,10 +639,10 @@ export async function scheduleConnectionTime(
 
     sendEmail({
       to: nannyEmailInfo.email,
-      subject: `Intro call scheduled with ${parentName}`,
+      subject: `Meet and greet scheduled with ${parentName}`,
       html: `<div style="${baseStyle}">
         <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your 15-minute intro with ${parentName} is confirmed for ${confirmedDate}. Your contact details will be available to the family on their dashboard.</p>
+        <p style="color: #374151; font-size: 16px; line-height: 1.6;">Your meet and greet with ${parentName} is confirmed for ${confirmedDate}. Your contact details will be available to the family on their dashboard.</p>
         <p style="margin-top: 24px;"><a href="${appUrl}/nanny/inbox" style="${btnStyle}">View in Inbox</a></p>
       </div>`,
       emailType: 'interview_confirmed',

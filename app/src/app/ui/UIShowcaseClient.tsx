@@ -765,7 +765,7 @@ export function UIShowcaseClient({
                   <ConnectionProgress currentStage={10} role="parent" />
                 </div>
                 <div>
-                  <p className="mb-2 text-xs text-slate-500">Stage: Intro Scheduled (Nanny view)</p>
+                  <p className="mb-2 text-xs text-slate-500">Stage: Meet Scheduled (Nanny view)</p>
                   <ConnectionProgress currentStage={20} role="nanny" />
                 </div>
                 <div>

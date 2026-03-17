@@ -38,7 +38,7 @@ const SECTIONS = [
     title: 'Nanny',
     color: 'text-violet-500',
     routes: [
-      { path: '/nanny/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/nanny', label: 'Hub', icon: LayoutDashboard },
       { path: '/nanny/register', label: 'Registration Form', icon: FileText },
       { path: '/nanny/profile', label: 'Edit Profile', icon: Users },
       { path: '/nanny/verification', label: 'Verification', icon: Shield },
@@ -52,8 +52,8 @@ const SECTIONS = [
     title: 'Parent',
     color: 'text-blue-500',
     routes: [
-      { path: '/parent/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-      { path: '/parent/position', label: 'Create Position', icon: FileText },
+      { path: '/parent', label: 'Hub', icon: LayoutDashboard },
+      { path: '/parent', label: 'Create Position', icon: FileText },
       { path: '/parent/request', label: 'Nanny Request', icon: PlusCircle },
       { path: '/parent/browse', label: 'Browse (Parent)', icon: Search },
       { path: '/parent/interviews', label: 'Interviews', icon: MessageSquare },

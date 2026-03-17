@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,12 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Abort controller for in-flight uploads
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
+
   // Grant email state
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [pdfValidating, setPdfValidating] = useState(false);
@@ -141,6 +147,10 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
         setPdfUploadState("uploading");
         setPdfUploadProgress(0);
 
+        uploadAbortRef.current?.abort();
+        const controller = new AbortController();
+        uploadAbortRef.current = controller;
+
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
@@ -151,7 +161,8 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
         const uploadResult = await uploadFileWithProgress(
           "verification-documents", user.id, file,
-          (p) => setPdfUploadProgress(p)
+          (p) => setPdfUploadProgress(p),
+          controller.signal
         );
 
         if (uploadResult.error || !uploadResult.url) {
@@ -176,6 +187,10 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
     setScreenshotUploadProgress(0);
     setScreenshotUploadError(null);
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -186,7 +201,8 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
     const result = await uploadFileWithProgress(
       "verification-documents", user.id, file,
-      (p) => setScreenshotUploadProgress(p)
+      (p) => setScreenshotUploadProgress(p),
+      controller.signal
     );
 
     if (result.error || !result.url) {

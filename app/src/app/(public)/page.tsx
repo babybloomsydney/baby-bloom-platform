@@ -37,8 +37,8 @@ export default function HomePage() {
                   </Link>
                 </Button>
                 <Button size="lg" variant="outline" asChild className="text-base h-12 px-8 border-slate-300">
-                  <Link href="/signup?role=nanny">
-                    I&apos;m a Nanny
+                  <Link href="/apply/nanny">
+                    Apply as a childcare professional
                   </Link>
                 </Button>
               </div>
@@ -211,8 +211,8 @@ export default function HomePage() {
               </p>
               <div className="mt-8">
                 <Button size="lg" asChild className="bg-violet-500 hover:bg-violet-600 text-base h-12 px-8">
-                  <Link href="/signup?role=nanny">
-                    Join as a Nanny
+                  <Link href="/apply/nanny">
+                    Apply as a childcare professional
                     <ArrowRight className="ml-2 h-4 w-4" />
                   </Link>
                 </Button>

@@ -47,30 +47,36 @@ export async function uploadFile(
 /**
  * Upload a file with real-time progress via XHR.
  * Returns the storage file path on success.
+ *
+ * Accepts an optional AbortSignal to cancel the upload (e.g. on component unmount).
+ * Uses a ref-friendly onProgress callback pattern — the caller's latest
+ * callback is always invoked, avoiding stale closure issues.
  */
-export function uploadFileWithProgress(
+export async function uploadFileWithProgress(
   bucket: StorageBucket,
   userId: string,
   file: File,
   onProgress: (percent: number) => void,
+  signal?: AbortSignal,
 ): Promise<UploadResult> {
-  return new Promise(async (resolve) => {
+  try {
     const supabase = createClient();
 
     // Force a server round-trip to validate/refresh the auth token.
-    // getSession() returns a CACHED token that may be expired after
-    // page refreshes, admin status changes, or incognito tab switches.
     const { data: { user }, error: userErr } = await supabase.auth.getUser();
     if (userErr || !user) {
-      resolve({ url: null, error: "Not authenticated — please refresh the page and try again" });
-      return;
+      return { url: null, error: "Not authenticated — please refresh the page and try again" };
     }
 
     // Now getSession() will have the freshly-refreshed token
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) {
-      resolve({ url: null, error: "Session expired — please refresh the page and try again" });
-      return;
+      return { url: null, error: "Session expired — please refresh the page and try again" };
+    }
+
+    // Check if already aborted before starting XHR
+    if (signal?.aborted) {
+      return { url: null, error: "Upload cancelled" };
     }
 
     const timestamp = Date.now();
@@ -78,41 +84,56 @@ export function uploadFileWithProgress(
     const filePath = `${userId}/${timestamp}-${safeName}`;
     const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/${bucket}/${filePath}`;
 
-    const xhr = new XMLHttpRequest();
+    return new Promise<UploadResult>((resolve) => {
+      const xhr = new XMLHttpRequest();
 
-    xhr.upload.addEventListener("progress", (e) => {
-      if (e.lengthComputable) {
-        onProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    });
+      // Abort handler — cancel XHR if signal fires
+      const handleAbort = () => {
+        xhr.abort();
+        resolve({ url: null, error: "Upload cancelled" });
+      };
+      signal?.addEventListener("abort", handleAbort, { once: true });
 
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        if (bucket === "profile-pictures" || bucket === "share-screenshots") {
-          const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-          resolve({ url: data.publicUrl, error: null });
-        } else {
-          resolve({ url: filePath, error: null });
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          onProgress(Math.round((e.loaded / e.total) * 100));
         }
-      } else if (xhr.status === 401 || xhr.status === 403) {
-        resolve({ url: null, error: "Session expired — please refresh the page and try again" });
-      } else {
-        resolve({ url: null, error: `Upload failed (${xhr.status}) — please try again` });
-      }
-    });
+      });
 
-    xhr.addEventListener("error", () => {
-      resolve({ url: null, error: "Upload failed — check your connection and try again" });
-    });
+      xhr.addEventListener("load", () => {
+        signal?.removeEventListener("abort", handleAbort);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          if (bucket === "profile-pictures" || bucket === "share-screenshots") {
+            const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
+            resolve({ url: data.publicUrl, error: null });
+          } else {
+            resolve({ url: filePath, error: null });
+          }
+        } else if (xhr.status === 401 || xhr.status === 403) {
+          resolve({ url: null, error: "Session expired — please refresh the page and try again" });
+        } else {
+          resolve({ url: null, error: `Upload failed (${xhr.status}) — please try again` });
+        }
+      });
 
-    xhr.addEventListener("timeout", () => {
-      resolve({ url: null, error: "Upload timed out — please try again" });
-    });
+      xhr.addEventListener("error", () => {
+        signal?.removeEventListener("abort", handleAbort);
+        resolve({ url: null, error: "Upload failed — check your connection and try again" });
+      });
 
-    xhr.timeout = 60000; // 60s timeout
-    xhr.open("POST", url);
-    xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-    xhr.setRequestHeader("x-upsert", "true");
-    xhr.send(file);
-  });
+      xhr.addEventListener("timeout", () => {
+        signal?.removeEventListener("abort", handleAbort);
+        resolve({ url: null, error: "Upload timed out — please try again" });
+      });
+
+      xhr.timeout = 60000; // 60s timeout
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+      xhr.setRequestHeader("x-upsert", "true");
+      xhr.send(file);
+    });
+  } catch (err) {
+    console.error("Upload error:", err);
+    return { url: null, error: "Upload failed unexpectedly — please try again" };
+  }
 }

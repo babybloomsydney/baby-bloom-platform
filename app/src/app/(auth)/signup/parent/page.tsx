@@ -34,6 +34,7 @@ type ParentSignupFormData = z.infer<typeof parentSignupSchema>;
 
 export default function ParentSignupPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Clear any stale session when user lands on auth page
@@ -70,8 +71,18 @@ export default function ParentSignupPage() {
       setError(result.error);
       setIsLoading(false);
     } else if (result.redirectTo) {
+      setIsRedirecting(true);
       window.location.href = result.redirectTo;
     }
+  }
+
+  if (isRedirecting) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-3" />
+        <p className="text-sm text-slate-500">Setting up your account...</p>
+      </div>
+    );
   }
 
   return (

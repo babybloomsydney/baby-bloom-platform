@@ -14,12 +14,16 @@ export interface NannyCardData {
   hourly_rate_min: number | null;
   nanny_experience_years: number | null;
   total_experience_years: number | null;
+  under_3_experience_years: number | null;
+  newborn_experience_years: number | null;
+  highest_qualification: string | null;
   verification_tier: string;
   drivers_license: boolean | null;
   vaccination_status: boolean | null;
   languages: string[] | null;
   role_types_preferred: string[] | null;
   ai_headline?: string | null;
+  date_of_birth?: string | null;
 }
 
 interface NannyCardProps {
@@ -63,7 +67,7 @@ export function NannyCard({ nanny, showRequestButton = false, onRequestInterview
         <div className="flex items-start justify-between">
           <div>
             <h3 className="font-semibold text-lg text-slate-900 group-hover:text-violet-600 transition-colors">
-              {nanny.first_name} {nanny.last_name[0]}.
+              {nanny.first_name.charAt(0).toUpperCase() + nanny.first_name.slice(1)}
             </h3>
             <div className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
               <MapPin className="w-3.5 h-3.5" />

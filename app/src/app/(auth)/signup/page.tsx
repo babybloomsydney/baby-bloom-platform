@@ -22,7 +22,7 @@ export default function SignupPage() {
       </div>
 
       <div className="grid gap-4">
-        <Link href="/signup/nanny" className="block">
+        <Link href="/apply/nanny" className="block">
           <Card className="hover:border-primary hover:shadow-md transition-all cursor-pointer group">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-3">
@@ -30,9 +30,9 @@ export default function SignupPage() {
                   <Heart className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <CardTitle className="text-lg">I&apos;m a Nanny</CardTitle>
+                  <CardTitle className="text-lg">Apply as a childcare professional</CardTitle>
                   <CardDescription>
-                    Find families who need your care
+                    Join Baby Bloom and get matched with families
                   </CardDescription>
                 </div>
               </div>

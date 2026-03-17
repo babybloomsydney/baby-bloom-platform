@@ -1,7 +1,10 @@
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Gift, MapPin, Calendar, Baby, DollarSign } from 'lucide-react';
+import { Gift, MapPin, Calendar, Baby, DollarSign, MoreVertical, X, Loader2 } from 'lucide-react';
+import { cancelBabysittingRequest } from '@/lib/actions/babysitting';
 import type { PublicBsrProfile } from '@/lib/actions/babysitting';
 
 function formatDate(dateStr: string): string {
@@ -25,6 +28,36 @@ function ageDisplay(months: number): string {
 }
 
 export default function BsrPaymentClient({ bsr }: { bsr: PublicBsrProfile }) {
+  const router = useRouter();
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showMenu]);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    setCancelError(null);
+    const result = await cancelBabysittingRequest(bsr.id);
+    setCancelling(false);
+    if (result.success) {
+      router.push('/parent');
+    } else {
+      setCancelError(result.error || 'Failed to cancel');
+    }
+  };
+
   const estimatedTotal = bsr.hourly_rate && bsr.estimated_hours
     ? Math.round(bsr.hourly_rate * bsr.estimated_hours)
     : 0;
@@ -39,15 +72,77 @@ export default function BsrPaymentClient({ bsr }: { bsr: PublicBsrProfile }) {
     <div className="mx-auto max-w-lg space-y-4 py-4 px-1">
       {/* Header */}
       <div className="text-center">
-        <h1 className="text-xl font-bold text-slate-800">Your Babysitting Request</h1>
+        <h1 className="text-xl font-bold text-slate-800">Your Babysitting</h1>
         <p className="text-xs text-slate-500 mt-0.5">Review your request and choose how to proceed</p>
       </div>
 
+      {/* Cancel Confirmation */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white shadow-lg p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-800">Cancel Booking?</h3>
+              <button onClick={() => { setShowCancelConfirm(false); setCancelError(null); }} className="p-1 rounded-full hover:bg-slate-100">
+                <X className="h-4 w-4 text-slate-400" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-600">
+              Are you sure you would like to cancel this babysitting request? This action cannot be undone.
+            </p>
+            {cancelError && (
+              <p className="text-sm text-red-600">{cancelError}</p>
+            )}
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => { setShowCancelConfirm(false); setCancelError(null); }}
+                disabled={cancelling}
+              >
+                No, Keep It
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onClick={handleCancel}
+                disabled={cancelling}
+              >
+                {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                Yes, Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Order Summary Card */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      <div className="relative rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {/* 3-dots menu — top right of card */}
+        <div className="absolute top-2 right-2 z-10" ref={menuRef}>
+          <button
+            onClick={() => setShowMenu(!showMenu)}
+            className="p-1.5 rounded-full hover:bg-slate-100 transition-colors"
+          >
+            <MoreVertical className="h-5 w-5 text-slate-400" />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 mt-1 w-44 rounded-lg border border-slate-200 bg-white shadow-lg">
+              <button
+                onClick={() => {
+                  setShowMenu(false);
+                  setShowCancelConfirm(true);
+                }}
+                className="w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              >
+                Cancel Booking
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Job Details */}
         <div className="px-4 py-3 space-y-1.5">
-          <h2 className="font-semibold text-slate-700 text-xs uppercase tracking-wide">Job Summary</h2>
+          <h2 className="font-semibold text-slate-700 text-xs uppercase tracking-wide">Summary</h2>
 
           <div className="flex items-start gap-2 text-sm text-slate-600">
             <MapPin className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />

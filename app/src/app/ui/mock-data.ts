@@ -12,6 +12,9 @@ export const FALLBACK_NANNY: NannyCardData = {
   hourly_rate_min: 35,
   nanny_experience_years: 4,
   total_experience_years: 6,
+  under_3_experience_years: 3,
+  newborn_experience_years: 1,
+  highest_qualification: "Certificate III in Early Childhood Education and Care",
   verification_tier: "tier2",
   drivers_license: true,
   vaccination_status: true,
@@ -31,6 +34,9 @@ export const FALLBACK_NANNY_2: NannyCardData = {
   hourly_rate_min: 40,
   nanny_experience_years: 7,
   total_experience_years: 10,
+  under_3_experience_years: 5,
+  newborn_experience_years: 2,
+  highest_qualification: "Diploma of Early Childhood Education and Care",
   verification_tier: "tier3",
   drivers_license: true,
   vaccination_status: true,
@@ -49,6 +55,9 @@ export const FALLBACK_NANNY_3: NannyCardData = {
   hourly_rate_min: 30,
   nanny_experience_years: 2,
   total_experience_years: 3,
+  under_3_experience_years: null,
+  newborn_experience_years: null,
+  highest_qualification: null,
   verification_tier: "tier1",
   drivers_license: false,
   vaccination_status: true,
@@ -170,6 +179,7 @@ export const MOCK_UPCOMING_INTRO = {
   positionId: "mock-position-001",
   position: MOCK_POSITION,
   source: "matchmaking",
+  nannyId: null as string | null,
 };
 
 // ── Proposed times for ScheduleTimeGrid ──────────────────────────

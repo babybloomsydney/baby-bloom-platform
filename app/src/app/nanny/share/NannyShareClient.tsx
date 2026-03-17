@@ -164,6 +164,10 @@ export function NannyShareClient({ initialData }: Props) {
   const [isChecking, setIsChecking] = useState(false);
   const [sessionFailReason, setSessionFailReason] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
 
   // ── Step states ──
 
@@ -311,6 +315,10 @@ export function NannyShareClient({ initialData }: Props) {
       setUploadError(null);
       setError(null);
 
+      uploadAbortRef.current?.abort();
+      const uploadCtrl = new AbortController();
+      uploadAbortRef.current = uploadCtrl;
+
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -319,8 +327,10 @@ export function NannyShareClient({ initialData }: Props) {
         return;
       }
 
-      const result = await uploadFileWithProgress("share-screenshots", user.id, file, (p) =>
-        setUploadProgress(p)
+      const result = await uploadFileWithProgress(
+        "share-screenshots", user.id, file,
+        (p) => setUploadProgress(p),
+        uploadCtrl.signal
       );
 
       if (result.error || !result.url) {
@@ -445,7 +455,7 @@ export function NannyShareClient({ initialData }: Props) {
       )}
 
       <Accordion type="multiple" value={openSections} onValueChange={setOpenSections}>
-        {/* How it works — intro guidance */}
+        {/* How it works — meet and greet guidance */}
         <AccordionItem value="how-it-works" className="border rounded-lg mb-4 overflow-hidden">
             <AccordionTrigger className="hover:no-underline px-4">
               <span className="text-base font-semibold text-slate-800">How it works</span>

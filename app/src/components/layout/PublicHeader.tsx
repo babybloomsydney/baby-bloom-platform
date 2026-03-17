@@ -72,7 +72,7 @@ export function PublicHeader({ onMenuClick }: PublicHeaderProps) {
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild className="cursor-pointer">
-                <Link href={role === 'nanny' ? '/nanny/dashboard' : role === 'parent' ? '/parent/dashboard' : '/admin/dashboard'}>
+                <Link href={role === 'nanny' ? '/nanny' : role === 'parent' ? '/parent' : '/admin/dashboard'}>
                   Dashboard
                 </Link>
               </DropdownMenuItem>

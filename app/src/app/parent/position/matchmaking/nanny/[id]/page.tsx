@@ -18,7 +18,7 @@ export default async function MatchmakingNannyProfilePage({
   return (
     <div>
       <Link
-        href="/parent/position"
+        href="/parent"
         className="inline-flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 mb-4 transition-colors"
       >
         <ChevronLeft className="h-4 w-4" />

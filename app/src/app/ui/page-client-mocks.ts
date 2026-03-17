@@ -194,7 +194,7 @@ export const MOCK_INBOX_MESSAGES: InboxMessage[] = [
     id: "mock-msg-002",
     type: "connection_update",
     title: "Connection confirmed with Bailey Wright",
-    body: "Your connection with Bailey has been confirmed. Next step: schedule an intro call.",
+    body: "Your connection with Bailey has been confirmed. Next step: schedule a meet and greet.",
     action_url: "/parent/connections",
     reference_id: "mock-conn-001",
     reference_type: "connection_request",
@@ -410,6 +410,9 @@ export const MOCK_NANNY_UPCOMING_INTROS: UpcomingIntro[] = [
     expiresAt: "2026-03-20T00:00:00Z",
     nannyPhoneShared: null,
     positionId: "mock-pos-001",
+    position: null,
+    source: null,
+    nannyId: null,
   },
 ];
 

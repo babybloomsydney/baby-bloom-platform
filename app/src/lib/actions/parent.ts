@@ -253,7 +253,7 @@ export async function createPosition(
     }
   }
 
-  revalidatePath('/parent/position');
+  revalidatePath('/parent');
   return { success: true, error: null, positionId: position.id };
 }
 
@@ -305,7 +305,7 @@ export async function updatePosition(
     }
   }
 
-  revalidatePath('/parent/position');
+  revalidatePath('/parent');
   return { success: true, error: null };
 }
 
@@ -481,7 +481,7 @@ export async function saveTypeformPosition(
     }
   }
 
-  revalidatePath('/parent/position');
+  revalidatePath('/parent');
   revalidatePath('/parent/request');
 
   // Notify nanny if active placement exists for this position
@@ -568,7 +568,93 @@ export async function closePosition(
 
   funnelLog('closePosition', positionId, `→ Closed(${posStatus})`, { parentId, noCandidates });
 
-  revalidatePath('/parent/position');
+  revalidatePath('/parent');
   revalidatePath('/parent/connections');
+  return { success: true, error: null };
+}
+
+// ── Account Settings ──
+
+export interface UpdateParentAccountData {
+  first_name?: string;
+  last_name?: string;
+  date_of_birth?: string | null;
+  mobile_number?: string | null;
+  suburb?: string;
+  postcode?: string;
+}
+
+export async function updateParentAccountSettings(
+  data: UpdateParentAccountData
+): Promise<{ success: boolean; error: string | null }> {
+  const supabase = createClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const profileFields: Record<string, unknown> = {};
+  if (data.first_name !== undefined) profileFields.first_name = data.first_name;
+  if (data.last_name !== undefined) profileFields.last_name = data.last_name;
+  if (data.date_of_birth !== undefined) profileFields.date_of_birth = data.date_of_birth;
+  if (data.mobile_number !== undefined) profileFields.mobile_number = data.mobile_number;
+  if (data.suburb !== undefined) profileFields.suburb = data.suburb;
+  if (data.postcode !== undefined) profileFields.postcode = data.postcode;
+
+  if (Object.keys(profileFields).length > 0) {
+    const { error: profileError } = await supabase
+      .from('user_profiles')
+      .update(profileFields)
+      .eq('user_id', user.id);
+
+    if (profileError) {
+      return { success: false, error: 'Failed to update account info' };
+    }
+  }
+
+  revalidatePath('/parent/settings');
+  return { success: true, error: null };
+}
+
+export async function deactivateParentAccount(): Promise<{ success: boolean; error: string | null }> {
+  const supabase = createClient();
+  const admin = createAdminClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  // Get parent record
+  const { data: parent } = await admin
+    .from('parents')
+    .select('id')
+    .eq('user_id', user.id)
+    .single();
+
+  if (parent) {
+    // Close any active positions
+    await admin
+      .from('nanny_positions')
+      .update({ status: 'closed', updated_at: new Date().toISOString() })
+      .eq('parent_id', parent.id)
+      .in('status', ['draft', 'open', 'in_progress']);
+
+    // Cancel any pending connection requests
+    await admin
+      .from('connection_requests')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('parent_id', parent.id)
+      .in('status', ['pending', 'accepted']);
+  }
+
+  await admin.from('activity_logs').insert({
+    user_id: user.id,
+    action: 'account_deactivated',
+    details: { deactivated_by: 'user', role: 'parent' },
+  });
+
+  await supabase.auth.signOut();
   return { success: true, error: null };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,6 +215,11 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
   const [confirmed, setConfirmed] = useState(false);
 
   // Upload state — upload eagerly on file selection
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
+
   const [documentUploadState, setDocumentUploadState] = useState<UploadState>(
     verification?.document_upload_url ? "done" : "idle"
   );
@@ -243,6 +248,10 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
     setDocumentProgress(0);
     setDocumentError(null);
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -253,7 +262,8 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
 
     const result = await uploadFileWithProgress(
       "parent-verifications", user.id, file,
-      (p) => setDocumentProgress(p)
+      (p) => setDocumentProgress(p),
+      controller.signal
     );
 
     if (result.error || !result.url) {
@@ -271,6 +281,10 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
     setSelfieProgress(0);
     setSelfieError(null);
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -281,7 +295,8 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
 
     const result = await uploadFileWithProgress(
       "parent-verifications", user.id, file,
-      (p) => setSelfieProgress(p)
+      (p) => setSelfieProgress(p),
+      controller.signal
     );
 
     if (result.error || !result.url) {

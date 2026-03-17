@@ -159,7 +159,7 @@ export function MatchResultsClient({
                   <Users className="w-4 h-4" />
                   {dfyStatus.interestedCount} nann{dfyStatus.interestedCount !== 1 ? "ies" : "y"} interested
                 </span>
-                <a href="/parent/position" className="text-sm text-violet-600 hover:text-violet-700 underline font-medium">
+                <a href="/parent" className="text-sm text-violet-600 hover:text-violet-700 underline font-medium">
                   View responses
                 </a>
               </div>
@@ -176,7 +176,7 @@ export function MatchResultsClient({
             </h3>
             <p className="text-sm text-amber-700 mt-1">
               {dfyStatus?.interestedCount
-                ? <>{dfyStatus.interestedCount} nann{dfyStatus.interestedCount !== 1 ? "ies" : "y"} still interested &mdash; <a href="/parent/position" className="underline font-medium">view interested nannies</a></>
+                ? <>{dfyStatus.interestedCount} nann{dfyStatus.interestedCount !== 1 ? "ies" : "y"} still interested &mdash; <a href="/parent" className="underline font-medium">view interested nannies</a></>
                 : <>All matched nannies have been notified. Boost again to reach more nannies.</>}
             </p>
           </div>

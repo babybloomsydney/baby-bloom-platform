@@ -53,15 +53,26 @@ export interface PublicNannyProfile {
 
   // Status
   verification_tier: string;
+  verification_level: number;
 
-  // AI content (keyed by content_type)
-  ai_content: Record<string, string>;
+  // AI content (raw JSONB)
+  ai_content: Record<string, unknown> | null;
 
   // Availability
   availability: {
     days_available: string[] | null;
     schedule: Record<string, string[]> | null;
   } | null;
+
+  // V2 profile fields
+  highest_qualification: string | null;
+  certificates: string[];
+  motivation: string | null;
+  personality_traits: string[] | null;
+  professional_values: string[] | null;
+  childcare_roles: { role: string; duration: number }[] | null;
+  additional_photos: string[];
+  immediate_start: boolean;
 }
 
 export async function getPublicNannyProfile(nannyId: string): Promise<{ data: PublicNannyProfile | null; error: string | null }> {
@@ -90,22 +101,31 @@ export async function getPublicNannyProfile(nannyId: string): Promise<{ data: Pu
     return { data: null, error: 'Profile not found' };
   }
 
-  // AI content is stored directly on the nanny record as JSONB
-  const aiContent: Record<string, string> = {};
-  if (nanny.ai_content && typeof nanny.ai_content === 'object') {
-    const ai = nanny.ai_content as Record<string, unknown>;
-    for (const [key, value] of Object.entries(ai)) {
-      if (key === 'ai_model' || key === 'generated_at') continue;
-      aiContent[key] = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
-    }
-  }
+  // AI content — keep raw JSONB structure for V2 rendering
+  const aiContent = (nanny.ai_content && typeof nanny.ai_content === 'object')
+    ? nanny.ai_content as Record<string, unknown>
+    : null;
 
-  // Fetch availability
-  const { data: avail } = await supabase
-    .from('nanny_availability')
-    .select('days_available, schedule')
-    .eq('nanny_id', nannyId)
-    .single();
+  // Fetch availability, credentials, and images in parallel
+  const [{ data: avail }, { data: credentials }, { data: images }] = await Promise.all([
+    supabase
+      .from('nanny_availability')
+      .select('days_available, schedule')
+      .eq('nanny_id', nannyId)
+      .single(),
+    supabase
+      .from('nanny_credentials')
+      .select('credential_category, qualification_type, certification_type')
+      .eq('nanny_id', nannyId),
+    supabase
+      .from('nanny_images')
+      .select('image_url')
+      .eq('nanny_id', nannyId),
+  ]);
+
+  const highestQualification = (credentials || []).find((c: { credential_category: string }) => c.credential_category === 'qualification')?.qualification_type || null;
+  const certificates = (credentials || []).filter((c: { credential_category: string }) => c.credential_category === 'certification').map((c: { certification_type: string }) => c.certification_type).filter(Boolean) as string[];
+  const additionalPhotos = [nanny.photo_1_url, nanny.photo_2_url, nanny.photo_3_url].filter(Boolean) as string[];
 
   return {
     data: {
@@ -141,8 +161,17 @@ export async function getPublicNannyProfile(nannyId: string): Promise<{ data: Pu
       strengths_traits: nanny.strengths_traits,
       skills_training: nanny.skills_training,
       verification_tier: nanny.verification_tier,
+      verification_level: nanny.verification_level ?? 0,
       ai_content: aiContent,
       availability: avail ? { days_available: avail.days_available, schedule: avail.schedule } : null,
+      highest_qualification: highestQualification,
+      certificates,
+      motivation: nanny.motivation || null,
+      personality_traits: nanny.personality_traits || null,
+      professional_values: nanny.professional_values || null,
+      childcare_roles: nanny.childcare_roles as { role: string; duration: number }[] | null,
+      additional_photos: additionalPhotos,
+      immediate_start: nanny.immediate_start_available ?? false,
     },
     error: null,
   };
@@ -197,6 +226,15 @@ export interface NannyProfile {
   hobbies_interests: string | null;
   strengths_traits: string | null;
   skills_training: string | null;
+
+  // V2 onboarding fields
+  motivation: string | null;
+  personality_traits: string[] | null;
+  professional_values: string[] | null;
+  childcare_roles: { role: string; duration: number }[] | null;
+  photo_1_url: string | null;
+  photo_2_url: string | null;
+  photo_3_url: string | null;
 
   // Identity
   nanny_id: string;
@@ -282,6 +320,8 @@ export async function getNannyProfile(): Promise<{ data: NannyProfile | null; er
     data: {
       ...profile,
       ...nanny,
+      // user_profiles.profile_picture_url is the source of truth — restore after nanny spread
+      profile_picture_url: profile.profile_picture_url || nanny.profile_picture_url || null,
       nanny_id: nanny.id,
       highest_qualification,
       certificates,
@@ -342,6 +382,15 @@ export interface UpdateNannyProfileData {
   strengths_traits?: string | null;
   skills_training?: string | null;
 
+  // V2 onboarding fields
+  motivation?: string | null;
+  personality_traits?: string[] | null;
+  professional_values?: string[] | null;
+  childcare_roles?: { role: string; duration: number }[] | null;
+  photo_1_url?: string | null;
+  photo_2_url?: string | null;
+  photo_3_url?: string | null;
+
   // Related table fields
   highest_qualification?: string | null;
   certificates?: string[];
@@ -358,6 +407,14 @@ export async function updateNannyProfile(
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return { success: false, error: 'Not authenticated' };
+  }
+
+  // Server-side profanity check on free-text fields
+  const textFieldsToCheck: Record<string, string | undefined> = {};
+  if (typeof data.motivation === 'string') textFieldsToCheck['What drives me'] = data.motivation;
+  const profanityHit = findProfanityInFields(textFieldsToCheck);
+  if (profanityHit) {
+    return { success: false, error: `Content contains inappropriate language. Please revise the "${profanityHit}" field.` };
   }
 
   // Fields that go to user_profiles
@@ -458,6 +515,7 @@ export async function updateNannyProfile(
   }
 
   revalidatePath('/nanny/profile');
+  revalidatePath('/nanny');
   return { success: true, error: null };
 }
 
@@ -685,11 +743,6 @@ export interface UpdateNannyAccountData {
   last_name?: string;
   date_of_birth?: string | null;
   mobile_number?: string | null;
-  gender?: string | null;
-  nationality?: string | null;
-  residency_status?: string | null;
-  right_to_work?: boolean | null;
-  sydney_resident?: boolean | null;
   suburb?: string;
   postcode?: string;
 }
@@ -704,7 +757,6 @@ export async function updateNannyAccountSettings(
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Fields for user_profiles
   const profileFields: Record<string, unknown> = {};
   if (data.first_name !== undefined) profileFields.first_name = data.first_name;
   if (data.last_name !== undefined) profileFields.last_name = data.last_name;
@@ -724,27 +776,54 @@ export async function updateNannyAccountSettings(
     }
   }
 
-  // Fields for nannies
-  const nannyFields: Record<string, unknown> = {};
-  if (data.gender !== undefined) nannyFields.gender = data.gender;
-  if (data.nationality !== undefined) nannyFields.nationality = data.nationality;
-  if (data.residency_status !== undefined) nannyFields.residency_status = data.residency_status;
-  if (data.right_to_work !== undefined) nannyFields.right_to_work = data.right_to_work;
-  if (data.sydney_resident !== undefined) nannyFields.sydney_resident = data.sydney_resident;
-
-  if (Object.keys(nannyFields).length > 0) {
-    const { error: nannyError } = await supabase
-      .from('nannies')
-      .update(nannyFields)
-      .eq('user_id', user.id);
-
-    if (nannyError) {
-      return { success: false, error: 'Failed to update account settings' };
-    }
-  }
-
   revalidatePath('/nanny/settings');
   revalidatePath('/nanny/profile');
+  return { success: true, error: null };
+}
+
+export async function updateAccountEmail(
+  newEmail: string
+): Promise<{ success: boolean; error: string | null }> {
+  const supabase = createClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const { error: authUpdateError } = await supabase.auth.updateUser({ email: newEmail });
+  if (authUpdateError) {
+    return { success: false, error: authUpdateError.message };
+  }
+
+  return { success: true, error: null };
+}
+
+export async function deactivateNannyAccount(): Promise<{ success: boolean; error: string | null }> {
+  const supabase = createClient();
+  const admin = createAdminClient();
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
+  const { error: nannyError } = await admin
+    .from('nannies')
+    .update({ status: 'deactivated', deactivated_at: new Date().toISOString() })
+    .eq('user_id', user.id);
+
+  if (nannyError) {
+    return { success: false, error: 'Failed to deactivate account' };
+  }
+
+  await admin.from('activity_logs').insert({
+    user_id: user.id,
+    action: 'account_deactivated',
+    details: { deactivated_by: 'user' },
+  });
+
+  await supabase.auth.signOut();
   return { success: true, error: null };
 }
 
@@ -828,97 +907,177 @@ export async function updateNannyAIContent(
 }
 
 /**
- * Regenerate AI content from current profile data.
- * Unlike during registration, this awaits completion (not fire-and-forget).
+ * Regenerate AI content from current profile data using V2 prompt.
+ * Enforces once-per-day rate limit via last_regenerated_at column.
  */
 export async function regenerateNannyAIContent(): Promise<{ success: boolean; error: string | null }> {
   const supabase = createClient();
+  const admin = createAdminClient();
 
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return { success: false, error: 'Not authenticated' };
   }
 
-  // Fetch all current profile data
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('first_name, last_name, date_of_birth, suburb, postcode, profile_picture_url')
-    .eq('user_id', user.id)
-    .single();
-
-  const { data: nanny } = await supabase
+  // Fetch nanny record (adminClient to bypass RLS)
+  const { data: nanny } = await admin
     .from('nannies')
     .select('*')
     .eq('user_id', user.id)
     .single();
 
-  if (!profile || !nanny) {
+  if (!nanny) {
     return { success: false, error: 'Profile not found' };
   }
 
-  // Fetch credentials
-  const { data: credentials } = await supabase
-    .from('nanny_credentials')
-    .select('credential_category, qualification_type, certification_type')
-    .eq('nanny_id', nanny.id);
+  // Enforce once-per-day limit
+  if (nanny.last_regenerated_at) {
+    const lastRegen = new Date(nanny.last_regenerated_at);
+    const hoursSince = (Date.now() - lastRegen.getTime()) / (1000 * 60 * 60);
+    if (hoursSince < 24) {
+      return { success: false, error: 'You can only regenerate your profile once per day. Please try again tomorrow.' };
+    }
+  }
 
-  const highest_qualification = credentials
+  // Fetch profile + credentials + assurances in parallel
+  const [profileRes, credsRes, assuranceRes] = await Promise.all([
+    admin.from('user_profiles').select('first_name, last_name, date_of_birth, suburb').eq('user_id', user.id).single(),
+    admin.from('nanny_credentials').select('credential_category, qualification_type, certification_type').eq('nanny_id', nanny.id),
+    admin.from('nanny_assurances').select('assurance_type').eq('nanny_id', nanny.id),
+  ]);
+
+  const profile = profileRes.data;
+  if (!profile) {
+    return { success: false, error: 'Profile not found' };
+  }
+
+  const highest_qualification = credsRes.data
     ?.find(c => c.credential_category === 'qualification')?.qualification_type || null;
-  const certificates = (credentials || [])
+  const certificates = (credsRes.data || [])
     .filter(c => c.credential_category === 'certification')
     .map(c => c.certification_type)
     .filter((t): t is string => t !== null);
 
-  // Fetch assurances
-  const { data: assuranceRows } = await supabase
-    .from('nanny_assurances')
-    .select('assurance_type')
-    .eq('nanny_id', nanny.id);
-
-  const assurances = (assuranceRows || []).map(a => a.assurance_type);
-
-  // Construct CreateNannyProfileData shape
-  const data: CreateNannyProfileData = {
-    first_name: profile.first_name,
-    last_name: profile.last_name,
-    date_of_birth: profile.date_of_birth,
-    suburb: profile.suburb,
-    postcode: profile.postcode,
-    profile_picture_url: profile.profile_picture_url,
-    nationality: nanny.nationality,
-    languages: nanny.languages,
-    total_experience_years: nanny.total_experience_years,
-    nanny_experience_years: nanny.nanny_experience_years,
-    under_3_experience_years: nanny.under_3_experience_years,
-    newborn_experience_years: nanny.newborn_experience_years,
-    experience_details: nanny.experience_details,
-    role_types_preferred: nanny.role_types_preferred || [],
-    level_of_support_offered: nanny.level_of_support_offered,
-    hourly_rate_min: nanny.hourly_rate_min,
-    pay_frequency: nanny.pay_frequency,
-    max_children: nanny.max_children,
-    min_child_age_months: nanny.min_child_age_months,
-    max_child_age_months: nanny.max_child_age_months,
-    additional_needs_ok: nanny.additional_needs_ok,
-    drivers_license: nanny.drivers_license,
-    has_car: nanny.has_car,
-    comfortable_with_pets: nanny.comfortable_with_pets,
-    vaccination_status: nanny.vaccination_status,
-    non_smoker: nanny.non_smoker,
-    hobbies_interests: nanny.hobbies_interests,
-    strengths_traits: nanny.strengths_traits,
-    skills_training: nanny.skills_training,
-    highest_qualification,
-    certificates,
-    assurances,
+  // Convert months to friendly age labels for V2 prompt
+  const monthsToLabel = (m: number | null): string | null => {
+    if (m === null || m === undefined) return null;
+    if (m === 0) return 'Newborn';
+    if (m < 12) return `${m} months`;
+    if (m === 12) return '12 months';
+    const years = Math.round(m / 12);
+    return `${years} years`;
   };
 
-  // Await the AI generation (not fire-and-forget)
-  await generateNannyBio(user.id, data);
+  // Derive nanny experience from childcare roles
+  const childcareRoles = (nanny.childcare_roles || []) as Array<{ role: string; duration: number }>;
 
-  revalidatePath(`/nannies/${nanny.id}`);
-  revalidatePath('/nanny/profile');
-  return { success: true, error: null };
+  // Build V2 prompt data from live profile
+  const promptData = {
+    firstName: profile.first_name,
+    lastName: profile.last_name,
+    suburb: profile.suburb || null,
+    dateOfBirth: profile.date_of_birth || null,
+    nationality: nanny.nationality || null,
+    motivation: nanny.motivation || null,
+    personalityTraits: nanny.personality_traits || [],
+    levelOfSupport: nanny.level_of_support_offered || [],
+    professionalValues: nanny.professional_values || [],
+    totalExperience: nanny.total_experience_years != null ? String(nanny.total_experience_years) : null,
+    under3Experience: nanny.under_3_experience_years,
+    newbornExperience: nanny.newborn_experience_years,
+    childcareRoles,
+    highestQualification: highest_qualification,
+    certificates,
+    roleTypes: nanny.role_types_preferred || [],
+    minAge: monthsToLabel(nanny.min_child_age_months),
+    maxAge: monthsToLabel(nanny.max_child_age_months),
+    additionalNeeds: nanny.additional_needs_ok,
+    languages: nanny.languages || [],
+    driversLicense: nanny.drivers_license,
+    hasCar: nanny.has_car,
+    vaccinationStatus: nanny.vaccination_status,
+    comfortableWithPets: nanny.comfortable_with_pets,
+    nonSmoker: nanny.non_smoker,
+  };
+
+  try {
+    const { V2_SYSTEM_PROMPT, buildV2Prompt, parseAIProfileSections, generateV2Checklist } = await import('@/lib/ai/nanny-profile-prompts');
+
+    const userMessage = buildV2Prompt(promptData);
+
+    const completion = await openai.chat.completions.create({
+      model: 'o4-mini',
+      messages: [
+        { role: 'developer', content: V2_SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      max_completion_tokens: 10000,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim();
+    if (!raw) {
+      await admin.from('nannies').update({ last_regenerated_at: null }).eq('id', nanny.id);
+      return { success: false, error: 'We were unable to regenerate your profile at this time. Please try again later.' };
+    }
+
+    const sections = parseAIProfileSections(raw);
+
+    // Validate that key sections were populated
+    if (!sections.headline && !sections.about && !sections.experience) {
+      await admin.from('nannies').update({ last_regenerated_at: null }).eq('id', nanny.id);
+      return { success: false, error: 'We were unable to regenerate your profile at this time. Please try again later.' };
+    }
+
+    const checklist = generateV2Checklist({
+      personalityTraits: nanny.personality_traits || [],
+      childcareRoles,
+      totalExperience: nanny.total_experience_years != null ? String(nanny.total_experience_years) : null,
+      under3Experience: nanny.under_3_experience_years,
+      newbornExperience: nanny.newborn_experience_years,
+      highestQualification: highest_qualification,
+      certificates,
+      roleTypes: nanny.role_types_preferred || [],
+      levelOfSupport: nanny.level_of_support_offered || [],
+      minAge: monthsToLabel(nanny.min_child_age_months),
+      maxAge: monthsToLabel(nanny.max_child_age_months),
+      driversLicense: nanny.drivers_license,
+      hasCar: nanny.has_car,
+      comfortableWithPets: nanny.comfortable_with_pets,
+      vaccinationStatus: nanny.vaccination_status,
+      nonSmoker: nanny.non_smoker,
+    });
+
+    const aiContent = {
+      headline: sections.headline || '',
+      parent_pitch: sections.bio || '',
+      bio_summary: {
+        about: sections.about || '',
+        personality: sections.personality || '',
+        values: sections.values || '',
+        background: sections.background || '',
+        what_i_offer: sections.what_i_offer || '',
+      },
+      experience_summary: sections.experience || '',
+      skills_highlight: checklist,
+      ai_model: 'o4-mini',
+      generated_at: new Date().toISOString(),
+    };
+
+    await admin
+      .from('nannies')
+      .update({ ai_content: aiContent, last_regenerated_at: new Date().toISOString() })
+      .eq('id', nanny.id);
+
+    revalidatePath(`/nannies/${nanny.id}`);
+    revalidatePath('/nanny/profile');
+    revalidatePath('/nanny');
+    return { success: true, error: null };
+  } catch (err) {
+    console.error('Failed to regenerate AI profile:', err);
+    // Reset timestamp so user can retry
+    await admin.from('nannies').update({ last_regenerated_at: null }).eq('id', nanny.id);
+    return { success: false, error: 'We were unable to regenerate your profile at this time. Please try again later.' };
+  }
 }
 
 // ── AI Profile Generation (o4-mini via Chat Completions) ──

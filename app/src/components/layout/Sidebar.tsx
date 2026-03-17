@@ -39,7 +39,7 @@ interface SidebarProps {
 }
 
 const nannyNavItems = [
-  { href: "/nanny/dashboard", icon: Home, label: "Dashboard" },
+  { href: "/nanny", icon: Home, label: "Dashboard" },
   { href: "/nanny/profile", icon: User, label: "My Profile" },
   { href: "/nanny/team", icon: Users, label: "Our Team" },
   { href: "/nanny/verification", icon: ShieldCheck, label: "Verification" },
@@ -52,13 +52,13 @@ const nannyNavItems = [
 ];
 
 const parentNavItems = [
-  { href: "/parent/dashboard", icon: Home, label: "Dashboard" },
+  { href: "/parent", icon: Home, label: "Dashboard" },
   { href: "/parent/browse", icon: Search, label: "Browse Nannies" },
   { href: "/parent/verification", icon: ShieldCheck, label: "Verification" },
-  { href: "/parent/position", icon: ClipboardList, label: "My Childcare" },
+  { href: "/parent", icon: ClipboardList, label: "My Childcare" },
   { href: "/parent/matches", icon: Filter, label: "My Matches" },
   { href: "/parent/request", icon: PlusCircle, label: "Nanny Request" },
-  { href: "/parent/position", icon: Link2, label: "Connections" },
+  { href: "/parent", icon: Link2, label: "Connections" },
   { href: "/parent/inbox", icon: Inbox, label: "Inbox" },
   { href: "/parent/babysitting", icon: Baby, label: "Babysitting" },
   { href: "/parent/settings", icon: Settings, label: "Settings" },

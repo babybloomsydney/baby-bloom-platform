@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Rocket, ArrowLeft, Loader2, AlertTriangle, Check } from 'lucide-react';
+import { Sparkles, Rocket, Loader2, AlertTriangle, Check } from 'lucide-react';
 import { confirmMatchmaking } from '@/lib/actions/matching';
-import Link from 'next/link';
+
 
 const STANDARD_FEATURES = [
   'Top 20 nearby + available nannies contacted',
@@ -31,7 +31,7 @@ export function MatchmakerCheckoutClient() {
     try {
       const result = await confirmMatchmaking();
       if (result.success) {
-        window.location.href = '/parent/matches';
+        window.location.href = '/parent';
       } else {
         setError(result.error || 'Something went wrong.');
         setLoading(false);
@@ -45,14 +45,6 @@ export function MatchmakerCheckoutClient() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-violet-50/50 to-white">
       <div className="max-w-2xl mx-auto px-4 py-8 sm:py-12">
-        {/* Back link */}
-        <Link
-          href="/parent/matches"
-          className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 mb-6"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to matches
-        </Link>
 
         {/* Header */}
         <div className="text-center mb-8">

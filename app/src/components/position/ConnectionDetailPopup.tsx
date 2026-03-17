@@ -244,7 +244,7 @@ export function ConnectionDetailPopup({
 
   if (!intro) return null;
 
-  // Min date for trial date pickers: intro call day or today, whichever is later
+  // Min date for trial: meet and greet day or today, whichever is later
   const minTrialDate = (() => {
     const introDay = intro.confirmedTime?.split('T')[0] || '';
     const today = new Date().toISOString().split('T')[0];
@@ -401,7 +401,7 @@ export function ConnectionDetailPopup({
               if (!result.success) {
                 setError(result.error || "Failed to accept.");
               } else {
-                setSuccessMessage("Accepted! The family will schedule an intro time.");
+                setSuccessMessage("Accepted! The family will schedule a meet and greet.");
                 setTimeout(() => { onOpenChange(false); setSuccessMessage(null); setView("details"); }, 1200);
               }
             }}
@@ -467,7 +467,7 @@ export function ConnectionDetailPopup({
             onBack={() => setView("details")}
             onConfirm={async (isoTime) => {
               if (onScheduleTime) {
-                await handleAction(() => onScheduleTime(intro.connectionId, isoTime), "Intro time confirmed!");
+                await handleAction(() => onScheduleTime(intro.connectionId, isoTime), "Meet and greet confirmed!");
               }
             }}
           />
@@ -653,7 +653,7 @@ export function ConnectionDetailPopup({
             {role === "nanny" && isRequest && (
               <div className="space-y-3 border-t pt-4">
                 <div className="rounded-lg bg-blue-50 px-3 py-2">
-                  <p className="text-xs text-blue-700">Accepting will lead to your phone number being shared with this family once they schedule an intro time.</p>
+                  <p className="text-xs text-blue-700">Accepting will lead to your phone number being shared with this family once they schedule a meet and greet.</p>
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" className="flex-1 bg-violet-600 hover:bg-violet-700" disabled={submitting} onClick={() => setView("availability")}>
@@ -670,7 +670,7 @@ export function ConnectionDetailPopup({
             {role === "nanny" && isAccepted && (
               <div className="border-t pt-4">
                 <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                  Accepted! Waiting for {name} to pick an intro time.
+                  Accepted! Waiting for {name} to schedule a meet and greet.
                 </div>
               </div>
             )}
@@ -679,7 +679,7 @@ export function ConnectionDetailPopup({
             {role === "parent" && isAccepted && (
               <div className="space-y-3 border-t pt-4">
                 <p className="text-sm font-medium text-slate-700">
-                  {name} accepted! Pick a time for your 15-minute intro call.
+                  {name} accepted! Pick a time for your meet and greet.
                 </p>
                 <Button size="sm" className="w-full bg-violet-600 hover:bg-violet-700" onClick={() => setView("schedule")}>
                   <Calendar className="h-4 w-4 mr-1" /> Pick a Time
@@ -706,7 +706,7 @@ export function ConnectionDetailPopup({
             {role === "nanny" && isScheduled && (
               <div className="border-t pt-4">
                 <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-700">
-                  Your intro is booked! {name} will call you at the scheduled time.
+                  Your meet and greet is booked! Call {name} to confirm the location.
                 </div>
               </div>
             )}
@@ -716,9 +716,9 @@ export function ConnectionDetailPopup({
               <div className="space-y-2 border-t pt-4">
                 <p className="text-sm font-medium text-slate-700">
                   {isScheduled
-                    ? `Had your intro with ${name}? How did it go?`
+                    ? `Had your meet and greet with ${name}? How did it go?`
                     : stage === CONNECTION_STAGE.INTRO_COMPLETE
-                      ? "How did your intro go?"
+                      ? "How did your meet and greet go?"
                       : "Any update?"}
                 </p>
                 <div className="space-y-1.5">
@@ -806,7 +806,7 @@ export function ConnectionDetailPopup({
                       onClick={() => handleAction(() => onIntroOutcome(intro.connectionId, "incomplete"), "Noted.")}
                     >
                       <AlertCircle className="h-4 w-4 mr-2 shrink-0" />
-                      <span>The intro didn&apos;t take place</span>
+                      <span>The meet and greet didn&apos;t take place</span>
                     </Button>
                   )}
                 </div>
@@ -883,7 +883,7 @@ export function ConnectionDetailPopup({
             {role === "parent" && (isPostIntro || isScheduled) && onParentOutcome && (
               <div className="space-y-2 border-t pt-4">
                 <p className="text-sm font-medium text-slate-700">
-                  {isScheduled ? `Had your intro with ${name}? How did it go?` : "How did the intro go?"}
+                  {isScheduled ? `Had your meet and greet with ${name}? How did it go?` : "How did the meet and greet go?"}
                 </p>
                 <div className="space-y-1.5">
                   <Button

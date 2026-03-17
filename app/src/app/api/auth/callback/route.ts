@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { UserRole } from '@/lib/auth/types';
 
 const ROLE_DASHBOARDS: Record<UserRole, string> = {
-  nanny: '/nanny/dashboard',
-  parent: '/parent/dashboard',
+  nanny: '/nanny',
+  parent: '/parent',
   admin: '/admin/dashboard',
   super_admin: '/admin/dashboard',
 };

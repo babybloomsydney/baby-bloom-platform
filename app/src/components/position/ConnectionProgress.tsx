@@ -11,16 +11,23 @@ interface Checkpoint {
 const CHECKPOINTS: Checkpoint[] = [
   { label: "Matchmaking", reachedAt: -1 },
   { label: "Connect", reachedAt: CONNECTION_STAGE.REQUEST_SENT },
-  { label: "Introduction", reachedAt: CONNECTION_STAGE.INTRO_SCHEDULED },
-  { label: "Trial Shift", reachedAt: CONNECTION_STAGE.TRIAL_ARRANGED },
+  { label: "Meet", reachedAt: CONNECTION_STAGE.INTRO_SCHEDULED },
+  { label: "Trial", reachedAt: CONNECTION_STAGE.TRIAL_ARRANGED },
   { label: "Matched!", reachedAt: CONNECTION_STAGE.OFFERED },
 ];
+
+function isTrialElapsed(trialDate?: string | null): boolean {
+  if (!trialDate) return false;
+  const today = new Date().toISOString().split('T')[0];
+  return trialDate < today;
+}
 
 function getIntermediaryText(
   stage: number,
   role: "parent" | "nanny",
   checkpoint: string,
   fillInitiatedBy?: string | null,
+  trialDate?: string | null,
 ): string {
   if (checkpoint === "Connect") {
     if (stage === CONNECTION_STAGE.REQUEST_SENT)
@@ -29,27 +36,29 @@ function getIntermediaryText(
         : "A family has sent you a connection request";
     if (stage === CONNECTION_STAGE.ACCEPTED)
       return role === "parent"
-        ? "They accepted! Pick a time for the intro call"
-        : "Accepted! The family will arrange an intro time";
+        ? "They accepted! Pick a time for your meet and greet"
+        : "Accepted! The family will arrange a meet and greet";
   }
 
-  if (checkpoint === "Introduction") {
+  if (checkpoint === "Meet") {
     if (stage === CONNECTION_STAGE.INTRO_SCHEDULED)
-      return "Your intro call is booked — good luck!";
+      return "Your meet and greet is booked — good luck!";
     if (stage === CONNECTION_STAGE.INTRO_COMPLETE)
-      return "How did the intro go? Let us know below";
+      return "How did the meet and greet go? Let us know below";
     if (stage === CONNECTION_STAGE.AWAITING_RESPONSE)
       return role === "nanny"
         ? "Let us know when you have an update"
         : "We're waiting for an update";
   }
 
-  if (checkpoint === "Trial Shift") {
+  if (checkpoint === "Trial") {
     if (stage === CONNECTION_STAGE.TRIAL_ARRANGED) {
       if (fillInitiatedBy === "nanny")
         return role === "nanny"
           ? "Waiting for the family to confirm the trial"
           : "Please confirm the trial arrangement below";
+      if (isTrialElapsed(trialDate))
+        return "How did the trial go? Let us know below";
       return role === "nanny"
         ? "Your trial shift is coming up — you've got this!"
         : "A trial shift is arranged — exciting!";
@@ -116,7 +125,7 @@ export function ConnectionProgress({
 
         // Get intermediary text for current step, or for the last step when completed
         const text = (isCurrent || (isLast && isCompleted))
-          ? getIntermediaryText(currentStage, role, cp.label, fillInitiatedBy)
+          ? getIntermediaryText(currentStage, role, cp.label, fillInitiatedBy, trialDate)
           : "";
 
         // Date context for intro time or trial date

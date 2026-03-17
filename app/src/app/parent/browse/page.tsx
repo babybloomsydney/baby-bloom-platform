@@ -1,34 +1,39 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { type NannyCardData, EmptyNannyState } from "@/components/NannyCard";
 import { NannyCardBK } from "@/app/brandkit1/NannyCardBK";
+
+export const dynamic = "force-dynamic";
 
 const PAGE_SIZE = 10;
 
 const SORT_OPTIONS = [
-  { key: "newest", label: "Newest", column: "created_at", ascending: false },
-  { key: "experience", label: "Most Experience", column: "total_experience_years", ascending: false },
-  { key: "rate_low", label: "Lowest Rate", column: "hourly_rate_min", ascending: true },
-  { key: "rate_high", label: "Highest Rate", column: "hourly_rate_min", ascending: false },
+  { key: "newest", label: "New" },
+  { key: "age", label: "Age" },
+  { key: "qualification", label: "Qualification" },
 ] as const;
 
 type SortKey = (typeof SORT_OPTIONS)[number]["key"];
 
+const QUAL_RANK: Record<string, number> = {
+  "Bachelor of Early Childhood Education (Or Equivalent)": 5,
+  "Diploma of Early Childhood Education and Care": 4,
+  "Certificate IV in Education Support": 3,
+  "Certificate III in Early Childhood Education and Care": 2,
+  "No Qualifications": 1,
+};
+
 async function getNannies(sortBy: SortKey = "newest", page: number = 1): Promise<{ nannies: NannyCardData[]; total: number }> {
   const supabase = createAdminClient();
 
-  const sort = SORT_OPTIONS.find((o) => o.key === sortBy) || SORT_OPTIONS[0];
-  const from = (page - 1) * PAGE_SIZE;
-  const to = from + PAGE_SIZE - 1;
-
-  const { data: nannies, error, count } = await supabase
+  const { data: nannies, error } = await supabase
     .from("nannies")
-    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, verification_tier, drivers_license, vaccination_status, languages, role_types_preferred, ai_content", { count: "exact" })
+    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, under_3_experience_years, newborn_experience_years, verification_tier, drivers_license, vaccination_status, languages, role_types_preferred, ai_content")
     .eq("profile_visible", true)
-    .order(sort.column, { ascending: sort.ascending, nullsFirst: false })
-    .range(from, to);
+    .order("created_at", { ascending: false });
 
   if (error || !nannies?.length) {
     if (error) console.error("Error fetching nannies:", error);
@@ -36,13 +41,25 @@ async function getNannies(sortBy: SortKey = "newest", page: number = 1): Promise
   }
 
   const userIds = nannies.map((n) => n.user_id);
-  const { data: profiles } = await supabase
-    .from("user_profiles")
-    .select("user_id, first_name, last_name, suburb, profile_picture_url")
-    .in("user_id", userIds);
+  const nannyIds = nannies.map((n) => n.id);
+
+  const [{ data: profiles }, { data: credentials }] = await Promise.all([
+    supabase
+      .from("user_profiles")
+      .select("user_id, first_name, last_name, suburb, profile_picture_url, date_of_birth")
+      .in("user_id", userIds),
+    supabase
+      .from("nanny_credentials")
+      .select("nanny_id, qualification_type")
+      .in("nanny_id", nannyIds)
+      .eq("credential_category", "qualification"),
+  ]);
 
   const profileMap = new Map(
     (profiles || []).map((p) => [p.user_id, p])
+  );
+  const qualMap = new Map(
+    (credentials || []).map((c) => [c.nanny_id, c.qualification_type as string])
   );
 
   const mapped = nannies
@@ -60,17 +77,42 @@ async function getNannies(sortBy: SortKey = "newest", page: number = 1): Promise
         hourly_rate_min: nanny.hourly_rate_min,
         nanny_experience_years: nanny.nanny_experience_years,
         total_experience_years: nanny.total_experience_years,
+        under_3_experience_years: nanny.under_3_experience_years,
+        newborn_experience_years: nanny.newborn_experience_years,
+        highest_qualification: qualMap.get(nanny.id) || null,
         verification_tier: nanny.verification_tier,
         drivers_license: nanny.drivers_license,
         vaccination_status: nanny.vaccination_status,
         languages: nanny.languages,
         role_types_preferred: nanny.role_types_preferred,
         ai_headline: (ai?.headline as string) || null,
+        date_of_birth: profile.date_of_birth || null,
       } as NannyCardData;
     })
     .filter((n): n is NannyCardData => n !== null);
 
-  return { nannies: mapped, total: count || 0 };
+  // Sort
+  let sorted = mapped;
+  if (sortBy === "age") {
+    sorted = [...mapped].sort((a, b) => {
+      if (!a.date_of_birth && !b.date_of_birth) return 0;
+      if (!a.date_of_birth) return 1;
+      if (!b.date_of_birth) return -1;
+      return new Date(a.date_of_birth).getTime() - new Date(b.date_of_birth).getTime();
+    });
+  } else if (sortBy === "qualification") {
+    sorted = [...mapped].sort((a, b) => {
+      const rankA = (a.highest_qualification && QUAL_RANK[a.highest_qualification]) || 0;
+      const rankB = (b.highest_qualification && QUAL_RANK[b.highest_qualification]) || 0;
+      return rankB - rankA;
+    });
+  }
+
+  const total = sorted.length;
+  const from = (page - 1) * PAGE_SIZE;
+  const paged = sorted.slice(from, from + PAGE_SIZE);
+
+  return { nannies: paged, total };
 }
 
 function buildHref(sort: string, page: number) {
@@ -93,6 +135,22 @@ export default async function ParentBrowsePage({
   const { nannies, total } = await getNannies(sortBy, page);
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
+  // Check if user is a logged-in parent
+  let isParent = false;
+  try {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const admin = createAdminClient();
+      const { data: role } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+      isParent = role?.role === "parent";
+    }
+  } catch {}
+
   return (
     <div className="mx-auto max-w-2xl">
       {/* Back link */}
@@ -101,7 +159,7 @@ export default async function ParentBrowsePage({
         className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 transition-colors mb-4"
       >
         <ChevronLeft className="h-3.5 w-3.5" />
-        Back to profile
+        Back
       </Link>
 
       {/* Header */}
@@ -112,24 +170,36 @@ export default async function ParentBrowsePage({
         </p>
       </div>
 
-      {/* Sort pills */}
-      <div className="flex gap-1 rounded-xl bg-slate-100 p-1 mb-5">
-        {SORT_OPTIONS.map((option) => {
-          const isActive = option.key === sortBy;
-          return (
-            <Link
-              key={option.key}
-              href={buildHref(option.key, 1)}
-              className={`flex-1 rounded-lg px-3 py-2 text-center text-xs font-medium transition-all ${
-                isActive
-                  ? "bg-white text-slate-900 shadow-sm"
-                  : "text-slate-500 hover:text-slate-700"
-              }`}
-            >
-              {option.label}
+      {/* CTA + Sort toggle */}
+      <div className="flex items-center justify-between mb-4">
+        {isParent ? (
+          <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-700 text-xs h-8 px-3">
+            <Link href="/parent/matchmaking">
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+              Find my best match!
             </Link>
-          );
-        })}
+          </Button>
+        ) : (
+          <div />
+        )}
+        <div className="inline-flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+          {SORT_OPTIONS.map((option) => {
+            const isActive = option.key === sortBy;
+            return (
+              <Link
+                key={option.key}
+                href={buildHref(option.key, 1)}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  isActive
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {/* Nanny List */}

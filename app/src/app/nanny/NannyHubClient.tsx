@@ -9,7 +9,6 @@ import {
   Pencil,
   MapPin,
   ShieldCheck,
-  BadgeCheck,
   Car,
   Baby,
   Globe,
@@ -23,6 +22,13 @@ import {
   Users,
   GraduationCap,
   Award,
+  Briefcase,
+  HandHeart,
+  Smile,
+  CalendarCheck,
+  Accessibility,
+  ThumbsUp,
+  Languages,
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,108 +44,12 @@ import {
 import { Button } from "@/components/ui/button";
 import type { VerificationData } from "@/lib/actions/verification";
 
-// ── Availability Grid (matches NannyProfileBK exactly) ──────────────────────
-
-const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
-const SLOT_LABELS = ["Morning", "Midday", "Afternoon", "Evening"];
-const TIME_SLOTS = ["Morning (6am-10am)", "Midday (10am-2pm)", "Afternoon (2pm-6pm)", "Evening (6pm-10pm)"] as const;
-const SLOT_RANGES = [
-  { start: 6, end: 10 },
-  { start: 10, end: 14 },
-  { start: 14, end: 18 },
-  { start: 18, end: 22 },
-];
-
-function normaliseDaySlots(raw: unknown): boolean[] {
-  if (!raw) return [false, false, false, false];
-  if (Array.isArray(raw)) {
-    return TIME_SLOTS.map((slot) => raw.includes(slot));
-  }
-  if (typeof raw === "object" && raw !== null && "available" in raw) {
-    const obj = raw as { available?: boolean; start?: string | null; end?: string | null };
-    if (!obj.available || !obj.start || !obj.end) return [false, false, false, false];
-    const startHour = parseInt(obj.start.split(":")[0]);
-    const endHour = parseInt(obj.end.split(":")[0]);
-    return SLOT_RANGES.map((range) => startHour <= range.start && endHour >= range.end);
-  }
-  return [false, false, false, false];
-}
-
-function AvailabilityGrid({ schedule, firstName }: { schedule: Record<string, unknown>; firstName: string }) {
-  return (
-    <>
-      <div className="overflow-x-auto -mx-1">
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="py-2 pr-3 text-left text-xs font-medium text-slate-400" />
-              {SLOT_LABELS.map((label) => (
-                <th key={label} className="px-1.5 py-2 text-center text-xs font-medium text-slate-400">{label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {DAYS.map((day) => {
-              const rawEntry = schedule[day.toLowerCase()];
-              const slots = normaliseDaySlots(rawEntry);
-              return (
-                <tr key={day}>
-                  <td className="py-1.5 pr-3 font-medium text-slate-600 text-sm whitespace-nowrap">{day.slice(0, 3)}</td>
-                  {SLOT_LABELS.map((_, i) => (
-                    <td key={i} className="px-1.5 py-1.5 text-center">
-                      <span className={cn(
-                        "inline-flex h-8 w-8 items-center justify-center rounded-lg text-xs transition-colors",
-                        slots[i]
-                          ? "bg-violet-500 text-white"
-                          : "bg-slate-50 text-slate-200"
-                      )}>
-                        {slots[i] ? <Check className="h-3.5 w-3.5" /> : "–"}
-                      </span>
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className="mt-3 text-xs text-slate-400">
-        Violet slots indicate when {firstName} is available. Specific hours can be discussed when connecting.
-      </p>
-    </>
-  );
-}
-
-// ── Glance Item (matches NannyProfileBK) ─────────────────────────────────────
-
-function GlanceItem({ icon: Icon, label }: { icon: React.ElementType; label: string }) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-lg bg-slate-50 px-3 py-2.5">
-      <Icon className="h-4 w-4 text-violet-500 shrink-0" />
-      <span className="text-sm text-slate-700">{label}</span>
-    </div>
-  );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function computeAge(dob: string | null): number | null {
-  if (!dob) return null;
-  const birth = new Date(dob);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  const m = today.getMonth() - birth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-  return age;
-}
-
-function ageMonthsToLabel(months: number | null | undefined): string {
-  if (months === null || months === undefined) return "Any";
-  if (months === 0) return "Newborn";
-  if (months < 12) return `${months}mo`;
-  const y = Math.floor(months / 12);
-  return `${y}yr${y > 1 ? "s" : ""}`;
-}
+import { Tag } from "@/components/profile/Tag";
+import { GlanceItem } from "@/components/profile/GlanceItem";
+import { StatBox } from "@/components/profile/StatBox";
+import { AvailabilityGrid } from "@/components/profile/AvailabilityGrid";
+import { ProfilePhotoViewer } from "@/components/profile/ProfilePhotoViewer";
+import { computeAge, ageRangeToFriendly, childrenCountLabel, BADGE_ICONS } from "@/components/profile/profile-helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,6 +80,13 @@ export interface NannyProfileAccordionData {
   availability: { days_available: string[] | null; schedule: Record<string, string[]> | null } | null;
   highest_qualification: string | null;
   certificates: string[];
+  motivation: string | null;
+  personality_traits: string[] | null;
+  professional_values: string[] | null;
+  childcare_roles: { role: string; duration: number }[] | null;
+  additional_photos: string[];
+  immediate_start: boolean;
+  additional_needs: boolean;
 }
 
 interface NannyHubClientProps {
@@ -226,47 +143,73 @@ export function NannyHubClient({
   const [profileTab, setProfileTab] = useState<ProfileTabId>("about");
   const [showTabLockedModal, setShowTabLockedModal] = useState(false);
   const [showCardLockedModal, setShowCardLockedModal] = useState(false);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
 
   const p = nannyProfile;
   const ai = p?.ai_content;
   const age = computeAge(p?.date_of_birth ?? null);
 
-  // AI content extraction
-  const bioSummary = ai?.bio_summary;
-  const bioSummaryObj = (typeof bioSummary === "object" && bioSummary !== null ? bioSummary : null) as Record<string, string> | null;
-  const bio = (ai?.parent_pitch as string) || bioSummaryObj?.about || null;
-  const strengths = bioSummaryObj?.strengths || p?.strengths_traits || null;
-  const experienceText = (ai?.experience_summary as string) || null;
-  const tagline = (ai?.headline as string) || null;
-
   // Verification — numeric level (1-4), badge shows at 3+
   const isVerified = verificationLevel >= 3;
 
-  // Build trait badges for hero card
-  const traitBadges: { icon: React.ElementType; label: string; primary?: boolean }[] = [];
+  // ── AI content extraction (new V2 field paths) ──
+  const bioSummary = ai?.bio_summary;
+  const bioObj = (typeof bioSummary === "object" && bioSummary !== null ? bioSummary : null) as Record<string, string> | null;
+  const headline = (ai?.headline as string) || null;
+  const aiAbout = bioObj?.about || null;
+  const aiPersonality = bioObj?.personality || null;
+  const aiValues = bioObj?.values || null;
+  const aiBackground = bioObj?.background || null;
+  const aiWhatIOffer = bioObj?.what_i_offer || null;
+  const aiExperience = (ai?.experience_summary as string) || null;
+
+  // ── Badge pills (experience stats + qualification only) ──
+  const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (p) {
-    if (p.nanny_experience_years) traitBadges.push({ icon: Clock, label: `${p.nanny_experience_years} yrs experience`, primary: true });
-    if (p.under_3_experience_years && p.under_3_experience_years > 0) traitBadges.push({ icon: Baby, label: `${p.under_3_experience_years} yrs under 3s`, primary: true });
-    if (p.newborn_experience_years && p.newborn_experience_years > 0) traitBadges.push({ icon: Baby, label: `${p.newborn_experience_years} yrs newborns`, primary: true });
-    if (p.highest_qualification) traitBadges.push({ icon: GraduationCap, label: p.highest_qualification });
-    for (const cert of p.certificates) {
-      traitBadges.push({ icon: Award, label: cert });
-    }
-    if (p.has_car) traitBadges.push({ icon: Car, label: "Car" });
+    if (p.total_experience_years && p.total_experience_years > 0)
+      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years} yrs experience`, primary: true });
+    if (p.under_3_experience_years && p.under_3_experience_years > 0)
+      traitBadges.push({ icon: "Baby", label: `${p.under_3_experience_years} yrs under 3s`, primary: true });
+    if (p.newborn_experience_years && p.newborn_experience_years > 0)
+      traitBadges.push({ icon: "Baby", label: `${p.newborn_experience_years} yr newborns`, primary: true });
+    if (p.highest_qualification)
+      traitBadges.push({ icon: "GraduationCap", label: p.highest_qualification });
+  }
+
+  // ── Stat boxes for experience tab ──
+  const statBoxes: { value: number; label: string }[] = [];
+  if (p) {
+    if (p.total_experience_years && p.total_experience_years > 0)
+      statBoxes.push({ value: p.total_experience_years, label: "Years Childcare" });
+    if (p.under_3_experience_years && p.under_3_experience_years > 0)
+      statBoxes.push({ value: p.under_3_experience_years, label: "Years Under 3s" });
+    if (p.newborn_experience_years && p.newborn_experience_years > 0)
+      statBoxes.push({ value: p.newborn_experience_years, label: "Years Newborns" });
   }
 
   return (
     <>
       {/* ═══════════════════════════════════════════════════════════════════
-          HERO CARD — mirrors NannyProfileBK hero exactly
+          HERO CARD
          ═══════════════════════════════════════════════════════════════════ */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {/* Gradient header strip */}
-        <div className="h-16 bg-gradient-to-br from-violet-50 to-violet-100/50" />
+      <div className="relative rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        {isVerified && (
+          <span className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-semibold text-green-700">
+            <ShieldCheck className="h-3.5 w-3.5" /> Verified
+          </span>
+        )}
+        <div className="h-12 bg-gradient-to-br from-violet-50 to-violet-100/50" />
 
-        <div className="px-5 pb-5">
-          {/* Photo + Name + Verification — overlaps header by -mt-14 */}
-          <div className="flex items-end gap-4 -mt-14">
+        <div className="relative px-5 pb-5">
+          <Link
+            href="/nanny/profile"
+            className="absolute top-14 right-4 flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:text-violet-600 hover:bg-slate-50 transition-colors z-10"
+            title="Edit Profile"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Link>
+          <div className="flex items-end gap-4 -mt-10">
             <div className="relative shrink-0">
               <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
                 {profilePictureUrl ? (
@@ -282,55 +225,93 @@ export function NannyHubClient({
                 )}
               </div>
               {isVerified && (
-                <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 ring-3 ring-white">
-                  <ShieldCheck className="h-4 w-4 text-white" />
+                <div className="absolute bottom-2 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-50 border border-green-200 ring-2 ring-white">
+                  <ShieldCheck className="h-4 w-4 text-green-700" />
                 </div>
               )}
             </div>
 
-            <div className="flex-1 min-w-0 pb-1">
+            <div className="flex-1 min-w-0 pb-1 pt-4">
               <h1 className="text-2xl font-bold text-slate-900">
                 {firstName}{age ? `, ${age}` : ""}
               </h1>
-              {p?.suburb && (
-                <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                  <MapPin className="h-3.5 w-3.5" />
-                  {p.suburb}
-                </p>
-              )}
+              {/* Details block with photo fan absolutely positioned to the right */}
+              <div className="relative mt-0.5">
+                <div>
+                  {p?.nationality && (
+                    <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
+                      <Globe className="h-3.5 w-3.5" /> {p.nationality}
+                    </p>
+                  )}
+                  {p?.languages && p.languages.length > 0 && (
+                    <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
+                      <Languages className="h-3 w-3" />
+                      {p.languages.join(", ")}
+                    </p>
+                  )}
+                  {p?.suburb && (
+                    <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
+                      <MapPin className="h-3.5 w-3.5" /> {p.suburb}
+                    </p>
+                  )}
+                </div>
+
+                {/* Additional photos — fanned stack */}
+                {p?.additional_photos && p.additional_photos.length > 0 && (
+                  <button
+                    onClick={() => { setPhotoViewerIndex(0); setPhotoViewerOpen(true); }}
+                    className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group mr-12"
+                  >
+                    {p.additional_photos.slice(0, 3).map((url, i) => {
+                      const rotations = ["-rotate-[20deg]", "rotate-0", "rotate-[20deg]"];
+                      const offsets = ["left-0", "left-3", "left-6"];
+                      const zIndexes = ["z-[3]", "z-[2]", "z-[1]"];
+                      return (
+                        <div
+                          key={i}
+                          className={cn(
+                            "absolute top-1/2 -translate-y-1/2 h-[85%] aspect-square overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
+                            rotations[i], offsets[i], zIndexes[i],
+                          )}
+                        >
+                          <img src={url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                        </div>
+                      );
+                    })}
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="pb-1 shrink-0">
-              {isVerified && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-semibold text-green-700">
-                  <BadgeCheck className="h-3.5 w-3.5" /> Verified
-                </span>
-              )}
-            </div>
           </div>
 
-          {/* Short bio */}
-          {tagline && (
-            <p className="mt-3 text-sm text-slate-600 leading-relaxed">{tagline.replace(/<\/?p>/g, "")}</p>
+          {/* ai_content.headline */}
+          {headline && (
+            <div
+              className="mt-3 text-sm text-slate-600 leading-relaxed [&_p]:mb-0"
+              dangerouslySetInnerHTML={{ __html: headline }}
+            />
           )}
 
           {/* Trait badges */}
           {traitBadges.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {traitBadges.map((badge, i) => (
-                <span
-                  key={i}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
-                    badge.primary
-                      ? "bg-violet-50 text-violet-700 border border-violet-200"
-                      : "bg-slate-50 text-slate-600 border border-slate-200"
-                  )}
-                >
-                  <badge.icon className="h-3 w-3" />
-                  {badge.label}
-                </span>
-              ))}
+              {traitBadges.map((badge, i) => {
+                const Icon = BADGE_ICONS[badge.icon] || Check;
+                return (
+                  <span
+                    key={i}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      badge.primary
+                        ? "bg-violet-50 text-violet-700 border border-violet-200"
+                        : "bg-slate-50 text-slate-600 border border-slate-200"
+                    )}
+                  >
+                    <Icon className="h-3 w-3" /> {badge.label}
+                  </span>
+                );
+              })}
             </div>
           )}
 
@@ -355,7 +336,6 @@ export function NannyHubClient({
 
       {/* ═══════════════════════════════════════════════════════════════════
           ACCORDION — Profile sub-tabs (About | Experience | Availability)
-          Matches NannyProfileBK tab layout exactly
          ═══════════════════════════════════════════════════════════════════ */}
       {profileExpanded && p && (
         <>
@@ -383,46 +363,100 @@ export function NannyHubClient({
           {/* ── About sub-tab ── */}
           {profileTab === "about" && (
             <div className="space-y-3">
-              {/* Bio card */}
-              {(bio || p.strengths_traits) && (
-                <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <Link
-                    href="/nanny/profile"
-                    className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:text-violet-600 hover:bg-slate-50 transition-colors"
-                    title="Edit Profile"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Link>
+
+              {/* 1. About {firstName} */}
+              {(aiAbout || p.motivation) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <Sparkles className="h-4 w-4 text-violet-400" />
                     <h3 className="text-sm font-semibold text-slate-900">About {firstName}</h3>
                   </div>
-                  <div
-                    className="text-sm text-slate-600 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0"
-                    dangerouslySetInnerHTML={{ __html: bio || p.strengths_traits || "" }}
-                  />
+                  {aiAbout && (
+                    <div
+                      className="text-sm text-slate-600 leading-relaxed [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{ __html: aiAbout }}
+                    />
+                  )}
+                  {p.motivation && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg bg-violet-50/50 border border-violet-100 px-3 py-2">
+                      <Heart className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+                      <p className="text-xs text-violet-600">
+                        <span className="font-medium">What drives me:</span> {p.motivation}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Strengths card — violet accent */}
-              {strengths && strengths !== bio && (
-                <div className="rounded-2xl border border-violet-100 bg-violet-50/30 p-5">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Heart className="h-4 w-4 text-violet-500" />
-                    <h3 className="text-sm font-semibold text-slate-900">Strengths</h3>
+              {/* 2. Personality */}
+              {(aiPersonality || (p.personality_traits && p.personality_traits.length > 0)) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Smile className="h-4 w-4 text-violet-500" />
+                    <h3 className="text-sm font-semibold text-slate-900">Personality</h3>
                   </div>
-                  <p className="text-sm text-slate-600 leading-relaxed">{strengths}</p>
+                  {aiPersonality && (
+                    <div
+                      className="text-sm text-slate-600 leading-relaxed mb-3 [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{ __html: aiPersonality }}
+                    />
+                  )}
+                  {p.personality_traits && p.personality_traits.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.personality_traits.map((trait) => (
+                        <Tag key={trait} variant="violet">{trait}</Tag>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Preferences card */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">Preferences</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <GlanceItem icon={Baby} label={`Ages ${ageMonthsToLabel(p.min_child_age_months)} – ${ageMonthsToLabel(p.max_child_age_months)}`} />
-                  {p.max_children && <GlanceItem icon={Users} label={`Up to ${p.max_children} children`} />}
+              {/* 3. My Values */}
+              {(aiValues || (p.professional_values && p.professional_values.length > 0)) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <HandHeart className="h-4 w-4 text-violet-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">My Values</h3>
+                  </div>
+                  {aiValues && (
+                    <div
+                      className="text-sm text-slate-600 leading-relaxed mb-3 [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{ __html: aiValues }}
+                    />
+                  )}
+                  {p.professional_values && p.professional_values.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.professional_values.map((value) => (
+                        <Tag key={value} variant="violet">{value}</Tag>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* 4. What I Offer */}
+              {(aiWhatIOffer || (p.role_types_preferred && p.role_types_preferred.length > 0)) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Briefcase className="h-4 w-4 text-violet-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">What I Offer</h3>
+                  </div>
+                  {aiWhatIOffer && (
+                    <div
+                      className="text-sm text-slate-600 leading-relaxed mb-3 [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{ __html: aiWhatIOffer }}
+                    />
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.role_types_preferred?.map((tag) => (
+                      <Tag key={tag} variant="violet">{tag}</Tag>
+                    ))}
+                    {p.level_of_support_offered?.map((support) => (
+                      <Tag key={support} variant="violet">{support}</Tag>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             </div>
           )}
@@ -430,7 +464,8 @@ export function NannyHubClient({
           {/* ── Experience sub-tab ── */}
           {profileTab === "experience" && (
             <div className="space-y-3">
-              {/* Experience summary + stats */}
+
+              {/* 1. Experience */}
               <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <Link
                   href="/nanny/profile"
@@ -439,44 +474,150 @@ export function NannyHubClient({
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Link>
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">Experience</h3>
-                {experienceText && (
+                <div className="flex items-center gap-2 mb-3">
+                  <Briefcase className="h-4 w-4 text-violet-400" />
+                  <h3 className="text-sm font-semibold text-slate-900">Experience</h3>
+                </div>
+                {aiExperience && (
                   <div
                     className="text-sm text-slate-600 leading-relaxed mb-4 [&_p]:mb-2 [&_p:last-child]:mb-0"
-                    dangerouslySetInnerHTML={{ __html: experienceText }}
+                    dangerouslySetInnerHTML={{ __html: aiExperience }}
                   />
                 )}
-                {!experienceText && (p.total_experience_years || p.nanny_experience_years) && (
+                {!aiExperience && (p.total_experience_years || p.nanny_experience_years) && (
                   <div className="space-y-1 text-sm text-slate-600 mb-4">
                     {p.total_experience_years != null && <p>{p.total_experience_years} years total childcare experience</p>}
                     {p.nanny_experience_years != null && <p>{p.nanny_experience_years} years as a nanny</p>}
                   </div>
                 )}
-
-                {/* Stats grid */}
-                <div className="grid grid-cols-2 gap-2.5">
-                  <div className="rounded-xl bg-slate-50 p-3 text-center">
-                    <p className="text-xl font-bold text-violet-600">{p.total_experience_years ?? "–"}</p>
-                    <p className="text-xs text-slate-500">Years Childcare</p>
+                {statBoxes.length > 0 && (
+                  <div className={cn(
+                    "grid gap-2.5",
+                    statBoxes.length === 1 && "grid-cols-1 max-w-[200px]",
+                    statBoxes.length === 2 && "grid-cols-2",
+                    statBoxes.length === 3 && "grid-cols-3",
+                  )}>
+                    {statBoxes.map((s) => (
+                      <StatBox key={s.label} value={s.value} label={s.label} />
+                    ))}
                   </div>
-                  <div className="rounded-xl bg-slate-50 p-3 text-center">
-                    <p className="text-xl font-bold text-violet-600">{p.nanny_experience_years ?? "–"}</p>
-                    <p className="text-xs text-slate-500">Years as Nanny</p>
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* At a Glance */}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="text-sm font-semibold text-slate-900 mb-3">At a Glance</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {p.drivers_license && <GlanceItem icon={Car} label="Driver's License" />}
-                  {p.has_car && <GlanceItem icon={Car} label="Car" />}
-                  {p.comfortable_with_pets && <GlanceItem icon={PawPrint} label="Pet Friendly" />}
-                  {p.vaccination_status && <GlanceItem icon={Stethoscope} label="Fully Vaccinated" />}
-                  {p.non_smoker && <GlanceItem icon={CigaretteOff} label="Non-Smoker" />}
-                  {p.nationality && <GlanceItem icon={Globe} label={p.nationality} />}
+              {/* 2. Background */}
+              {(aiBackground || p.highest_qualification || (p.childcare_roles && p.childcare_roles.length > 0)) && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CalendarCheck className="h-4 w-4 text-violet-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">Background</h3>
+                  </div>
+                  {aiBackground && (
+                    <div
+                      className="text-sm text-slate-600 leading-relaxed mb-4 [&_p]:mb-2 [&_p:last-child]:mb-0"
+                      dangerouslySetInnerHTML={{ __html: aiBackground }}
+                    />
+                  )}
+                  {p.highest_qualification && (
+                    <div className="flex items-start gap-2.5 rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 mb-3">
+                      <GraduationCap className="h-4 w-4 text-violet-500 mt-0.5 shrink-0" />
+                      <span className="text-sm font-medium text-violet-700">{p.highest_qualification}</span>
+                    </div>
+                  )}
+                  {p.childcare_roles && p.childcare_roles.length > 0 && (
+                    <div className="space-y-2">
+                      {p.childcare_roles.map((role) => (
+                        <div key={role.role} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
+                          <span className="text-sm font-medium text-slate-700">{role.role}</span>
+                          <span className="text-xs text-slate-500">{role.duration} {role.duration === 1 ? "year" : "years"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* 3. Safety & Assurance */}
+              {(() => {
+                const CERT_ORDER = [
+                  "First Aid in Education & Care Setting",
+                  "First Aid",
+                  "CPR",
+                  "Child Protection",
+                ];
+                const orderedCerts = CERT_ORDER.filter((c) => p.certificates.includes(c));
+                const otherCerts = p.certificates.filter((c) => !CERT_ORDER.includes(c));
+                const hasItems = verificationLevel >= 3 || orderedCerts.length > 0 || otherCerts.length > 0 || p.vaccination_status || p.non_smoker;
+                if (!hasItems) return null;
+                return (
+                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <ShieldCheck className="h-4 w-4 text-violet-400" />
+                      <h3 className="text-sm font-semibold text-slate-900">Safety & Assurance</h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {verificationLevel >= 3 && (
+                        <GlanceItem icon={ShieldCheck} label="WWCC" variant="green" />
+                      )}
+                      {orderedCerts.map((cert) => (
+                        <GlanceItem key={cert} icon={Award} label={cert} variant="green" />
+                      ))}
+                      {otherCerts.map((cert) => (
+                        <GlanceItem key={cert} icon={Award} label={cert} variant="green" />
+                      ))}
+                      {p.vaccination_status && (
+                        <GlanceItem icon={Stethoscope} label="Fully Vaccinated" variant="green" />
+                      )}
+                      {p.non_smoker && (
+                        <GlanceItem icon={CigaretteOff} label="Non-Smoker" variant="green" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* 4. Good to Know */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <ThumbsUp className="h-4 w-4 text-violet-400" />
+                  <h3 className="text-sm font-semibold text-slate-900">Good to Know</h3>
+                </div>
+
+                {/* Best with supporting */}
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Best with supporting</h4>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {p.min_child_age_months != null && p.max_child_age_months != null && (
+                    <GlanceItem icon={Baby} label={ageRangeToFriendly(p.min_child_age_months, p.max_child_age_months)} />
+                  )}
+                  {p.max_children != null && (
+                    <GlanceItem icon={Users} label={childrenCountLabel(p.max_children)} />
+                  )}
+                </div>
+
+                {/* Can support */}
+                {(p.additional_needs || p.comfortable_with_pets) && (
+                  <>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Can support</h4>
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {p.additional_needs && (
+                        <GlanceItem icon={Accessibility} label="Children with additional needs" />
+                      )}
+                      {p.comfortable_with_pets && (
+                        <GlanceItem icon={PawPrint} label="Families with pets" />
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Additionally */}
+                {(p.drivers_license || p.has_car) && (
+                  <>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Additionally</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      {p.drivers_license && <GlanceItem icon={Car} label="I have my driver's license" />}
+                      {p.has_car && <GlanceItem icon={Car} label="I have my own car" />}
+                    </div>
+                  </>
+                )}
               </div>
 
             </div>
@@ -485,17 +626,17 @@ export function NannyHubClient({
           {/* ── Availability sub-tab ── */}
           {profileTab === "availability" && (
             <div className="space-y-3">
-              <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <Link
-                  href="/nanny/profile"
-                  className="absolute top-4 right-4 flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 hover:text-violet-600 hover:bg-slate-50 transition-colors"
-                  title="Edit Profile"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Link>
-                <div className="flex items-center gap-2 mb-4">
-                  <Clock className="h-4 w-4 text-violet-400" />
-                  <h3 className="text-sm font-semibold text-slate-900">Weekly Availability</h3>
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-violet-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">Availability</h3>
+                  </div>
+                  {p.immediate_start && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700">
+                      <CalendarCheck className="h-3 w-3" /> Can start immediately
+                    </span>
+                  )}
                 </div>
                 {p.availability?.schedule && Object.keys(p.availability.schedule).length > 0 ? (
                   <AvailabilityGrid schedule={p.availability.schedule} firstName={firstName} />
@@ -503,7 +644,6 @@ export function NannyHubClient({
                   <p className="text-sm text-slate-400 italic">Availability not set yet.</p>
                 )}
               </div>
-
             </div>
           )}
         </>
@@ -618,6 +758,16 @@ export function NannyHubClient({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Photo viewer modal */}
+      <ProfilePhotoViewer
+        photos={p?.additional_photos || []}
+        open={photoViewerOpen}
+        index={photoViewerIndex}
+        firstName={firstName}
+        onClose={() => setPhotoViewerOpen(false)}
+        onIndexChange={setPhotoViewerIndex}
+      />
     </>
   );
 }

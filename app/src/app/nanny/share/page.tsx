@@ -8,7 +8,7 @@ export default async function NannySharePage() {
 
   if (error || !data) {
     console.error('[NannySharePage] Redirect reason:', error, '| data:', data);
-    redirect("/nanny/dashboard");
+    redirect("/nanny");
   }
 
   // Auto-create share record if it doesn't exist

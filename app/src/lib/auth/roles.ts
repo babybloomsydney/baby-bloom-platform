@@ -1,8 +1,8 @@
 import { UserRole } from './types';
 
 export const ROLE_DASHBOARDS: Record<UserRole, string> = {
-  nanny: '/nanny/dashboard',
-  parent: '/parent/dashboard',
+  nanny: '/nanny',
+  parent: '/parent',
   admin: '/admin/dashboard',
   super_admin: '/admin/dashboard',
 };

@@ -42,7 +42,7 @@ export const CONNECTION_STAGE = {
   // 10-19: Scheduling
   ACCEPTED: 10,
   SCHEDULE_EXPIRED: 11,
-  // 20-29: Intro
+  // 20-29: Meet (user-facing: "Meet and Greet"; internal code still uses "intro")
   INTRO_SCHEDULED: 20,
   INTRO_COMPLETE: 21,
   INTRO_INCOMPLETE: 22,
@@ -98,9 +98,9 @@ export const CONNECTION_STAGE_LABELS: Record<ConnectionStage, string> = {
   [CONNECTION_STAGE.REQUEST_CANCELLED]: 'Request Cancelled',
   [CONNECTION_STAGE.ACCEPTED]: 'Accepted',
   [CONNECTION_STAGE.SCHEDULE_EXPIRED]: 'Schedule Expired',
-  [CONNECTION_STAGE.INTRO_SCHEDULED]: 'Intro Scheduled',
-  [CONNECTION_STAGE.INTRO_COMPLETE]: 'Intro Complete',
-  [CONNECTION_STAGE.INTRO_INCOMPLETE]: 'Intro Incomplete',
+  [CONNECTION_STAGE.INTRO_SCHEDULED]: 'Meet Scheduled',
+  [CONNECTION_STAGE.INTRO_COMPLETE]: 'Meet Complete',
+  [CONNECTION_STAGE.INTRO_INCOMPLETE]: 'Meet Incomplete',
   [CONNECTION_STAGE.AWAITING_RESPONSE]: 'Awaiting Response',
   [CONNECTION_STAGE.TRIAL_ARRANGED]: 'Trial Arranged',
   [CONNECTION_STAGE.TRIAL_COMPLETE]: 'Trial Complete',

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -212,6 +212,12 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
   const [passportCountry, setPassportCountry] = useState(verification?.passport_country ?? "");
   const [confirmed, setConfirmed] = useState(false);
 
+  // Abort controller for in-flight uploads — cleaned up on unmount
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
+
   // Upload state — upload eagerly on file selection
   const [passportUploadState, setPassportUploadState] = useState<UploadState>(
     verification?.passport_upload_url ? "done" : "idle"
@@ -239,6 +245,10 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
     setPassportProgress(0);
     setPassportError(null);
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -249,7 +259,8 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
 
     const result = await uploadFileWithProgress(
       "verification-documents", user.id, file,
-      (p) => setPassportProgress(p)
+      (p) => setPassportProgress(p),
+      controller.signal
     );
 
     if (result.error || !result.url) {
@@ -267,6 +278,10 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
     setSelfieProgress(0);
     setSelfieError(null);
 
+    uploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    uploadAbortRef.current = controller;
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
@@ -277,7 +292,8 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
 
     const result = await uploadFileWithProgress(
       "verification-documents", user.id, file,
-      (p) => setSelfieProgress(p)
+      (p) => setSelfieProgress(p),
+      controller.signal
     );
 
     if (result.error || !result.url) {

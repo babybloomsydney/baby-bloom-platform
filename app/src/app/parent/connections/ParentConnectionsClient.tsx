@@ -617,7 +617,7 @@ function ConnectionDetailModal({
                   Awaiting Response
                 </span>
                 <p className="text-sm text-slate-500">
-                  Waiting for {request.nanny?.first_name} to respond to your intro request...
+                  Waiting for {request.nanny?.first_name} to respond to your connection request...
                 </p>
                 {request.message && (
                   <p className="text-sm text-slate-500 italic">&ldquo;{request.message}&rdquo;</p>
@@ -631,7 +631,7 @@ function ConnectionDetailModal({
                   Accepted
                 </span>
                 <p className="text-sm text-slate-700">
-                  {request.nanny?.first_name} would love to have an intro with you! Pick a time that works for your 15-minute call.
+                  {request.nanny?.first_name} would love to meet you! Pick a time that works for your meet and greet.
                 </p>
                 <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
                   <Phone className="h-4 w-4 text-blue-600 flex-shrink-0" />
@@ -652,7 +652,7 @@ function ConnectionDetailModal({
             {isConfirmed && (
               <div className="space-y-3">
                 <span className="inline-block rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
-                  Intro Scheduled
+                  Meet Scheduled
                 </span>
                 {request.confirmed_time && (
                   <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-3">
@@ -708,7 +708,7 @@ function ConnectionDetailModal({
 
             {!isPast && showConfirmCancel && (
               <div className="flex items-center gap-2">
-                <p className="text-sm text-slate-600">Cancel this {isConfirmed ? "intro" : "request"}?</p>
+                <p className="text-sm text-slate-600">Cancel this {isConfirmed ? "meet and greet" : "request"}?</p>
                 <Button
                   variant="ghost"
                   size="sm"

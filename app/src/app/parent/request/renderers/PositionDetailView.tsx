@@ -50,6 +50,8 @@ interface PositionDetailViewProps {
   /** When provided, controls editing externally (hides internal Edit button) */
   editingExternal?: boolean;
   onEditingChange?: (editing: boolean) => void;
+  /** Optional slot rendered inline to the right of the tab bar */
+  menuSlot?: React.ReactNode;
 }
 
 export function PositionDetailView({
@@ -59,6 +61,7 @@ export function PositionDetailView({
   hideClosePosition,
   editingExternal,
   onEditingChange,
+  menuSlot,
 }: PositionDetailViewProps) {
   const [data, setData] = useState<Partial<TypeformFormData>>(initialData);
   const [activeTab, setActiveTab] = useState<TabId>("children");
@@ -251,7 +254,7 @@ export function PositionDetailView({
   /* ── Render ── */
 
   return (
-    <div className="pb-10">
+    <div className="pb-0">
       {/* Edit toggle — hidden when controlled externally */}
       {editingExternal === undefined && (
         <div className="flex justify-end mb-2">
@@ -271,7 +274,8 @@ export function PositionDetailView({
       )}
 
       {/* Tab bar */}
-      <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm mb-4">
+      <div className="flex items-center gap-2 mb-4">
+      <div className="flex flex-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -290,6 +294,8 @@ export function PositionDetailView({
             {tab.label}
           </button>
         ))}
+      </div>
+      {menuSlot}
       </div>
 
       {/* ── Children tab ── */}

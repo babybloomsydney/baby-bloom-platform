@@ -2,7 +2,7 @@ import { getPublicNannyProfile } from "@/lib/actions/nanny";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { HIDDEN_CONNECTION_STAGES } from "@/lib/position/constants";
-import { NannyProfileView } from "@/app/(public)/nannies/[id]/NannyProfileView";
+import { ParentNannyProfileView } from "./ParentNannyProfileView";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -100,10 +100,10 @@ export default async function ParentBrowseNannyPage({
         className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 transition-colors mb-4"
       >
         <ChevronLeft className="h-3.5 w-3.5" />
-        Back to browse
+        Back
       </Link>
 
-      <NannyProfileView
+      <ParentNannyProfileView
         nanny={nanny}
         isOwner={isOwner}
         isParent={isParent}

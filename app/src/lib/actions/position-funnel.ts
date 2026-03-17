@@ -64,7 +64,7 @@ async function getConnectionParties(
 }
 
 // ════════════════════════════════════════════════════════════
-// 1. LAZY TRIGGER: Auto-advance intros that have passed
+// 1. LAZY TRIGGER: Auto-advance meets that have passed (internal code uses "intro"; user-facing label is "Meet and Greet")
 // ════════════════════════════════════════════════════════════
 
 export async function checkPostIntroOutcomes(
@@ -115,7 +115,7 @@ export async function checkPostIntroOutcomes(
       await createInboxMessage({
         userId: parties.nannyUserId,
         type: 'post_intro_followup',
-        title: `How did your intro with ${parties.parentName} go?`,
+        title: `How did your meet and greet with ${parties.parentName} go?`,
         body: 'Let us know how it went so we can help with next steps.',
         actionUrl: '/nanny/positions',
         referenceId: req.id,
@@ -125,10 +125,10 @@ export async function checkPostIntroOutcomes(
       if (parties.nannyEmail) {
         sendEmail({
           to: parties.nannyEmail,
-          subject: `How did your intro with ${parties.parentName} go?`,
+          subject: `How did your meet and greet with ${parties.parentName} go?`,
           html: `<div style="${baseStyle}">
             <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">We hope your introduction with ${parties.parentName} went well! When you have a moment, let us know how it went so we can help with next steps.</p>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">We hope your meet and greet with ${parties.parentName} went well! When you have a moment, let us know how it went so we can help with next steps.</p>
             <p style="margin-top: 24px;"><a href="${appUrl}/nanny/positions" style="${btnStyle}">Update in My Positions</a></p>
           </div>`,
           emailType: 'post_intro_followup',
@@ -229,7 +229,7 @@ export async function checkPostTrialOutcomes(
 }
 
 // ════════════════════════════════════════════════════════════
-// 2. NANNY REPORTS INTRO OUTCOME
+// 2. NANNY REPORTS MEET OUTCOME (internal code uses "intro"; user-facing label is "Meet and Greet")
 // ════════════════════════════════════════════════════════════
 
 export async function reportIntroOutcome(
@@ -314,7 +314,7 @@ export async function reportIntroOutcome(
           subject: `${parties.nannyName} has been selected — please confirm`,
           html: `<div style="${baseStyle}">
             <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">We're delighted to hear your introduction with ${parties.nannyName} went well! ${parties.nannyName} has indicated they've been selected for your position — please confirm the details to get started.</p>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">We're delighted to hear your meet and greet with ${parties.nannyName} went well! ${parties.nannyName} has indicated they've been selected for your position — please confirm the details to get started.</p>
             <p style="margin-top: 24px;"><a href="${appUrl}/parent/connections" style="${btnStyle}">Confirm Placement</a></p>
           </div>`,
           emailType: 'confirm_nanny',
@@ -375,7 +375,7 @@ export async function reportIntroOutcome(
           subject: "We'd love to help you find the right fit",
           html: `<div style="${baseStyle}">
             <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Thank you for meeting with ${parties.nannyName}. We'd love to help you find the right fit — would you like us to arrange introductions with other nannies?</p>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">Thank you for meeting with ${parties.nannyName}. We'd love to help you find the right fit — would you like us to arrange meet and greets with other nannies?</p>
             <p style="margin-top: 24px;"><a href="${appUrl}/parent/browse" style="${btnStyle}">Browse Nannies</a></p>
           </div>`,
           emailType: 'no_candidates_left',
@@ -398,7 +398,7 @@ export async function reportIntroOutcome(
   // ── AWAITING RESPONSE ──
   else if (outcome === 'awaiting') {
     if (req.connection_stage !== CONNECTION_STAGE.INTRO_COMPLETE) {
-      return { success: false, error: 'Can only report "awaiting" from Intro Complete stage.' };
+      return { success: false, error: 'Can only report "awaiting" from Meet Complete stage.' };
     }
 
     const { error: updateErr } = await adminClient
@@ -429,14 +429,14 @@ export async function reportIntroOutcome(
   // ── TRIAL ARRANGED ──
   else if (outcome === 'trial') {
     if (![CONNECTION_STAGE.INTRO_COMPLETE, CONNECTION_STAGE.AWAITING_RESPONSE].includes(req.connection_stage)) {
-      return { success: false, error: 'Can only arrange trial from Intro Complete or Awaiting Response stage.' };
+      return { success: false, error: 'Can only arrange trial from Meet Complete or Awaiting Response stage.' };
     }
 
     // Validate trial date is not before the intro call date
     if (trialDate && req.confirmed_time) {
       const introDay = req.confirmed_time.split('T')[0];
       if (trialDate < introDay) {
-        return { success: false, error: 'Trial date cannot be before the intro call date.' };
+        return { success: false, error: 'Trial date cannot be before the meet and greet date.' };
       }
     }
 
@@ -485,7 +485,7 @@ export async function reportIntroOutcome(
   // ── INTRO INCOMPLETE ──
   else if (outcome === 'incomplete') {
     if (req.connection_stage !== CONNECTION_STAGE.INTRO_COMPLETE) {
-      return { success: false, error: 'Can only report incomplete from Intro Complete stage.' };
+      return { success: false, error: 'Can only report incomplete from Meet Complete stage.' };
     }
 
     const { error: updateErr } = await adminClient
@@ -510,8 +510,8 @@ export async function reportIntroOutcome(
       await createInboxMessage({
         userId: parties.parentUserId,
         type: 'intro_incomplete',
-        title: `Regarding your intro with ${parties.nannyName}`,
-        body: `It looks like your intro with ${parties.nannyName} may not have taken place. Would you like to reschedule?`,
+        title: `Regarding your meet and greet with ${parties.nannyName}`,
+        body: `It looks like your meet and greet with ${parties.nannyName} may not have taken place. Would you like to reschedule?`,
         actionUrl: '/parent/connections',
         referenceId: requestId,
         referenceType: 'connection_request',
@@ -568,7 +568,7 @@ export async function confirmTrialArrangement(
   if (finalDate && req.confirmed_time) {
     const introDay = req.confirmed_time.split('T')[0];
     if (finalDate < introDay) {
-      return { success: false, error: 'Trial date cannot be before the intro call date.' };
+      return { success: false, error: 'Trial date cannot be before the meet and greet date.' };
     }
   }
 
@@ -2495,6 +2495,7 @@ interface PositionSummary {
   description: string | null;
 }
 
+/** Note: "intro" in code = "Meet and Greet" in user-facing UI */
 export interface UpcomingIntro {
   connectionId: string;
   otherPartyName: string;
@@ -2513,9 +2514,10 @@ export interface UpcomingIntro {
   positionId: string | null;
   position: PositionSummary | null;
   source: string | null;
+  nannyId: string | null;
 }
 
-/** Get upcoming/active intros for nanny's "My Positions" page */
+/** Get upcoming/active meets for nanny's "My Positions" page (internal code uses "intro") */
 export async function getNannyUpcomingIntros(): Promise<{
   data: UpcomingIntro[];
   error: string | null;
@@ -2654,13 +2656,14 @@ export async function getNannyUpcomingIntros(): Promise<{
       positionId: c.position_id ?? null,
       position: c.position_id ? positionMap.get(c.position_id) ?? null : null,
       source: c.source ?? null,
+      nannyId: null,
     };
   });
 
   return { data: result, error: null };
 }
 
-/** Get upcoming/active intros for parent's "My Childcare" page */
+/** Get upcoming/active meets for parent's "My Childcare" page (internal code uses "intro") */
 export async function getParentUpcomingIntros(): Promise<{
   data: UpcomingIntro[];
   error: string | null;
@@ -2733,6 +2736,7 @@ export async function getParentUpcomingIntros(): Promise<{
       expiresAt: c.expires_at ?? null,
       nannyPhoneShared: c.nanny_phone_shared ?? null,
       source: c.source ?? null,
+      nannyId: c.nanny_id,
       positionId: null,
       position: null, // Parent doesn't need position data (it's their own)
     };
@@ -2872,7 +2876,7 @@ export async function reportParentOutcome(
     if (dateValue && req.confirmed_time) {
       const introDay = req.confirmed_time.split('T')[0];
       if (dateValue < introDay) {
-        return { success: false, error: 'Trial date cannot be before the intro call date.' };
+        return { success: false, error: 'Trial date cannot be before the meet and greet date.' };
       }
     }
 
@@ -3128,7 +3132,7 @@ export async function closePositionWithReason(
   return { success: true, error: null };
 }
 
-// ── Schedule intro time (ISO wrapper) ──
+// ── Schedule meet and greet time (internal code uses "intro") ──
 
 export async function scheduleIntroTime(
   requestId: string,

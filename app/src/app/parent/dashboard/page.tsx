@@ -106,7 +106,7 @@ export default function ParentDashboardPage() {
             </Card>
           </Link>
 
-          <Link href="/parent/position">
+          <Link href="/parent">
             <Card className="cursor-pointer transition-shadow hover:shadow-md">
               <CardContent className="flex items-center gap-4 p-6">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">

@@ -168,6 +168,10 @@ export function PositionShareClient({ initialData }: Props) {
   const [isChecking, setIsChecking] = useState(false);
   const [sessionFailReason, setSessionFailReason] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    return () => { uploadAbortRef.current?.abort(); };
+  }, []);
 
   // ── Step states ──
 
@@ -314,6 +318,10 @@ export function PositionShareClient({ initialData }: Props) {
       setUploadError(null);
       setError(null);
 
+      uploadAbortRef.current?.abort();
+      const uploadCtrl = new AbortController();
+      uploadAbortRef.current = uploadCtrl;
+
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -327,8 +335,10 @@ export function PositionShareClient({ initialData }: Props) {
         setUploadError("Upload timed out — please try again");
       }, 30000);
 
-      const result = await uploadFileWithProgress("share-screenshots", user.id, file, (p) =>
-        setUploadProgress(p)
+      const result = await uploadFileWithProgress(
+        "share-screenshots", user.id, file,
+        (p) => setUploadProgress(p),
+        uploadCtrl.signal
       );
 
       clearTimeout(uploadTimeout);
@@ -436,7 +446,7 @@ export function PositionShareClient({ initialData }: Props) {
   return (
     <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 text-center">Help other parents and earn a Free placement!</h1>
+        <h1 className="text-2xl font-bold text-slate-800 text-center">Help other parents and earn Free priority matchmaking</h1>
         {isAccessGranted ? (
           <p className="text-sm text-green-600 mt-1 font-medium flex items-center justify-center gap-1.5">
             <ShieldCheck className="h-4 w-4" />
@@ -444,8 +454,8 @@ export function PositionShareClient({ initialData }: Props) {
           </p>
         ) : (
           <div className="text-sm text-slate-500 mt-1 space-y-2 text-center">
-            <p>By sharing your nanny position, you help us attract more incredible caregivers so we can support more families like yours.</p>
-            <p>And as a thank you for paying it forward, we&apos;ll waive your placement fee!</p>
+            <p>By sharing your childcare position, you help us attract more incredible caregivers so we can support more families like yours.</p>
+            <p>And as a thank you for paying it forward, we&apos;ll find connect you with tailored matches, completely free!</p>
             <p>Once shared, we&apos;ll immediately start reaching out to our private network of fully verified, WWCC-approved nannies.</p>
           </div>
         )}
@@ -499,7 +509,7 @@ export function PositionShareClient({ initialData }: Props) {
               </AccordionTrigger>
               <AccordionContent forceMount className="overflow-hidden">
                 <p className="text-xs text-slate-400 mb-3">
-                  We created the perfect post for your nanny position designed to attract trusted nannies
+                  We even created an optimised post, just for you! (feel free to tailor it so it feels more like you)
                 </p>
                 {/* Facebook Preview Card */}
                 <div className="rounded-lg border overflow-hidden bg-white mb-3 w-full max-w-full">

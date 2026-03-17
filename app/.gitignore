@@ -35,3 +35,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 app/seed-parents.mjs
+
+# Local seed/utility scripts with secrets
+seed-parents.mjs
+reset-dfy.sql

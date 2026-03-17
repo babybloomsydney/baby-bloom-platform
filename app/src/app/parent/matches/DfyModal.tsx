@@ -12,7 +12,7 @@ import { Sparkles, Check } from "lucide-react";
 const FEATURES = [
   "We contact your top matched nannies",
   "Interested nannies select their availability",
-  "You approve and pick an intro time",
+  "You approve and pick a meet and greet time",
   "All scheduling handled for you",
 ];
 

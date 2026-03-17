@@ -17,7 +17,7 @@ export default async function NannyHubPage() {
   // Phase 1: profile + nanny record (needed for nannyId + accordion data)
   const [profileRes, nannyRes] = await Promise.all([
     admin.from('user_profiles').select('first_name, last_name, profile_picture_url, suburb, date_of_birth').eq('user_id', user.id).single(),
-    admin.from('nannies').select('id, verification_level, visible_in_bsr, ai_content, nationality, total_experience_years, nanny_experience_years, under_3_experience_years, newborn_experience_years, role_types_preferred, level_of_support_offered, hourly_rate_min, max_children, min_child_age_months, max_child_age_months, drivers_license, has_car, comfortable_with_pets, vaccination_status, non_smoker, languages, hobbies_interests, strengths_traits, skills_training, verification_tier').eq('user_id', user.id).single(),
+    admin.from('nannies').select('id, verification_level, visible_in_bsr, ai_content, nationality, total_experience_years, nanny_experience_years, under_3_experience_years, newborn_experience_years, role_types_preferred, level_of_support_offered, hourly_rate_min, max_children, min_child_age_months, max_child_age_months, drivers_license, has_car, comfortable_with_pets, vaccination_status, non_smoker, languages, hobbies_interests, strengths_traits, skills_training, verification_tier, motivation, personality_traits, professional_values, childcare_roles, photo_1_url, photo_2_url, photo_3_url, immediate_start_available, additional_needs_ok').eq('user_id', user.id).single(),
   ]);
 
   const nannyId = nannyRes.data?.id;
@@ -71,6 +71,13 @@ export default async function NannyHubPage() {
     } : null,
     highest_qualification: (credsRes.data || []).find((c: { credential_category: string }) => c.credential_category === 'qualification')?.qualification_type || null,
     certificates: (credsRes.data || []).filter((c: { credential_category: string }) => c.credential_category === 'certification').map((c: { certification_type: string }) => c.certification_type).filter(Boolean) as string[],
+    motivation: n.motivation || null,
+    personality_traits: n.personality_traits || null,
+    professional_values: n.professional_values || null,
+    childcare_roles: n.childcare_roles as { role: string; duration: number }[] | null,
+    additional_photos: [n.photo_1_url, n.photo_2_url, n.photo_3_url].filter(Boolean) as string[],
+    immediate_start: n.immediate_start_available ?? false,
+    additional_needs: n.additional_needs_ok ?? false,
   } : null;
 
   return (

@@ -6,7 +6,7 @@ async function getNannies(): Promise<NannyCardData[]> {
 
   const { data: nannies, error } = await supabase
     .from("nannies")
-    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, verification_tier, drivers_license, vaccination_status, languages, role_types_preferred, ai_content")
+    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, under_3_experience_years, newborn_experience_years, verification_tier, drivers_license, vaccination_status, languages, role_types_preferred, ai_content")
     .eq("profile_visible", true)
     .order("created_at", { ascending: false, nullsFirst: false })
     .limit(40);
@@ -17,13 +17,25 @@ async function getNannies(): Promise<NannyCardData[]> {
   }
 
   const userIds = nannies.map((n) => n.user_id);
-  const { data: profiles } = await supabase
-    .from("user_profiles")
-    .select("user_id, first_name, last_name, suburb, profile_picture_url")
-    .in("user_id", userIds);
+  const nannyIds = nannies.map((n) => n.id);
+
+  const [{ data: profiles }, { data: credentials }] = await Promise.all([
+    supabase
+      .from("user_profiles")
+      .select("user_id, first_name, last_name, suburb, profile_picture_url, date_of_birth")
+      .in("user_id", userIds),
+    supabase
+      .from("nanny_credentials")
+      .select("nanny_id, qualification_type")
+      .in("nanny_id", nannyIds)
+      .eq("credential_category", "qualification"),
+  ]);
 
   const profileMap = new Map(
     (profiles || []).map((p) => [p.user_id, p])
+  );
+  const qualMap = new Map(
+    (credentials || []).map((c) => [c.nanny_id, c.qualification_type as string])
   );
 
   return nannies
@@ -41,12 +53,16 @@ async function getNannies(): Promise<NannyCardData[]> {
         hourly_rate_min: nanny.hourly_rate_min,
         nanny_experience_years: nanny.nanny_experience_years,
         total_experience_years: nanny.total_experience_years,
+        under_3_experience_years: nanny.under_3_experience_years,
+        newborn_experience_years: nanny.newborn_experience_years,
+        highest_qualification: qualMap.get(nanny.id) || null,
         verification_tier: nanny.verification_tier,
         drivers_license: nanny.drivers_license,
         vaccination_status: nanny.vaccination_status,
         languages: nanny.languages,
         role_types_preferred: nanny.role_types_preferred,
         ai_headline: (ai?.headline as string) || null,
+        date_of_birth: profile.date_of_birth || null,
       } as NannyCardData;
     })
     .filter((n): n is NannyCardData => n !== null);

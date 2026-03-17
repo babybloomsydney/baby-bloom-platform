@@ -2,33 +2,45 @@
 
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
-import { MapPin, ShieldCheck, Car, Stethoscope, Globe, Clock } from "lucide-react";
+import { MapPin, ShieldCheck, Clock, Baby, GraduationCap } from "lucide-react";
 import type { NannyCardData } from "@/components/NannyCard";
 import { ExpandableBadges, type TraitBadge } from "./ExpandableBadges";
 
 interface NannyCardBKProps {
   nanny: NannyCardData;
-  age?: number | null;
   linkBase?: string;
+}
+
+function computeAge(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+  const birth = new Date(dob);
+  const now = new Date();
+  let years = now.getFullYear() - birth.getFullYear();
+  const m = now.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) years--;
+  return years > 0 && years < 120 ? years : null;
 }
 
 function buildBadges(nanny: NannyCardData): TraitBadge[] {
   const badges: TraitBadge[] = [];
-  const exp = nanny.nanny_experience_years || nanny.total_experience_years;
-  if (exp != null) {
-    badges.push({ icon: Clock, label: `${exp} yr${exp !== 1 ? "s" : ""} experience`, variant: "violet" });
+  if (nanny.total_experience_years && nanny.total_experience_years > 0) {
+    badges.push({ icon: Clock, label: `${nanny.total_experience_years} yrs experience`, variant: "violet" });
   }
-  if (nanny.drivers_license) badges.push({ icon: Car, label: "License", variant: "slate" });
-  if (nanny.vaccination_status) badges.push({ icon: Stethoscope, label: "Vaccinated", variant: "slate" });
-  if (nanny.languages && nanny.languages.length > 1) {
-    const extra = nanny.languages.filter(l => l !== "English");
-    badges.push({ icon: Globe, label: `+${extra.length} language, ${extra.join(", ")}`, variant: "slate" });
+  if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0) {
+    badges.push({ icon: Baby, label: `${nanny.under_3_experience_years} yrs under 3s`, variant: "violet" });
+  }
+  if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0) {
+    badges.push({ icon: Baby, label: `${nanny.newborn_experience_years} yr newborns`, variant: "violet" });
+  }
+  if (nanny.highest_qualification) {
+    badges.push({ icon: GraduationCap, label: nanny.highest_qualification, variant: "slate" });
   }
   return badges;
 }
 
-export function NannyCardBK({ nanny, age, linkBase = "/nannies" }: NannyCardBKProps) {
+export function NannyCardBK({ nanny, linkBase = "/nannies" }: NannyCardBKProps) {
   const initials = `${nanny.first_name[0]}${nanny.last_name[0]}`;
+  const age = computeAge(nanny.date_of_birth);
   const isVerified =
     nanny.verification_tier === "tier2" || nanny.verification_tier === "tier3";
 
@@ -65,11 +77,8 @@ export function NannyCardBK({ nanny, age, linkBase = "/nannies" }: NannyCardBKPr
                 <div className="min-w-0">
                   <div className="flex items-baseline gap-2">
                     <h3 className="font-semibold text-lg text-slate-900 truncate group-hover:text-violet-600 transition-colors">
-                      {nanny.first_name} {nanny.last_name[0]}.
+                      {nanny.first_name.charAt(0).toUpperCase() + nanny.first_name.slice(1)}{age ? `, ${age}` : ""}
                     </h3>
-                    {age && (
-                      <span className="text-base text-slate-400 shrink-0">{age}</span>
-                    )}
                   </div>
                   <div className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
                     <MapPin className="w-3.5 h-3.5 shrink-0" />

@@ -11,9 +11,8 @@ import { IdentitySection } from "./sections/IdentitySection";
 import { WWCCSection } from "./sections/WWCCSection";
 import { ContactSection } from "./sections/ContactSection";
 import { SectionStatusBadge } from "./sections/SectionStatusBadge";
-import { Shield, Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { Shield, Check, CheckCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 import type { VerificationData } from "@/lib/actions/verification";
 import type { UserGuidance } from "@/lib/verification";
 
@@ -80,6 +79,7 @@ function StepIndicator({ state, isFirst, isLast, topLineColor }: {
 }
 
 export function VerificationPageClient({ initialData }: VerificationPageClientProps) {
+  const router = useRouter();
   const [verification, setVerification] = useState<VerificationData | null>(initialData);
 
   // Determine which sections are unlocked
@@ -263,6 +263,23 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
     identityStatus === "verified" &&
     (wwccStatus === "doc_verified" || wwccStatus === "verified");
 
+  // Auto-redirect to hub after verification is complete
+  const [redirectCountdown, setRedirectCountdown] = useState(3);
+  useEffect(() => {
+    if (!allVerified) return;
+    const interval = setInterval(() => {
+      setRedirectCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          router.push("/nanny");
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [allVerified, router]);
+
   // Stepper states
   const identityStep: StepState = identityStatus === "verified" ? "completed" : "current";
   const wwccStep: StepState = ["verified", "doc_verified"].includes(wwccStatus) ? "completed" : wwccLocked ? "future" : "current";
@@ -379,13 +396,12 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
       </Accordion>
 
       {allVerified && (
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
-            <Link href="/nanny/dashboard">Match with families</Link>
-          </Button>
-          <Button asChild variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50">
-            <Link href="/nanny/babysitting">Babysit for families</Link>
-          </Button>
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 p-6">
+          <CheckCircle className="h-8 w-8 text-green-500" />
+          <p className="text-lg font-semibold text-green-700">You&apos;re fully verified!</p>
+          <p className="text-sm text-green-600">
+            Redirecting you to your hub in {redirectCountdown}...
+          </p>
         </div>
       )}
 

@@ -40,7 +40,7 @@ export function AvailabilityGrid({
     <div className="space-y-4">
       <div className="space-y-2">
         <p className="text-sm font-medium text-slate-700">
-          When are you available for a 15-minute intro call?
+          When are you available for a meet and greet?
         </p>
         <p className="text-xs text-slate-500">
           Select at least 5 slots across all time brackets and 3+ days.

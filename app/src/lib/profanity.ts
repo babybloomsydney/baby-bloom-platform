@@ -19,6 +19,10 @@ const PROFANITY_WORDS = [
   "porn", "porno", "pornography",
   // Violence
   "kill", "murder", "rape", "molest",
+  // Predatorial / grooming
+  "pedophile", "paedophile", "pedo", "paedo",
+  "grooming", "molester", "sodomy", "incest",
+  "lolita", "jailbait", "underage",
   // Drugs (explicit)
   "meth", "cocaine", "heroin", "crack",
   // General profanity
@@ -56,4 +60,20 @@ export function findProfanityInFields(
     }
   }
   return null;
+}
+
+/**
+ * Check multiple text fields for profanity.
+ * Returns ALL offending field keys (not just the first).
+ */
+export function checkAllFields(
+  fields: Record<string, string | undefined>
+): { clean: boolean; offendingFields: string[] } {
+  const offending: string[] = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value && containsProfanity(value)) {
+      offending.push(key);
+    }
+  }
+  return { clean: offending.length === 0, offendingFields: offending };
 }

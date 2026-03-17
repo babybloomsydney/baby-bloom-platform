@@ -191,11 +191,12 @@ export function NannyProfileView({
   const [showPlacementBlock, setShowPlacementBlock] = useState(false);
 
   const age = calculateAge(nanny.date_of_birth);
-  const bioSummary = parseBioSummary(nanny.ai_content?.bio_summary);
-  const tagline = nanny.ai_content?.headline || "";
-  const bioContent = nanny.ai_content?.parent_pitch || "";
-  const experienceContent = nanny.ai_content?.experience_summary || "";
-  const checklistContent = nanny.ai_content?.skills_highlight || "";
+  const ai = nanny.ai_content as Record<string, unknown> | null;
+  const bioSummary = parseBioSummary(typeof ai?.bio_summary === 'string' ? ai.bio_summary : undefined);
+  const tagline = (ai?.headline as string) || "";
+  const bioContent = (ai?.parent_pitch as string) || "";
+  const experienceContent = (ai?.experience_summary as string) || "";
+  const checklistContent = (ai?.skills_highlight as string) || "";
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -236,7 +237,7 @@ export function NannyProfileView({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-bold text-slate-900">
-                  {nanny.first_name}{age ? `, ${age}` : ""}
+                  {nanny.first_name.charAt(0).toUpperCase() + nanny.first_name.slice(1)}{age ? `, ${age}` : ""}
                 </h1>
                 <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
                   <MapPin className="h-3.5 w-3.5" />
@@ -321,7 +322,7 @@ export function NannyProfileView({
                 >
                   Got it
                 </Button>
-                <Link href="/parent/position" className="flex-1">
+                <Link href="/parent" className="flex-1">
                   <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white">
                     Go to My Position
                   </Button>
@@ -343,6 +344,7 @@ export function NannyProfileView({
               suburb: nanny.suburb,
               hourly_rate_min: nanny.hourly_rate_min,
               profile_picture_url: nanny.profile_picture_url,
+              date_of_birth: nanny.date_of_birth,
             }}
             pendingRequestCount={pendingRequestCount}
           />

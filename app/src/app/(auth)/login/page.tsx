@@ -31,6 +31,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect");
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Clear any stale session when user lands on auth page directly
@@ -65,10 +66,18 @@ function LoginForm() {
       setIsLoading(false);
     } else if (result.redirectTo) {
       const dest = redirectTo || result.redirectTo;
-      // Always use full page reload after login to ensure auth state
-      // (cookies, session, profile) is fully initialized in the target layout
+      setIsRedirecting(true);
       window.location.href = dest;
     }
+  }
+
+  if (isRedirecting) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-50">
+        <Loader2 className="h-8 w-8 animate-spin text-violet-600 mb-3" />
+        <p className="text-sm text-slate-500">Signing you in...</p>
+      </div>
+    );
   }
 
   return (

@@ -664,17 +664,6 @@ export async function createBabysittingRequest(data: {
     return { success: false, error: 'Not authenticated as parent' };
   }
 
-  // Check parent verification
-  const { data: parentRecord } = await adminClient
-    .from('parents')
-    .select('verification_level')
-    .eq('id', parentId)
-    .single();
-
-  if (!parentRecord || (parentRecord.verification_level ?? 0) < 1) {
-    return { success: false, error: 'VERIFICATION_REQUIRED' };
-  }
-
   // Validate time slots
   if (!data.timeSlots || data.timeSlots.length === 0) {
     return { success: false, error: 'At least one time slot is required' };
@@ -935,15 +924,18 @@ export async function activateBsr(
     };
   });
 
-  Promise.all(emailPromises).then(async (emails) => {
+  try {
+    const emails = await Promise.all(emailPromises);
     const validEmails = emails.filter((e): e is NonNullable<typeof e> => e !== null);
     if (validEmails.length > 0) {
       await sendBatchEmails(validEmails);
     }
-  }).catch(err => console.error('[BSR] Activate batch email error:', err));
+  } catch (err) {
+    console.error('[BSR] Activate batch email error:', err);
+  }
 
-  // Inbox messages for nannies (fire-and-forget)
-  for (const n of closestNannies) {
+  // Inbox messages for nannies
+  await Promise.all(closestNannies.map(n =>
     createInboxMessage({
       userId: n.userId,
       type: 'bsr_new_job',
@@ -952,8 +944,8 @@ export async function activateBsr(
       actionUrl: '/nanny/babysitting',
       referenceId: bsrId,
       referenceType: 'babysitting_request',
-    }).catch(err => console.error('[BSR] Inbox error:', err));
-  }
+    }).catch(err => console.error('[BSR] Inbox error:', err))
+  ));
 
   revalidatePath('/parent/babysitting');
   return { success: true, error: null };
@@ -1650,7 +1642,7 @@ export async function cancelBabysittingRequest(
     return { success: false, error: 'Babysitting request not found' };
   }
 
-  if (!['open', 'filled'].includes(bsr.status)) {
+  if (!['pending_payment', 'open', 'filled'].includes(bsr.status)) {
     return { success: false, error: 'This request cannot be cancelled' };
   }
 

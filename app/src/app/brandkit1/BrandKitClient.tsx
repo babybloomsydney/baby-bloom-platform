@@ -724,7 +724,7 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             }
           >
             <div className="max-w-sm mx-auto">
-              <NannyCardBK nanny={nannyWithPic} age={24} />
+              <NannyCardBK nanny={nannyWithPic} />
             </div>
           </ComponentShowcase>
         </section>
@@ -1312,7 +1312,7 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-slate-700">
-                        When are you available for a 15-minute intro call?
+                        When are you available for a meet and greet?
                       </p>
                       <p className="text-xs text-slate-500">
                         Select at least 5 slots across all time brackets and 3+ days.

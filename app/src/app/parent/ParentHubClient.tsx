@@ -170,9 +170,9 @@ function getParentStageBadge(stage: number, fillInitiatedBy?: string | null, tri
     case CONNECTION_STAGE.ACCEPTED:
       return { label: "Pick a Time", color: "bg-amber-100 text-amber-700" };
     case CONNECTION_STAGE.INTRO_SCHEDULED:
-      return { label: "Intro Scheduled", color: "bg-violet-100 text-violet-700" };
+      return { label: "Meet Scheduled", color: "bg-violet-100 text-violet-700" };
     case CONNECTION_STAGE.INTRO_COMPLETE:
-      return { label: "Intro Done", color: "bg-green-100 text-green-700" };
+      return { label: "Meet Done", color: "bg-green-100 text-green-700" };
     case CONNECTION_STAGE.AWAITING_RESPONSE:
       return { label: "In Progress", color: "bg-amber-100 text-amber-700" };
     case CONNECTION_STAGE.TRIAL_ARRANGED: {

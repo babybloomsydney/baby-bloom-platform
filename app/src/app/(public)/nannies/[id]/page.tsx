@@ -2,7 +2,7 @@ import { getPublicNannyProfile } from "@/lib/actions/nanny";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { HIDDEN_CONNECTION_STAGES } from "@/lib/position/constants";
-import { NannyProfileView } from "./NannyProfileView";
+import { ParentNannyProfileView } from "@/app/parent/browse/[id]/ParentNannyProfileView";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -22,8 +22,10 @@ export async function generateMetadata({
 
   // Use AI bio summary or fallback
   const suburb = nanny.suburb ?? "Sydney";
-  const bioRaw = nanny.ai_content?.bio_summary ?? nanny.ai_content?.parent_pitch ?? "";
-  const description = bioRaw
+  const bioSummary = nanny.ai_content?.bio_summary;
+  const bioAbout = (typeof bioSummary === "object" && bioSummary !== null) ? (bioSummary as Record<string, string>).about : null;
+  const bioRaw = bioAbout ?? (nanny.ai_content?.parent_pitch as string | undefined) ?? "";
+  const description = String(bioRaw)
     .replace(/<[^>]*>/g, "") // strip HTML tags
     .slice(0, 155)
     .trim() || `Find a verified, trusted nanny in ${suburb} on Baby Bloom Sydney.`;
@@ -146,14 +148,16 @@ export default async function NannyProfilePage({
   }
 
   return (
-    <NannyProfileView
-      nanny={nanny}
-      isOwner={isOwner}
-      isParent={isParent}
-      pendingRequestCount={pendingRequestCount}
-      existingRequestStatus={existingRequestStatus}
-      hasActivePlacement={hasActivePlacement}
-      isActiveNanny={isActiveNanny}
-    />
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <ParentNannyProfileView
+        nanny={nanny}
+        isOwner={isOwner}
+        isParent={isParent}
+        pendingRequestCount={pendingRequestCount}
+        existingRequestStatus={existingRequestStatus}
+        hasActivePlacement={hasActivePlacement}
+        isActiveNanny={isActiveNanny}
+      />
+    </div>
   );
 }

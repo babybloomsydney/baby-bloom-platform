@@ -1,11 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import Link from 'next/link';
-import { Briefcase, Award } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { UserAvatar } from '@/components/dashboard/UserAvatar';
+import { Award, Briefcase } from 'lucide-react';
+import { NannyProfileTile } from '@/components/hub/NannyProfileTile';
 import { HubTile } from '@/components/hub/HubTile';
 import { VerificationBanner } from '@/components/hub/VerificationBanner';
 import { trackEvent } from '@/lib/analytics/trackEvent';
@@ -18,7 +15,6 @@ interface NannyHubClientProps {
   verificationLevel: number;
   visibleInBsr: boolean;
   aiHeadline: string | null;
-  aiParentPitch: string | null;
   shareStatus: number;
   connectionsCount: number;
   bsrCount: number;
@@ -32,12 +28,10 @@ export function NannyHubClient({
   verificationLevel,
   visibleInBsr,
   aiHeadline,
-  aiParentPitch,
   shareStatus,
   connectionsCount,
   bsrCount,
 }: NannyHubClientProps) {
-  const fullName = `${firstName} ${lastName}`.trim();
   const isVerified = verificationLevel >= 3;
   const isShareCompleted = visibleInBsr || shareStatus >= 50;
 
@@ -61,43 +55,18 @@ export function NannyHubClient({
         />
       )}
 
-      {/* Hero Tile — Profile Summary */}
-      <Card className="bg-white shadow-sm">
-        <CardContent className="p-6">
-          <div className="flex items-start gap-4">
-            <UserAvatar
-              name={fullName}
-              imageUrl={profilePictureUrl || undefined}
-              className="h-16 w-16"
-            />
-            <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-semibold text-slate-900">{fullName}</h2>
-              {suburb && (
-                <p className="text-sm text-slate-500">{suburb}</p>
-              )}
-              {aiHeadline && (
-                <p className="mt-1 text-sm font-medium text-violet-600">{aiHeadline}</p>
-              )}
-              {aiParentPitch && (
-                <p className="mt-2 text-sm text-slate-600 line-clamp-2">{aiParentPitch}</p>
-              )}
-            </div>
-          </div>
-          <div className="mt-4">
-            <Button asChild className="bg-violet-600 hover:bg-violet-700 text-white">
-              <Link
-                href="/nanny/profile"
-                onClick={() => trackEvent({ event_name: 'hero_tile_profile_clicked', user_role: 'nanny' })}
-              >
-                View &amp; Edit Profile
-              </Link>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Profile Tile — full width */}
+      <NannyProfileTile
+        firstName={firstName}
+        lastName={lastName}
+        profilePictureUrl={profilePictureUrl}
+        suburb={suburb}
+        verificationLevel={verificationLevel}
+        aiHeadline={aiHeadline}
+      />
 
       {/* Tiles Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2">
         {/* Positions Tile */}
         <HubTile
           title="Your Positions"
@@ -116,6 +85,7 @@ export function NannyHubClient({
               ? { label: 'View Positions', href: '/nanny/positions', trackingEvent: 'positions_tile_clicked' }
               : { label: 'Complete Verification', href: '/nanny/verification', trackingEvent: 'positions_tile_locked_cta_clicked' }
           }
+          className="rounded-2xl hover:shadow-lg hover:border-violet-200 transition-all"
         />
 
         {/* Babysitting Tile */}
@@ -136,6 +106,7 @@ export function NannyHubClient({
               ? { label: 'View Babysitting', href: '/nanny/babysitting', trackingEvent: 'babysitting_tile_clicked' }
               : { label: 'Unlock Babysitting', href: '/nanny/share', trackingEvent: 'babysitting_tile_locked_cta_clicked' }
           }
+          className="rounded-2xl hover:shadow-lg hover:border-violet-200 transition-all"
         />
       </div>
     </div>
