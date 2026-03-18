@@ -168,11 +168,11 @@ export function NannyHubClient({
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (p) {
     if (p.total_experience_years && p.total_experience_years > 0)
-      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years} yrs experience`, primary: true });
+      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years}yrs exp`, primary: true });
     if (p.under_3_experience_years && p.under_3_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `${p.under_3_experience_years} yrs under 3s`, primary: true });
+      traitBadges.push({ icon: "Baby", label: `${p.under_3_experience_years}yrs with u3s`, primary: true });
     if (p.newborn_experience_years && p.newborn_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `${p.newborn_experience_years} yr newborns`, primary: true });
+      traitBadges.push({ icon: "Baby", label: `${p.newborn_experience_years}${p.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
     if (p.highest_qualification)
       traitBadges.push({ icon: "GraduationCap", label: p.highest_qualification });
   }
@@ -243,10 +243,10 @@ export function NannyHubClient({
                       <Globe className="h-3.5 w-3.5" /> {p.nationality}
                     </p>
                   )}
-                  {p?.languages && p.languages.length > 0 && (
+                  {p?.languages && p.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").length > 0 && (
                     <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
                       <Languages className="h-3 w-3" />
-                      {p.languages.join(", ")}
+                      {p.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}
                     </p>
                   )}
                   {p?.suburb && (

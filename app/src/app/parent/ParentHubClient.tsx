@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -79,6 +79,8 @@ import { ScheduleTimeGrid } from "@/components/position/ScheduleTimeGrid";
 import type { TypeformFormData } from "../parent/request/questions";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { BrowseNanniesTab } from "@/components/parent/BrowseNanniesTab";
+import { MyChildcareTab } from "@/components/parent/MyChildcareTab";
 
 interface ConfirmedNanny {
   connectionId: string;
@@ -124,6 +126,9 @@ interface ParentHubClientProps {
   dfyActivated?: boolean;
   babysittingRequests?: BabysittingRequestWithSlots[];
   parentVerified?: boolean;
+  initialTab?: string;
+  initialSub?: string;
+  initialView?: string;
 }
 
 function bsrFormatSlotDate(dateStr: string): string {
@@ -211,7 +216,7 @@ function VerificationModal({ open, onClose }: { open: boolean; onClose: () => vo
           <div>
             <h3 className="text-lg font-semibold text-slate-900">Verify your account</h3>
             <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
-              Complete a quick identity check to unlock your connections and start chatting with your childcare provider.
+              You must verify your account to gain full access to childcare and babysitting.
             </p>
           </div>
           <div className="flex w-full gap-2 mt-1">
@@ -233,7 +238,7 @@ function VerificationModal({ open, onClose }: { open: boolean; onClose: () => vo
 
 // ── Tab definitions ──
 const TABS = [
-  { id: "nannies" as const, label: "Nannies" },
+  { id: "childcare" as const, label: "Childcare" },
   { id: "babysitting" as const, label: "Babysitting" },
 ];
 type TabId = (typeof TABS)[number]["id"];
@@ -249,10 +254,68 @@ export function ParentHubClient({
   dfyActivated = false,
   babysittingRequests = [],
   parentVerified = false,
+  initialTab,
+  initialSub,
+  initialView,
 }: ParentHubClientProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabId>("nannies");
+
+  // Resolve initial state from URL params
+  const validTabs: TabId[] = ["childcare", "babysitting"];
+  const validSubs = ["connections", "nannies", "childcare"] as const;
+  const resolvedTab = validTabs.includes(initialTab as TabId) ? (initialTab as TabId) : "childcare";
+  const resolvedSub = (validSubs as readonly string[]).includes(initialSub ?? "") ? (initialSub as "connections" | "nannies" | "childcare") : "childcare";
+  const resolvedView = initialView === "matches" ? "matches" : "all";
+
+  const [activeTab, setActiveTabState] = useState<TabId>(resolvedTab);
+  const [nannySubTab, setNannySubTabState] = useState<"connections" | "nannies" | "childcare">(resolvedSub);
+  const [browseView, setBrowseViewState] = useState<"all" | "matches">(resolvedView);
+
+  // Build URL params and replace
+  const syncUrl = useCallback((t: TabId, s: string, v: string) => {
+    const params = new URLSearchParams();
+    params.set("t", t);
+    if (t === "childcare") {
+      params.set("s", s);
+      if (s === "nannies") params.set("v", v);
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [router, pathname]);
+
+  // Wrapped setters that sync URL
+  const setActiveTab = useCallback((t: TabId) => {
+    setActiveTabState(t);
+    const sub = t === "childcare" ? nannySubTab : "";
+    const view = t === "childcare" && nannySubTab === "nannies" ? browseView : "all";
+    syncUrl(t, sub, view);
+  }, [nannySubTab, browseView, syncUrl]);
+
+  const setNannySubTab = useCallback((s: "connections" | "nannies" | "childcare") => {
+    setNannySubTabState(s);
+    const view = s === "nannies" ? browseView : "all";
+    syncUrl("childcare", s, view);
+  }, [browseView, syncUrl]);
+
+  const setBrowseView = useCallback((v: "all" | "matches") => {
+    setBrowseViewState(v);
+    syncUrl("childcare", "nannies", v);
+  }, [syncUrl]);
+
+  // Track which sub-tabs have been activated (for keep-alive rendering)
+  const [activatedSubs, setActivatedSubs] = useState<Set<string>>(() => new Set([resolvedSub]));
+  const prevSetNannySubTab = setNannySubTab;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const setNannySubTabTracked = useCallback((s: "connections" | "nannies" | "childcare") => {
+    setActivatedSubs(prev => {
+      if (prev.has(s)) return prev;
+      const next = new Set(prev);
+      next.add(s);
+      return next;
+    });
+    prevSetNannySubTab(s);
+  }, [prevSetNannySubTab]);
 
   // ── All state (same as PositionPageClient) ──
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
@@ -517,6 +580,18 @@ export function ParentHubClient({
   const firstName = profile?.first_name || "Parent";
   const profilePic = profile?.profile_picture_url;
 
+  const subTabs = placement
+    ? [
+        { id: "childcare" as const, label: "My childcare" },
+        { id: "connections" as const, label: "My Nanny" },
+        { id: "nannies" as const, label: "Nannies" },
+      ]
+    : [
+        { id: "childcare" as const, label: "My childcare" },
+        { id: "nannies" as const, label: "Nannies" },
+        { id: "connections" as const, label: "Connections" },
+      ];
+
   // Show verify banner when unverified AND has any responses that would be locked
   const hasLockedCards = !parentVerified && (
     dfyConnections.length > 0 ||
@@ -578,111 +653,8 @@ export function ParentHubClient({
             </div>
           </div>
 
-          {/* ── "My Childcare" Accordion — styled as violet CTA button ── */}
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => setPositionExpanded((p) => !p)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-700 px-4 py-2.5 text-white font-medium text-sm transition-colors h-10"
-            >
-              <ClipboardList className="h-4 w-4" />
-              My Childcare
-              {positionExpanded ? (
-                <ChevronUp className="h-4 w-4 ml-1" />
-              ) : (
-                <ChevronDown className="h-4 w-4 ml-1" />
-              )}
-            </button>
-
-            {positionExpanded && (
-              <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                {!hasPosition ? (
-                  <div className="text-center py-3 space-y-2">
-                    <Button asChild className="bg-violet-600 hover:bg-violet-700">
-                      <Link href="/parent/request">Create childcare position</Link>
-                    </Button>
-                    <p className="text-xs text-slate-400 max-w-md mx-auto">
-                Create your position to kickstart our childcare journey
-              </p>
-                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    </p>
-                  </div>
-                ) : !hasFormData ? (
-                  <div className="text-center py-4 space-y-3">
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
-                      <ClipboardList className="h-6 w-6 text-violet-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-700">Position needs updating</p>
-                      <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                        Please recreate your childcare position using the new form to enable editing.
-                      </p>
-                    </div>
-                    <Button asChild className="bg-violet-600 hover:bg-violet-700">
-                      <Link href="/parent/request">Recreate Position</Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <PositionDetailView
-                    initialData={formData}
-                    editingExternal={positionEditing}
-                    onEditingChange={setPositionEditing}
-                    hideClosePosition
-                    menuSlot={
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {positionEditing && (
-                          <button
-                            onClick={() => setPositionEditing(false)}
-                            className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                        )}
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setShowPositionMenu((p) => !p)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                          {showPositionMenu && (
-                            <div className="absolute right-0 mt-1 w-48 rounded-lg border border-slate-200 bg-white shadow-lg z-10">
-                              <button
-                                onClick={() => {
-                                  setShowPositionMenu(false);
-                                  setPositionEditing(true);
-                                }}
-                                className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-t-lg transition-colors"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setShowPositionMenu(false);
-                                  setShowCloseConfirm(true);
-                                }}
-                                className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-b-lg transition-colors"
-                              >
-                                Close this position
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    }
-                  />
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════
-          TAB BAR
-         ═══════════════════════════════════════════════════ */}
-      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
+          {/* ── Tab Bar ── */}
+          <div className="mt-4 flex gap-1 rounded-xl bg-slate-100 p-1">
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
@@ -700,15 +672,43 @@ export function ParentHubClient({
             </button>
           );
         })}
+          </div>
+        </div>
       </div>
 
       {/* ═══════════════════════════════════════════════════
           TAB CONTENT — NANNIES
          ═══════════════════════════════════════════════════ */}
-      {activeTab === "nannies" && (
-        !hasPosition ? (
-          /* No position — single CTA to create one */
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div style={{ display: activeTab === "childcare" ? undefined : "none" }}>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            {/* Sub-tab toggle */}
+            <div className="px-4 pt-3 pb-0">
+              <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+                {subTabs.map((tab) => {
+                  const isActive = nannySubTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setNannySubTabTracked(tab.id)}
+                      className={cn(
+                        "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                        isActive
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-400 hover:text-slate-600"
+                      )}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sub-tab: Connections */}
+            {nannySubTab === "connections" && (
+              !hasPosition ? (
+              /* No position — single CTA to create one */
+              <div className="p-5">
             <div className="text-center py-6 space-y-4">
               <Button asChild className="bg-violet-600 hover:bg-violet-700">
                 <Link href="/parent/request">I need a nanny</Link>
@@ -719,11 +719,11 @@ export function ParentHubClient({
             </div>
           </div>
         ) : (
-        <div className="space-y-3">
+        <div className="space-y-0">
           {/* My Nanny — placement card */}
           {placement && (
             <>
-              <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div>
                 <div className="px-5 py-4">
                   <div className="flex items-start gap-4 relative">
                     {/* Photo */}
@@ -1048,24 +1048,37 @@ export function ParentHubClient({
           {!placement && (() => {
             const nonDfyIntros = upcomingIntros.filter(i => i.source !== 'dfy');
             return (
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5 text-violet-600" />
-                  <p className="text-base font-semibold text-slate-800">Nannies</p>
+            <div className="px-5 pb-5 pt-2">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  Matched Nannies{dfyConnections.length > 0 ? ` (${dfyConnections.length})` : ""}
+                </p>
+                <div className="flex items-center gap-3">
+                  {isMatchmakingActive && matchmakingTimeRemaining ? (
+                    <div className="rounded-full bg-green-50 border border-green-100 px-3 py-1">
+                      <p className="text-xs font-medium text-green-700">
+                        You have {dfyTier === 'priority' ? 'Priority' : 'Standard'} matchmaking for the next {matchmakingTimeRemaining}!
+                      </p>
+                    </div>
+                  ) : !isMatchmakingActive && hasMatchedNannies ? (
+                    <Link href="/parent/matchmaking" className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-800 transition-colors">
+                      <Sparkles className="w-3 h-3" />
+                      Find my perfect nanny
+                    </Link>
+                  ) : null}
+                  {showFillButton && (
+                    <button
+                      onClick={() => setShowFillModal(true)}
+                      className="text-sm font-semibold text-violet-600 hover:text-violet-800 transition-colors"
+                    >
+                      I have made my decision
+                    </button>
+                  )}
                 </div>
-                {showFillButton && (
-                  <button
-                    onClick={() => setShowFillModal(true)}
-                    className="text-sm font-semibold text-violet-600 hover:text-violet-800 transition-colors"
-                  >
-                    I have made my decision
-                  </button>
-                )}
               </div>
 
-              {/* Matchmaking CTA (when no active DFY) */}
-              {!hasDfy && (
+              {/* Matchmaking CTA (when no active DFY, or DFY expired with no responses) */}
+              {(!hasDfy || (!isMatchmakingActive && dfyConnections.length === 0)) && (
                 <div className="text-center py-4 space-y-3">
                   <div className="flex items-center justify-center gap-4">
                     <Button asChild className="bg-violet-600 hover:bg-violet-700">
@@ -1085,26 +1098,9 @@ export function ParentHubClient({
                 </div>
               )}
 
-              {/* Matched Nannies (only when DFY active/has matches) */}
-              {(hasDfy || dfyConnections.length > 0) && (
+              {/* Matched Nannies (only when actively matching or has responses) */}
+              {(isMatchmakingActive || dfyConnections.length > 0) && (
               <div className="mb-2">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    Matched Nannies{dfyConnections.length > 0 ? ` (${dfyConnections.length})` : ""}
-                  </p>
-                  {isMatchmakingActive && matchmakingTimeRemaining ? (
-                    <div className="rounded-full bg-green-50 border border-green-100 px-3 py-1">
-                      <p className="text-xs font-medium text-green-700">
-                        You have {dfyTier === 'priority' ? 'Priority' : 'Standard'} matchmaking for the next {matchmakingTimeRemaining}!
-                      </p>
-                    </div>
-                  ) : !isMatchmakingActive && hasMatchedNannies ? (
-                    <Link href="/parent/matchmaking" className="inline-flex items-center gap-1 text-xs font-semibold text-violet-600 hover:text-violet-800 transition-colors">
-                      <Sparkles className="w-3 h-3" />
-                      Find my perfect nanny
-                    </Link>
-                  ) : null}
-                </div>
 
                 {/* DFY loading / awaiting */}
                 {dfyConnections.length === 0 && (
@@ -1243,6 +1239,16 @@ export function ParentHubClient({
                     })}
                   </div>
                 )}
+
+                {/* Find more — when DFY expired but has responses */}
+                {!isMatchmakingActive && dfyConnections.length > 0 && (
+                  <div className="text-center pt-3">
+                    <Link href="/parent/matchmaking" className="inline-flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 transition-colors">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Find more matches for me
+                    </Link>
+                  </div>
+                )}
               </div>
               )}
 
@@ -1333,16 +1339,26 @@ export function ParentHubClient({
         )
       )}
 
+          {/* Sub-tab: Nannies (keep mounted once activated) */}
+          {activatedSubs.has("nannies") && (
+            <div style={{ display: nannySubTab === "nannies" ? undefined : "none" }}>
+              <BrowseNanniesTab initialView={browseView} onViewChange={setBrowseView} />
+            </div>
+          )}
+
+          {/* Sub-tab: My childcare */}
+          {nannySubTab === "childcare" && (
+            <MyChildcareTab position={position} />
+          )}
+          </div>
+      </div>
+
       {/* ═══════════════════════════════════════════════════
           TAB CONTENT — BABYSITTING
          ═══════════════════════════════════════════════════ */}
-      {activeTab === "babysitting" && (
+      <div style={{ display: activeTab === "babysitting" ? undefined : "none" }}>
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4">
-            <div className="flex items-center gap-2">
-              <Baby className="h-5 w-5 text-violet-600" />
-              <p className="text-base font-semibold text-slate-800">Babysitting</p>
-            </div>
+          <div className="flex items-center justify-end px-5 py-4">
             {bsrHasActive && (
               <Button
                 asChild
@@ -1494,7 +1510,7 @@ export function ParentHubClient({
             )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════
           MODALS — BSR Detail, Connection Popups, etc.

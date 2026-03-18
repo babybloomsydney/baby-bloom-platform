@@ -66,6 +66,7 @@ export interface RequestingNanny {
   experienceYears: number | null;
   hourlyRateMin: number | null;
   verificationTier: string;
+  verificationLevel: number;
   aiHeadline: string | null;
   languages: string[] | null;
 }
@@ -2094,7 +2095,7 @@ export async function getParentBabysittingRequests(): Promise<{
 
       const { data: reqNannies } = await adminClient
         .from('nannies')
-        .select('id, user_id, total_experience_years, hourly_rate_min, verification_tier, languages')
+        .select('id, user_id, total_experience_years, hourly_rate_min, verification_tier, verification_level, languages')
         .in('id', reqNannyIds);
 
       const reqUserIds = (reqNannies ?? []).map(n => n.user_id);
@@ -2125,6 +2126,7 @@ export async function getParentBabysittingRequests(): Promise<{
           experienceYears: nanny.total_experience_years,
           hourlyRateMin: nanny.hourly_rate_min ? Number(nanny.hourly_rate_min) : null,
           verificationTier: nanny.verification_tier,
+          verificationLevel: nanny.verification_level ?? 0,
           aiHeadline: null,
           languages: nanny.languages,
         };

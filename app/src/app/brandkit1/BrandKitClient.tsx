@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MatchCard } from "@/components/MatchCard";
 import { NannyCardBK } from "./NannyCardBK";
+import { NannyMatchCardBK } from "./NannyMatchCardBK";
 import { NannyProfileBK, type NannyProfileBKData } from "./NannyProfileBK";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
@@ -145,6 +146,7 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
     age: 24,
     suburb: "Bondi",
     verification_tier: "tier2",
+    verification_level: 3,
     profile_picture_url: profilePicUrl,
     tagline:
       "Experienced and warm nanny with a passion for early childhood development. 4 years of dedicated experience across Sydney\u2019s Eastern Suburbs.",
@@ -774,6 +776,42 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                   </Button>
                 }
               />
+            </div>
+          </ComponentShowcase>
+        </section>
+
+        {/* ─── 09b. NANNY MATCH CARD (Browse) ─── */}
+        <section>
+          <SectionTitle
+            number="09b"
+            title="Nanny Match Card (Browse)"
+            subtitle="The browse-friendly match card — scores at a glance without the complexity"
+          />
+          <ComponentShowcase
+            rationale={
+              <Rationale principle="Scan, don't study">
+                <p className="mb-2">
+                  The NannyMatchCardBK is designed for the &ldquo;Matches&rdquo;
+                  tab on the browse page. It combines the familiar NannyCardBK
+                  layout with match-specific data: the score badge, distance,
+                  and three score bars.
+                </p>
+                <p className="mb-2">
+                  Unlike the full MatchCard (which has three sliding views),
+                  this card is scannable in a single glance — optimised for
+                  comparing multiple matches in a vertical list.
+                </p>
+                <p>
+                  Score bars (Experience, Schedule, Location) sit below the
+                  badges, separated by a subtle border. They use violet-100
+                  tracks with violet-500 fills — consistent with the brand
+                  palette. The match % badge anchors in the top-right.
+                </p>
+              </Rationale>
+            }
+          >
+            <div className="max-w-sm mx-auto">
+              <NannyMatchCardBK match={matchWithPic as MatchResult} />
             </div>
           </ComponentShowcase>
         </section>

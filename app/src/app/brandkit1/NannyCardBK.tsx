@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { MapPin, ShieldCheck, Clock, Baby, GraduationCap } from "lucide-react";
 import type { NannyCardData } from "@/components/NannyCard";
-import { ExpandableBadges, type TraitBadge } from "./ExpandableBadges";
+import { ExpandableBadges, abbreviateQualification, type TraitBadge } from "./ExpandableBadges";
 
 interface NannyCardBKProps {
   nanny: NannyCardData;
@@ -24,16 +24,17 @@ function computeAge(dob: string | null | undefined): number | null {
 function buildBadges(nanny: NannyCardData): TraitBadge[] {
   const badges: TraitBadge[] = [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0) {
-    badges.push({ icon: Clock, label: `${nanny.total_experience_years} yrs experience`, variant: "violet" });
+    badges.push({ icon: Clock, label: `${nanny.total_experience_years}yrs exp`, variant: "violet" });
   }
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${nanny.under_3_experience_years} yrs under 3s`, variant: "violet" });
+    badges.push({ icon: Baby, label: `${nanny.under_3_experience_years}yrs with u3s`, variant: "violet" });
   }
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${nanny.newborn_experience_years} yr newborns`, variant: "violet" });
+    badges.push({ icon: Baby, label: `${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, variant: "violet" });
   }
   if (nanny.highest_qualification) {
-    badges.push({ icon: GraduationCap, label: nanny.highest_qualification, variant: "slate" });
+    const abbr = abbreviateQualification(nanny.highest_qualification);
+    if (abbr) badges.push({ icon: GraduationCap, label: abbr, variant: "slate" });
   }
   return badges;
 }
@@ -41,8 +42,7 @@ function buildBadges(nanny: NannyCardData): TraitBadge[] {
 export function NannyCardBK({ nanny, linkBase = "/nannies" }: NannyCardBKProps) {
   const initials = `${nanny.first_name[0]}${nanny.last_name[0]}`;
   const age = computeAge(nanny.date_of_birth);
-  const isVerified =
-    nanny.verification_tier === "tier2" || nanny.verification_tier === "tier3";
+  const isVerified = (nanny.verification_level ?? 0) >= 3;
 
   return (
     <Link href={`${linkBase}/${nanny.id}`} className="block group">

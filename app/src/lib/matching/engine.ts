@@ -22,39 +22,19 @@ import {
 } from './scoring';
 import { QUAL_SCORES } from './constants';
 
-export async function runMatchmaking(positionId: string): Promise<MatchingResult> {
+/**
+ * Shared scoring pipeline: fetches all eligible nannies, scores them against
+ * the given position data, and returns sorted results.
+ * Used by both runMatchmaking (DB-backed) and runPreAuthMatching (lead-backed).
+ */
+export async function fetchAndScoreNannies(
+  position: PositionMatchData,
+  children: PositionChildData[],
+  positionSchedule: Record<string, string[]> | null
+): Promise<MatchingResult> {
   const supabase = createAdminClient();
 
-  // ── Step 1: Fetch position data (3 parallel queries) ──
-  const [positionRes, childrenRes, scheduleRes] = await Promise.all([
-    supabase
-      .from('nanny_positions')
-      .select('id, parent_id, drivers_license_required, car_required, vaccination_required, non_smoker_required, comfortable_with_pets_required, minimum_age_requirement, years_of_experience, language_preference, language_preference_details, reason_for_nanny, schedule_type, urgency, suburb, postcode, details')
-      .eq('id', positionId)
-      .single(),
-    supabase
-      .from('position_children')
-      .select('age_months')
-      .eq('position_id', positionId),
-    supabase
-      .from('position_schedule')
-      .select('schedule')
-      .eq('position_id', positionId)
-      .maybeSingle(),
-  ]);
-
-  if (positionRes.error || !positionRes.data) {
-    console.error('Position fetch error:', positionRes.error);
-    return { matches: [], totalEligible: 0 };
-  }
-
-  const position = positionRes.data as PositionMatchData;
-  const children: PositionChildData[] = (childrenRes.data ?? []).map((c) => ({
-    age_months: c.age_months,
-  }));
-  const positionSchedule = (scheduleRes.data?.schedule as Record<string, string[]>) ?? null;
-
-  // ── Step 2: Fetch all visible nannies (single query for nannies, then batch related) ──
+  // ── Fetch all visible nannies (single query for nannies, then batch related) ──
   const { data: nannies, error: nannyError } = await supabase
     .from('nannies')
     .select('id, user_id, total_experience_years, nanny_experience_years, under_3_experience_years, newborn_experience_years, max_children, min_child_age_months, max_child_age_months, additional_needs_ok, drivers_license, has_car, vaccination_status, non_smoker, comfortable_with_pets, hourly_rate_min, languages, role_types_preferred, level_of_support_offered, immediate_start_available, ai_content')
@@ -106,7 +86,7 @@ export async function runMatchmaking(positionId: string): Promise<MatchingResult
     credentialMap.set(c.nanny_id, existing);
   }
 
-  // ── Step 3: Fetch postcodes for distance calc ──
+  // ── Fetch postcodes for distance calc ──
   const allSuburbs = new Set<string>();
   if (position.suburb) allSuburbs.add(position.suburb);
   for (const p of profilesRes.data ?? []) {
@@ -134,7 +114,7 @@ export async function runMatchmaking(positionId: string): Promise<MatchingResult
     ? postcodeMap.get(position.suburb.toLowerCase())
     : null;
 
-  // ── Step 4: Score each nanny ──
+  // ── Score each nanny ──
   const results: MatchResult[] = [];
 
   for (const nanny of nannies as NannyMatchData[]) {
@@ -241,6 +221,41 @@ export async function runMatchmaking(positionId: string): Promise<MatchingResult
   results.sort((a, b) => b.finalScore - a.finalScore);
 
   return { matches: results, totalEligible };
+}
+
+export async function runMatchmaking(positionId: string): Promise<MatchingResult> {
+  const supabase = createAdminClient();
+
+  // ── Fetch position data (3 parallel queries) ──
+  const [positionRes, childrenRes, scheduleRes] = await Promise.all([
+    supabase
+      .from('nanny_positions')
+      .select('id, parent_id, drivers_license_required, car_required, vaccination_required, non_smoker_required, comfortable_with_pets_required, minimum_age_requirement, years_of_experience, language_preference, language_preference_details, reason_for_nanny, schedule_type, urgency, suburb, postcode, details')
+      .eq('id', positionId)
+      .single(),
+    supabase
+      .from('position_children')
+      .select('age_months')
+      .eq('position_id', positionId),
+    supabase
+      .from('position_schedule')
+      .select('schedule')
+      .eq('position_id', positionId)
+      .maybeSingle(),
+  ]);
+
+  if (positionRes.error || !positionRes.data) {
+    console.error('Position fetch error:', positionRes.error);
+    return { matches: [], totalEligible: 0 };
+  }
+
+  const position = positionRes.data as PositionMatchData;
+  const children: PositionChildData[] = (childrenRes.data ?? []).map((c) => ({
+    age_months: c.age_months,
+  }));
+  const positionSchedule = (scheduleRes.data?.schedule as Record<string, string[]>) ?? null;
+
+  return fetchAndScoreNannies(position, children, positionSchedule);
 }
 
 /**

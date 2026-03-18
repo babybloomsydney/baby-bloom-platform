@@ -1,127 +1,128 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Heart, Shield, Users, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Heart,
+  Sparkles,
+  ArrowRight,
+  ShieldCheck,
+  GraduationCap,
+  UserCheck,
+} from "lucide-react";
+
+const DIFFERENTIATORS = [
+  {
+    icon: ShieldCheck,
+    title: "Not a marketplace",
+    description:
+      "Every nanny expertly vetted — identity, credentials, and experience verified before joining. Matched by location, schedule, experience, and values. Best-fit nannies contacted directly.",
+  },
+  {
+    icon: GraduationCap,
+    title: "Education as standard",
+    description:
+      "Nannies who understand developmental milestones, structured play, and early learning. The baseline, not the exception. Every match starts from this standard.",
+  },
+  {
+    icon: UserCheck,
+    title: "Personal, not automated",
+    description:
+      "Matching considers the full picture — experience, approach, and fit. Not just availability and proximity.",
+  },
+  {
+    icon: Heart,
+    title: "No middleman fees",
+    description:
+      "Free for families. Nannies keep what they earn. No fees, no commission, no placement cost.",
+  },
+  {
+    icon: Sparkles,
+    title: "Built to improve",
+    description:
+      "Matching, vetting, and support get better with every family and every nanny.",
+  },
+];
 
 export default function AboutPage() {
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-to-b from-violet-50 to-white">
-        <div className="container mx-auto px-4 md:px-6 py-16 md:py-24">
+      {/* ═══ HERO ═══ */}
+      <section className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-violet-50/30" />
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-violet-100/40 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4" />
+        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-violet-200/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/4" />
+
+        <div className="relative container mx-auto px-4 md:px-6 py-20 md:py-32">
           <div className="max-w-3xl">
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900">
+            <span className="inline-block text-xs font-semibold text-violet-500 uppercase tracking-[0.2em] mb-4">
               About Baby Bloom
+            </span>
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 leading-[1.1] tracking-tight">
+              The early years shape everything that follows.
             </h1>
-            <p className="mt-6 text-xl text-slate-600 leading-relaxed">
-              We started Baby Bloom because finding a great nanny in Sydney was harder than it needed to be. Too many dodgy listings, not enough real people.
+            <p className="mt-6 text-lg md:text-xl text-slate-600 leading-relaxed max-w-2xl">
+              An education company matching Sydney families with nannies who
+              understand child development. Free matching. Non-negotiable
+              standards.
             </p>
           </div>
         </div>
       </section>
 
-      {/* Story Section */}
-      <section className="py-16 md:py-20">
+      {/* ═══ THE APPROACH ═══ */}
+      <section className="py-16 md:py-24">
         <div className="container mx-auto px-4 md:px-6">
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-            <div>
-              <span className="text-sm font-medium text-violet-600 uppercase tracking-wider">
-                Our Story
-              </span>
-              <h2 className="mt-4 text-3xl md:text-4xl font-bold text-slate-900">
-                From frustration to solution
-              </h2>
-              <div className="mt-6 space-y-4 text-slate-600 leading-relaxed">
-                <p>
-                  Like many Sydney parents, we spent weeks scrolling through generic listings, wondering if any of these profiles were real. Were their credentials actually verified? Would they actually show up?
-                </p>
-                <p>
-                  We knew there had to be a better way. So we built Baby Bloom - a platform where every nanny is a real person with verified credentials, and every family can find their match without the anxiety.
-                </p>
-                <p>
-                  Today, we&apos;ve helped hundreds of Sydney families connect with amazing nannies. Not because we have fancy algorithms, but because we actually care about getting it right.
-                </p>
-              </div>
-            </div>
-
-            {/* Visual element */}
-            <div className="relative">
-              <div className="bg-violet-100 rounded-2xl p-8 md:p-12">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="text-center">
-                    <div className="text-4xl md:text-5xl font-bold text-violet-600">200+</div>
-                    <div className="mt-2 text-sm text-slate-600">Verified Nannies</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl md:text-5xl font-bold text-violet-600">500+</div>
-                    <div className="mt-2 text-sm text-slate-600">Happy Families</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl md:text-5xl font-bold text-violet-600">4.9</div>
-                    <div className="mt-2 text-sm text-slate-600">Average Rating</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-4xl md:text-5xl font-bold text-violet-600">48hr</div>
-                    <div className="mt-2 text-sm text-slate-600">Avg Match Time</div>
-                  </div>
-                </div>
-              </div>
-              {/* Decorative elements */}
-              <div className="absolute -top-4 -right-4 w-24 h-24 bg-violet-200 rounded-xl -z-10 rotate-12" />
-              <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-violet-50 rounded-full -z-10" />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Values Section */}
-      <section className="bg-slate-50 py-16 md:py-20">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
-              What we believe in
+          <div className="max-w-3xl">
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 leading-tight mb-8">
+              What that looks like
             </h2>
-            <p className="mt-4 text-lg text-slate-600">
-              These aren&apos;t just words on a page. They&apos;re the standards we hold ourselves to every day.
-            </p>
+            <div className="relative">
+              <div className="absolute -left-3 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-400 to-violet-200 rounded-full" />
+              <div className="pl-6 md:pl-8 space-y-5 text-slate-600 leading-relaxed">
+                <p>
+                  How a child learns to play, to explore, to trust — it starts
+                  with the people who care for them. The quality of that care in
+                  the first five years sets the foundation for everything that
+                  comes after.
+                </p>
+                <p>
+                  Connecting families with nannies who understand this. Carers
+                  who see structured play as learning, track developmental
+                  milestones, and treat every day as an opportunity to help a
+                  child grow.
+                </p>
+                <p className="text-slate-900 font-medium">
+                  Finding, vetting, and matching — handled. So families can focus
+                  on what matters.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ WHAT'S DIFFERENT ═══ */}
+      <section className="py-16 md:py-24 bg-slate-50">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="max-w-2xl mb-12 md:mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
+              What&apos;s different
+            </h2>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                icon: Shield,
-                title: "Trust First",
-                description:
-                  "Every nanny is verified with WWCC, police checks, and real references. No exceptions, no shortcuts.",
-              },
-              {
-                icon: Heart,
-                title: "Human Touch",
-                description:
-                  "We're not just a marketplace. We actually talk to our nannies and families. We know their names.",
-              },
-              {
-                icon: Users,
-                title: "Fair for Both",
-                description:
-                  "Nannies set their own rates. Parents see transparent pricing. No hidden fees for either side.",
-              },
-              {
-                icon: Sparkles,
-                title: "Keep Improving",
-                description:
-                  "We listen to feedback and keep making things better. The platform you see today is version 3.0.",
-              },
-            ].map((value, index) => (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 lg:gap-6">
+            {DIFFERENTIATORS.map((item) => (
               <div
-                key={index}
-                className="bg-white rounded-xl p-6 border border-slate-200 hover:shadow-md transition-all"
+                key={item.title}
+                className="group bg-white rounded-2xl p-7 md:p-8 border border-slate-200/80 hover:border-violet-200 hover:shadow-lg hover:shadow-violet-100/50 transition-all duration-300"
               >
-                <div className="w-12 h-12 rounded-lg bg-violet-100 flex items-center justify-center mb-4">
-                  <value.icon className="w-6 h-6 text-violet-600" />
+                <div className="w-11 h-11 rounded-xl bg-violet-100 flex items-center justify-center mb-5 group-hover:bg-violet-500 transition-colors duration-300">
+                  <item.icon className="w-5 h-5 text-violet-600 group-hover:text-white transition-colors duration-300" />
                 </div>
-                <h3 className="font-semibold text-slate-900 text-lg">{value.title}</h3>
-                <p className="mt-2 text-slate-600 text-sm leading-relaxed">
-                  {value.description}
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {item.title}
+                </h3>
+                <p className="mt-3 text-sm text-slate-500 leading-relaxed">
+                  {item.description}
                 </p>
               </div>
             ))}
@@ -129,51 +130,39 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Team Section - Minimal placeholder */}
-      <section className="py-16 md:py-20">
+      {/* ═══ EMOTIONAL BRIDGE ═══ */}
+      <section className="py-20 md:py-28">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900">
-              The people behind Baby Bloom
-            </h2>
-            <p className="mt-4 text-lg text-slate-600">
-              We&apos;re a small team of Sydney locals who care deeply about helping families and nannies connect. We&apos;ve been parents, we&apos;ve hired nannies, and we know how important it is to get this right.
-            </p>
-
-            {/* Team avatars placeholder */}
-            <div className="mt-10 flex justify-center -space-x-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="w-16 h-16 rounded-full bg-violet-200 border-4 border-white flex items-center justify-center"
-                >
-                  <span className="text-violet-600 font-medium">
-                    {["AB", "CD", "EF", "GH"][i - 1]}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="mt-4 text-sm text-slate-500">
-              The Baby Bloom team
+            <p className="text-2xl md:text-3xl lg:text-[2rem] italic text-slate-700 leading-relaxed tracking-tight">
+              The person who cares for a child during these years is one of the
+              most important decisions a parent makes.
             </p>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="bg-violet-600 py-16 md:py-20">
-        <div className="container mx-auto px-4 md:px-6">
-          <div className="max-w-3xl mx-auto text-center">
+      {/* ═══ CTA ═══ */}
+      <section className="relative bg-slate-900 py-16 md:py-24 overflow-hidden">
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-violet-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+        <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-violet-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3" />
+
+        <div className="relative container mx-auto px-4 md:px-6">
+          <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl md:text-4xl font-bold text-white">
-              Ready to join the Baby Bloom community?
+              Find the right nanny for every family
             </h2>
-            <p className="mt-4 text-lg text-violet-100">
-              Whether you&apos;re a family looking for help or a nanny looking for work, we&apos;d love to have you.
+            <p className="mt-4 text-slate-400 leading-relaxed">
+              Childcare professionals welcome too.
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center">
-              <Button size="lg" asChild className="bg-white text-violet-600 hover:bg-violet-50 text-base h-12 px-8">
-                <Link href="/nannies">
-                  Browse Nannies
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
+              <Button
+                size="lg"
+                asChild
+                className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 shadow-lg shadow-violet-500/20"
+              >
+                <Link href="/">
+                  Find a Nanny
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
@@ -181,11 +170,9 @@ export default function AboutPage() {
                 size="lg"
                 variant="outline"
                 asChild
-                className="border-white text-white hover:bg-violet-500 text-base h-12 px-8"
+                className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-base h-12 px-8"
               >
-                <Link href="/signup?role=nanny">
-                  Join as a Nanny
-                </Link>
+                <Link href="/nanny/apply">Apply as a Nanny</Link>
               </Button>
             </div>
           </div>

@@ -82,15 +82,15 @@ function AvailabilityGrid({ schedule }: { schedule: Record<string, boolean[]> })
 
 // ── Verification Badge ──
 
-function VerificationBadge({ tier }: { tier: string }) {
-  if (tier === "tier3") {
+function VerificationBadge({ level }: { level: number }) {
+  if (level >= 4) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-semibold text-green-700">
         <BadgeCheck className="h-3.5 w-3.5" /> Fully Verified
       </span>
     );
   }
-  if (tier === "tier2") {
+  if (level >= 3) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 border border-violet-200 px-3 py-1 text-xs font-semibold text-violet-700">
         <ShieldCheck className="h-3.5 w-3.5" /> ID Verified
@@ -135,7 +135,7 @@ function GlanceItem({ icon: Icon, label }: { icon: React.ElementType; label: str
 
 function buildProfileBadges(nanny: NannyProfileBKData): TraitBadge[] {
   const badges: TraitBadge[] = [];
-  badges.push({ icon: Clock, label: `${nanny.nanny_experience_years} yrs experience`, variant: "violet" });
+  badges.push({ icon: Clock, label: `${nanny.nanny_experience_years}yrs exp`, variant: "violet" });
   if (nanny.drivers_license) badges.push({ icon: Car, label: "License", variant: "slate" });
   if (nanny.has_car) badges.push({ icon: Car, label: "Car", variant: "slate" });
   if (nanny.vaccination_status) badges.push({ icon: Stethoscope, label: "Vaccinated", variant: "slate" });
@@ -156,6 +156,7 @@ export interface NannyProfileBKData {
   age: number | null;
   suburb: string;
   verification_tier: string;
+  verification_level: number;
   profile_picture_url: string | null;
   tagline: string;
   bio: string;
@@ -215,7 +216,7 @@ export function NannyProfileBK({ nanny }: NannyProfileBKProps) {
                   </div>
                 )}
               </div>
-              {(nanny.verification_tier === "tier2" || nanny.verification_tier === "tier3") && (
+              {(nanny.verification_level ?? 0) >= 3 && (
                 <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 ring-3 ring-white">
                   <ShieldCheck className="h-4 w-4 text-white" />
                 </div>
@@ -233,7 +234,7 @@ export function NannyProfileBK({ nanny }: NannyProfileBKProps) {
             </div>
 
             <div className="pb-1 shrink-0">
-              <VerificationBadge tier={nanny.verification_tier} />
+              <VerificationBadge level={nanny.verification_level ?? 0} />
             </div>
           </div>
 

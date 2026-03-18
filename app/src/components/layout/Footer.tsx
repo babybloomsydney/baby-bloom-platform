@@ -13,9 +13,9 @@ const footerLinks = {
   nannies: {
     title: "For Nannies",
     links: [
-      { href: "/signup?role=nanny", label: "Join as a Nanny" },
-      { href: "/nanny-resources", label: "Resources" },
-      { href: "/pricing", label: "Pricing" },
+      { href: "/for-nannies", label: "Why Baby Bloom" },
+      { href: "/nanny/apply", label: "Apply Now" },
+      { href: "/pricing", label: "Services" },
     ],
   },
   parents: {

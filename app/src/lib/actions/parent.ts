@@ -349,9 +349,9 @@ export async function saveTypeformPosition(
     // Booleans (form stores "Yes"/"No" strings)
     drivers_license_required: formData.drivers_license_required === 'Yes',
     car_required: formData.car_required === 'Yes',
-    vaccination_required: formData.vaccination_required === 'Yes',
-    non_smoker_required: formData.non_smoker_required === 'Yes',
-    comfortable_with_pets_required: formData.has_pets === 'Yes',
+    vaccination_required: false,
+    non_smoker_required: false,
+    comfortable_with_pets_required: false,
 
     // Text
     language_preference: formData.language_preference ?? null,

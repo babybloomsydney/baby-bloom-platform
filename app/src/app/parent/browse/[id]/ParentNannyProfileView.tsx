@@ -47,6 +47,7 @@ interface ParentNannyProfileViewProps {
   nanny: PublicNannyProfile;
   isOwner?: boolean;
   isParent?: boolean;
+  isGuest?: boolean;
   pendingRequestCount?: number;
   existingRequestStatus?: string | null;
   hasActivePlacement?: boolean;
@@ -66,6 +67,7 @@ export function ParentNannyProfileView({
   nanny,
   isOwner = false,
   isParent = false,
+  isGuest = false,
   pendingRequestCount = 0,
   existingRequestStatus = null,
   hasActivePlacement = false,
@@ -96,11 +98,11 @@ export function ParentNannyProfileView({
   // ── Badge pills ──
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0)
-    traitBadges.push({ icon: "Clock", label: `${nanny.total_experience_years} yrs experience`, primary: true });
+    traitBadges.push({ icon: "Clock", label: `${nanny.total_experience_years}yrs exp`, primary: true });
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${nanny.under_3_experience_years} yrs under 3s`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `${nanny.under_3_experience_years}yrs with u3s`, primary: true });
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${nanny.newborn_experience_years} yr newborns`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
   if (nanny.highest_qualification)
     traitBadges.push({ icon: "GraduationCap", label: nanny.highest_qualification });
 
@@ -184,10 +186,10 @@ export function ParentNannyProfileView({
                       <Globe className="h-3.5 w-3.5" /> {nanny.nationality}
                     </p>
                   )}
-                  {nanny.languages && nanny.languages.length > 0 && (
+                  {nanny.languages && nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").length > 0 && (
                     <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
                       <Languages className="h-3 w-3" />
-                      {nanny.languages.join(", ")}
+                      {nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}
                     </p>
                   )}
                   {nanny.suburb && (
@@ -287,9 +289,9 @@ export function ParentNannyProfileView({
                   Connect with {firstName}
                 </Button>
               ) : (
-                <Link href="/login">
+                <Link href="/signup">
                   <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium h-10">
-                    Connect with {firstName}
+                    Sign Up to Connect with {firstName}
                   </Button>
                 </Link>
               )}
@@ -613,21 +615,37 @@ export function ParentNannyProfileView({
       {profileTab === "availability" && (
         <div className="space-y-3 mt-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-violet-400" />
-                <h3 className="text-sm font-semibold text-slate-900">Availability</h3>
+            {isGuest ? (
+              <div className="text-center py-8 space-y-3">
+                <Clock className="h-8 w-8 text-slate-300 mx-auto" />
+                <p className="text-sm text-slate-500">
+                  Sign up to see {firstName}&apos;s availability
+                </p>
+                <Link href="/signup">
+                  <Button size="sm" className="bg-violet-500 hover:bg-violet-600">
+                    Sign Up to See Availability
+                  </Button>
+                </Link>
               </div>
-              {nanny.immediate_start && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700">
-                  <CalendarCheck className="h-3 w-3" /> Can start immediately
-                </span>
-              )}
-            </div>
-            {nanny.availability?.schedule && Object.keys(nanny.availability.schedule).length > 0 ? (
-              <AvailabilityGrid schedule={nanny.availability.schedule} firstName={firstName} />
             ) : (
-              <p className="text-sm text-slate-400 italic">Availability not set yet.</p>
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-violet-400" />
+                    <h3 className="text-sm font-semibold text-slate-900">Availability</h3>
+                  </div>
+                  {nanny.immediate_start && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700">
+                      <CalendarCheck className="h-3 w-3" /> Can start immediately
+                    </span>
+                  )}
+                </div>
+                {nanny.availability?.schedule && Object.keys(nanny.availability.schedule).length > 0 ? (
+                  <AvailabilityGrid schedule={nanny.availability.schedule} firstName={firstName} />
+                ) : (
+                  <p className="text-sm text-slate-400 italic">Availability not set yet.</p>
+                )}
+              </>
             )}
           </div>
         </div>

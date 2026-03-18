@@ -18,6 +18,7 @@ export interface NannyCardData {
   newborn_experience_years: number | null;
   highest_qualification: string | null;
   verification_tier: string;
+  verification_level: number | null;
   drivers_license: boolean | null;
   vaccination_status: boolean | null;
   languages: string[] | null;
@@ -35,7 +36,7 @@ interface NannyCardProps {
 export function NannyCard({ nanny, showRequestButton = false, onRequestInterview }: NannyCardProps) {
   const initials = `${nanny.first_name[0]}${nanny.last_name[0]}`;
   const experienceYears = nanny.nanny_experience_years || nanny.total_experience_years;
-  const isVerified = nanny.verification_tier === "tier2" || nanny.verification_tier === "tier3";
+  const isVerified = (nanny.verification_level ?? 0) >= 3;
 
   return (
     <Card className="group hover:shadow-lg transition-all hover:border-violet-200 overflow-hidden">
@@ -95,9 +96,9 @@ export function NannyCard({ nanny, showRequestButton = false, onRequestInterview
         )}
 
         <div className="mt-4 flex flex-wrap gap-1.5">
-          {nanny.verification_tier === "tier3" && (
-            <Badge variant="secondary" className="text-xs bg-violet-100 text-violet-700">
-              Tier 3
+          {(nanny.verification_level ?? 0) >= 4 && (
+            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700">
+              Fully Verified
             </Badge>
           )}
           {nanny.drivers_license && (

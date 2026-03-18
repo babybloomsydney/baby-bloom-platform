@@ -10,7 +10,11 @@ import { ParentHubClient } from "./ParentHubClient";
 
 const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
-export default async function ParentHubPage() {
+export default async function ParentHubPage({
+  searchParams,
+}: {
+  searchParams: { t?: string; s?: string; v?: string };
+}) {
   let position: PositionWithChildren | null = null;
   let error: string | null = null;
 
@@ -77,6 +81,9 @@ export default async function ParentHubPage() {
         dfyActivated={dfyActivated}
         babysittingRequests={babysittingRequests}
         parentVerified={parentVerified}
+        initialTab={searchParams.t}
+        initialSub={searchParams.s}
+        initialView={searchParams.v}
       />
     </div>
   );

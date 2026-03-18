@@ -242,6 +242,7 @@ export interface NannyProfile {
   // Status fields (read-only)
   status: string;
   verification_tier: string;
+  verification_level: number;
   wwcc_verified: boolean;
   identity_verified: boolean;
 

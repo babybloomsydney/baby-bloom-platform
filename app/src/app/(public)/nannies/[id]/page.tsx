@@ -70,6 +70,7 @@ export default async function NannyProfilePage({
   // Check auth state for connect button logic
   let isOwner = false;
   let isParent = false;
+  let isGuest = true;
   let pendingRequestCount = 0;
   let existingRequestStatus: string | null = null;
   let hasActivePlacement = false;
@@ -80,6 +81,7 @@ export default async function NannyProfilePage({
     const { data: { user } } = await supabase.auth.getUser();
 
     if (user) {
+      isGuest = false;
       if (user.id === nanny.user_id) {
         isOwner = true;
       } else {
@@ -153,6 +155,7 @@ export default async function NannyProfilePage({
         nanny={nanny}
         isOwner={isOwner}
         isParent={isParent}
+        isGuest={isGuest}
         pendingRequestCount={pendingRequestCount}
         existingRequestStatus={existingRequestStatus}
         hasActivePlacement={hasActivePlacement}

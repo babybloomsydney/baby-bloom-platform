@@ -219,13 +219,13 @@ const MOCK_AVAILABILITY = {
 // Hero badge pills — experience stats (if > 0) + qualification only
 const MOCK_BADGES: { icon: string; label: string; primary?: boolean }[] = [
   ...(MOCK_EXPERIENCE_STATS.total_experience_years > 0
-    ? [{ icon: "Clock", label: `${MOCK_EXPERIENCE_STATS.total_experience_years} yrs experience`, primary: true }]
+    ? [{ icon: "Clock", label: `${MOCK_EXPERIENCE_STATS.total_experience_years}yrs exp`, primary: true }]
     : []),
   ...(MOCK_EXPERIENCE_STATS.under_3_experience_years > 0
-    ? [{ icon: "Baby", label: `${MOCK_EXPERIENCE_STATS.under_3_experience_years} yrs under 3s`, primary: true }]
+    ? [{ icon: "Baby", label: `${MOCK_EXPERIENCE_STATS.under_3_experience_years}yrs with u3s`, primary: true }]
     : []),
   ...(MOCK_EXPERIENCE_STATS.newborn_experience_years > 0
-    ? [{ icon: "Baby", label: `${MOCK_EXPERIENCE_STATS.newborn_experience_years} yr newborns`, primary: true }]
+    ? [{ icon: "Baby", label: `${MOCK_EXPERIENCE_STATS.newborn_experience_years}${MOCK_EXPERIENCE_STATS.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true }]
     : []),
   ...(MOCK_QUALIFICATIONS.highest_qualification
     ? [{ icon: "GraduationCap", label: MOCK_QUALIFICATIONS.highest_qualification }]
@@ -892,7 +892,7 @@ export function ProfileTestClient() {
 // │       Full width below the name/details block.                              │
 // │    7. Badge pills — mt-3, flex flex-wrap gap-1.5                            │
 // │       - Experience stats (if > 0): violet pill with icon                    │
-// │         "{X} yrs experience", "{X} yrs under 3s", "{X} yr newborns"        │
+// │         "{X}yrs exp", "{X}yrs with u3s", "{X} yr newborns"        │
 // │       - Qualification: slate pill (if they have one)                        │
 // │       - NO certificates, car, or other badges on hero                       │
 // │    8. Accordion button — "Childcare Profile", violet-600, full width        │

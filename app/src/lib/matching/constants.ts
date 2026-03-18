@@ -17,6 +17,7 @@ export const ROLE_MAP: Record<string, string> = {
   "Pick Up & Drop Off": "Pick Up & Drop Off",
   "Household Support": "Home Management",
   "Child Development": "Child Development",
+  "Education & Development": "Child Development",
 };
 
 // Support mapping: focus_type|support_type → nanny level_of_support_offered value

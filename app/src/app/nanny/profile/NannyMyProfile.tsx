@@ -435,7 +435,7 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
   const nannyId = profile.nanny_id;
   const age = computeAge(profile.date_of_birth);
   const aiContent = profile.ai_content as Record<string, unknown> | null;
-  const isVerified = profile.verification_tier === "tier3" || profile.verification_tier === "tier2";
+  const isVerified = (profile.verification_level ?? 0) >= 3;
 
   // AI content extraction (V2 field paths)
   const ai = aiContent;
@@ -452,11 +452,11 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
   // Badge pills
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (profile.total_experience_years && profile.total_experience_years > 0)
-    traitBadges.push({ icon: "Clock", label: `${profile.total_experience_years} yrs experience`, primary: true });
+    traitBadges.push({ icon: "Clock", label: `${profile.total_experience_years}yrs exp`, primary: true });
   if (profile.under_3_experience_years && profile.under_3_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${profile.under_3_experience_years} yrs under 3s`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `${profile.under_3_experience_years}yrs with u3s`, primary: true });
   if (profile.newborn_experience_years && profile.newborn_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${profile.newborn_experience_years} yr newborns`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `${profile.newborn_experience_years}${profile.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
   if (profile.highest_qualification)
     traitBadges.push({ icon: "GraduationCap", label: profile.highest_qualification });
 

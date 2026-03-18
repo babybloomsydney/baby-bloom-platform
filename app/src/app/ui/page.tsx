@@ -37,7 +37,7 @@ export default async function UIShowcasePage() {
       const { data: nanny } = await admin
         .from("nannies")
         .select(
-          "id, hourly_rate_min, nanny_experience_years, total_experience_years, verification_tier, drivers_license, wwcc_verified, languages, role_types_preferred, ai_content"
+          "id, hourly_rate_min, nanny_experience_years, total_experience_years, verification_tier, verification_level, drivers_license, wwcc_verified, languages, role_types_preferred, ai_content"
         )
         .eq("user_id", nannyProfile.user_id)
         .single();
@@ -61,6 +61,7 @@ export default async function UIShowcasePage() {
           nanny_experience_years: nanny.nanny_experience_years,
           total_experience_years: nanny.total_experience_years,
           verification_tier: nanny.verification_tier ?? "tier1",
+          verification_level: nanny.verification_level ?? 0,
           drivers_license: nanny.drivers_license,
           vaccination_status: null,
           languages: nanny.languages,

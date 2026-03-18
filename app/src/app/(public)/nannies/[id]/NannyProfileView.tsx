@@ -147,15 +147,15 @@ function SectionCard({ title, children }: { title: string; children: React.React
 
 // ── Verification Badge ──
 
-function VerificationBadge({ tier }: { tier: string }) {
-  if (tier === "tier3") {
+function VerificationBadge({ level }: { level: number }) {
+  if (level >= 4) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700">
         <BadgeCheck className="h-3.5 w-3.5" /> Fully Verified
       </span>
     );
   }
-  if (tier === "tier2") {
+  if (level >= 3) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2.5 py-0.5 text-xs font-medium text-violet-700">
         <ShieldCheck className="h-3.5 w-3.5" /> ID Verified
@@ -171,6 +171,7 @@ interface NannyProfileViewProps {
   nanny: PublicNannyProfile;
   isOwner?: boolean;
   isParent?: boolean;
+  isGuest?: boolean;
   pendingRequestCount?: number;
   existingRequestStatus?: string | null;
   hasActivePlacement?: boolean;
@@ -181,6 +182,7 @@ export function NannyProfileView({
   nanny,
   isOwner = false,
   isParent = false,
+  isGuest = false,
   pendingRequestCount = 0,
   existingRequestStatus = null,
   hasActivePlacement = false,
@@ -244,7 +246,7 @@ export function NannyProfileView({
                   {nanny.suburb}
                 </p>
               </div>
-              <VerificationBadge tier={nanny.verification_tier} />
+              <VerificationBadge level={nanny.verification_level ?? 0} />
             </div>
             {tagline && (
               <div className="mt-3">
@@ -294,9 +296,9 @@ export function NannyProfileView({
                 Connect with {nanny.first_name}
               </Button>
             ) : (
-              <Link href="/login">
+              <Link href="/signup">
                 <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium">
-                  Connect with {nanny.first_name}
+                  Sign Up to Connect with {nanny.first_name}
                 </Button>
               </Link>
             )}
@@ -453,8 +455,8 @@ export function NannyProfileView({
                 {nanny.nationality && (
                   <div><span className="text-slate-500">Nationality</span><p className="font-medium text-slate-700">{nanny.nationality}</p></div>
                 )}
-                {nanny.languages && nanny.languages.length > 0 && (
-                  <div><span className="text-slate-500">Languages</span><p className="font-medium text-slate-700">{nanny.languages.join(", ")}</p></div>
+                {nanny.languages && nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").length > 0 && (
+                  <div><span className="text-slate-500">Languages</span><p className="font-medium text-slate-700">{nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}</p></div>
                 )}
                 <div>
                   <span className="text-slate-500">Age Range</span>
@@ -514,7 +516,21 @@ export function NannyProfileView({
         {/* Availability Tab */}
         {activeTab === "availability" && (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <AvailabilityGrid availability={nanny.availability} />
+            {isGuest ? (
+              <div className="text-center py-6 space-y-3">
+                <CalendarDays className="h-8 w-8 text-slate-300 mx-auto" />
+                <p className="text-sm text-slate-500">
+                  Sign up to see {nanny.first_name}&apos;s availability
+                </p>
+                <Link href="/signup">
+                  <Button size="sm" className="bg-violet-500 hover:bg-violet-600">
+                    Sign Up to See Availability
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <AvailabilityGrid availability={nanny.availability} />
+            )}
           </div>
         )}
       </div>

@@ -6,7 +6,7 @@ async function getNannies(): Promise<NannyCardData[]> {
 
   const { data: nannies, error } = await supabase
     .from("nannies")
-    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, under_3_experience_years, newborn_experience_years, verification_tier, drivers_license, vaccination_status, languages, role_types_preferred, ai_content")
+    .select("id, user_id, hourly_rate_min, nanny_experience_years, total_experience_years, under_3_experience_years, newborn_experience_years, verification_tier, verification_level, drivers_license, vaccination_status, languages, role_types_preferred, ai_content")
     .eq("profile_visible", true)
     .order("created_at", { ascending: false, nullsFirst: false })
     .limit(40);
@@ -57,6 +57,7 @@ async function getNannies(): Promise<NannyCardData[]> {
         newborn_experience_years: nanny.newborn_experience_years,
         highest_qualification: qualMap.get(nanny.id) || null,
         verification_tier: nanny.verification_tier,
+        verification_level: nanny.verification_level ?? 0,
         drivers_license: nanny.drivers_license,
         vaccination_status: nanny.vaccination_status,
         languages: nanny.languages,

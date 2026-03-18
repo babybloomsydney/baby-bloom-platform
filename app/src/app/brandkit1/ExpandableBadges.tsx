@@ -4,6 +4,16 @@ import { useState, useRef, useLayoutEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+/** Abbreviate qualification strings for badge display */
+export function abbreviateQualification(qual: string): string {
+  if (qual.startsWith("Bachelor")) return "Bachelors";
+  if (qual.startsWith("Diploma")) return "Diploma";
+  if (qual.startsWith("Certificate IV")) return "Cert IV";
+  if (qual.startsWith("Certificate III")) return "Cert III";
+  if (qual === "No Qualifications") return "";
+  return qual;
+}
+
 export interface TraitBadge {
   icon: React.ElementType;
   label: string;

@@ -275,7 +275,7 @@ export function PositionDetailView({
 
       {/* Tab bar */}
       <div className="flex items-center gap-2 mb-4">
-      <div className="flex flex-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <div className="flex flex-1 gap-0.5 rounded-lg bg-slate-100 p-0.5">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -285,10 +285,10 @@ export function PositionDetailView({
               setEditingField(null);
             }}
             className={cn(
-              "flex flex-1 items-center justify-center rounded-lg px-2 py-2.5 text-sm font-medium transition-colors",
+              "flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium transition-all",
               activeTab === tab.id
-                ? "bg-violet-600 text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                ? "bg-white text-slate-900 shadow-sm"
+                : "text-slate-400 hover:text-slate-600"
             )}
           >
             {tab.label}
