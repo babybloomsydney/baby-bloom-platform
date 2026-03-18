@@ -1,25 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { Search, MapPin, Loader2, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { QuickMatchResults } from "./QuickMatchResults";
-import type { NannyPreview } from "./NannyPreviewCard";
 
 interface SuburbEntry {
   suburb: string;
   postcode: string;
-}
-
-interface QuickMatchNanny extends NannyPreview {
-  logistical_score: number;
-  distance_km: number | null;
-  schedule_overlap_percent: number;
-}
-
-interface QuickMatchResponse {
-  totalMatches: number;
-  topNannies: QuickMatchNanny[];
 }
 
 // Matches parent form constants exactly
@@ -42,6 +30,8 @@ const TIME_BLOCKS = [
 ];
 
 export function QuickMatch() {
+  const router = useRouter();
+
   // Suburb autocomplete state
   const [suburbs, setSuburbs] = useState<SuburbEntry[]>([]);
   const [query, setQuery] = useState("");
@@ -55,11 +45,61 @@ export function QuickMatch() {
   const [availability, setAvailability] = useState<Record<string, string[]>>({});
   const timesRef = useRef<HTMLDivElement>(null);
 
-  // Results state
+  // Search state
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<QuickMatchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState<string | null>(null);
+
+  // Typewriter placeholder
+  const PLACEHOLDER_SUBURBS = ["Vaucluse", "Mosman", "Double Bay", "Rose Bay", "Woollahra", "Neutral Bay", "Bellevue Hill", "Cremorne", "Paddington", "Manly", "Bondi", "Balmoral", "Darling Point", "Palm Beach", "Bronte", "Avalon", "Coogee", "Randwick", "Clovelly", "Maroubra"];
+  const [typedPlaceholder, setTypedPlaceholder] = useState("");
+  const [isInputFocused, setIsInputFocused] = useState(false);
+  const typewriterRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isInputFocused || query.length > 0) return;
+
+    let suburbIdx = 0;
+    let charIdx = 0;
+    let deleting = false;
+    let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const tick = () => {
+      const currentSuburb = PLACEHOLDER_SUBURBS[suburbIdx];
+
+      if (!deleting) {
+        charIdx++;
+        setTypedPlaceholder(currentSuburb.slice(0, charIdx));
+        if (charIdx === currentSuburb.length) {
+          // Pause at full word, then start deleting
+          pauseTimer = setTimeout(() => {
+            deleting = true;
+            typewriterRef.current = setTimeout(tick, 40);
+          }, 1800);
+          return;
+        }
+        typewriterRef.current = setTimeout(tick, 80 + Math.random() * 40);
+      } else {
+        charIdx--;
+        setTypedPlaceholder(currentSuburb.slice(0, charIdx));
+        if (charIdx === 0) {
+          deleting = false;
+          suburbIdx = (suburbIdx + 1) % PLACEHOLDER_SUBURBS.length;
+          typewriterRef.current = setTimeout(tick, 400);
+          return;
+        }
+        typewriterRef.current = setTimeout(tick, 40);
+      }
+    };
+
+    // Initial delay before starting
+    typewriterRef.current = setTimeout(tick, 600);
+
+    return () => {
+      if (typewriterRef.current) clearTimeout(typewriterRef.current);
+      if (pauseTimer) clearTimeout(pauseTimer);
+    };
+  }, [isInputFocused, query.length]);
 
   // Load suburbs on mount
   useEffect(() => {
@@ -152,55 +192,23 @@ export function QuickMatch() {
 
   const canSearch = selectedSuburb !== null && allDaysHaveBrackets;
 
-  const handleSearch = async () => {
+  const handleSearch = () => {
     if (!canSearch || !selectedSuburb) return;
 
     setLoading(true);
     setError(null);
-    setResults(null);
 
-    try {
-      const res = await fetch("/api/public/quick-match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          suburb: selectedSuburb.suburb,
-          availability,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to fetch matches");
-
-      const data: QuickMatchResponse = await res.json();
-      setResults(data);
-
-      // Store in sessionStorage for advanced matchmaking flow
-      sessionStorage.setItem(
-        "bb-quick-match",
-        JSON.stringify({
-          suburb: selectedSuburb.suburb,
-          postcode: selectedSuburb.postcode,
-          availability,
-        })
-      );
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Show results view
-  if (results) {
-    return (
-      <QuickMatchResults
-        suburb={selectedSuburb!.suburb}
-        totalMatches={results.totalMatches}
-        topNannies={results.topNannies}
-        onReset={() => setResults(null)}
-      />
+    sessionStorage.setItem(
+      "bb-quick-match",
+      JSON.stringify({
+        suburb: selectedSuburb.suburb,
+        postcode: selectedSuburb.postcode,
+        availability,
+      })
     );
-  }
+
+    router.push("/results");
+  };
 
   return (
     <section id="quick-match" className="relative overflow-hidden">
@@ -224,19 +232,25 @@ export function QuickMatch() {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-slate-200/50 p-6 md:p-8 space-y-5">
             {/* Suburb input */}
             <div>
-              <label className="text-sm font-medium text-slate-700 mb-1.5 block">
-                Suburb
-              </label>
               <div className="relative" ref={dropdownRef}>
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
+                {/* Typewriter overlay — only visible when input is empty and not focused */}
+                {!isInputFocused && query.length === 0 && (
+                  <span className="absolute left-10 top-1/2 -translate-y-1/2 text-sm text-slate-400 pointer-events-none select-none">
+                    {typedPlaceholder}
+                    <span className="inline-block w-[2px] h-4 bg-slate-400 ml-[1px] align-middle" style={{ animation: "blink 1s step-end infinite" }} />
+                  </span>
+                )}
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => handleSuburbChange(e.target.value)}
                   onFocus={() => {
+                    setIsInputFocused(true);
                     if (filtered.length > 0) setShowDropdown(true);
                   }}
-                  placeholder="e.g. Bondi, Surry Hills, Manly..."
+                  onBlur={() => setIsInputFocused(false)}
+                  placeholder={isInputFocused ? "Search suburb or postcode..." : ""}
                   className="w-full h-11 pl-10 pr-4 rounded-lg border border-slate-200 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-colors"
                 />
                 {showDropdown && filtered.length > 0 && (
