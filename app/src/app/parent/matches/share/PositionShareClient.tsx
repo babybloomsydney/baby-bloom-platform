@@ -444,9 +444,9 @@ export function PositionShareClient({ initialData }: Props) {
   // ── Main render ──
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden">
+    <div className="mx-auto max-w-2xl overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 text-center">Help other parents and earn Free priority matchmaking</h1>
+        <h1 className="text-2xl font-bold text-slate-800 text-center">Earn priority matchmaking</h1>
         {isAccessGranted ? (
           <p className="text-sm text-green-600 mt-1 font-medium flex items-center justify-center gap-1.5">
             <ShieldCheck className="h-4 w-4" />
@@ -454,9 +454,8 @@ export function PositionShareClient({ initialData }: Props) {
           </p>
         ) : (
           <div className="text-sm text-slate-500 mt-1 space-y-2 text-center">
-            <p>By sharing your childcare position, you help us attract more incredible caregivers so we can support more families like yours.</p>
-            <p>And as a thank you for paying it forward, we&apos;ll find connect you with tailored matches, completely free!</p>
-            <p>Once shared, we&apos;ll immediately start reaching out to our private network of fully verified, WWCC-approved nannies.</p>
+            <p>Earn Free priority matchmaking by helping us to spread the word</p>
+            
           </div>
         )}
       </div>

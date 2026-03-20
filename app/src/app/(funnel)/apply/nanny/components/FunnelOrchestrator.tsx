@@ -276,74 +276,9 @@ export function FunnelOrchestrator() {
     }
   };
 
-  const isDev = process.env.NODE_ENV === 'development';
-
   return (
     <>
       {renderPage()}
-      {isDev && (
-        <div style={{
-          position: 'fixed',
-          bottom: 16,
-          left: 16,
-          right: 16,
-          display: 'flex',
-          justifyContent: 'space-between',
-          pointerEvents: 'none',
-          zIndex: 9999,
-        }}>
-          <button
-            onClick={goBack}
-            disabled={state.currentPage === 0}
-            style={{
-              pointerEvents: 'auto',
-              padding: '6px 14px',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              background: state.currentPage === 0 ? '#555' : '#1e1e1e',
-              color: '#0f0',
-              border: '1px solid #0f0',
-              borderRadius: 4,
-              cursor: state.currentPage === 0 ? 'not-allowed' : 'pointer',
-              opacity: 0.8,
-            }}
-          >
-            ← {state.currentPage}
-          </button>
-          <span style={{
-            pointerEvents: 'none',
-            fontSize: 11,
-            fontFamily: 'monospace',
-            color: '#0f0',
-            background: '#1e1e1e',
-            border: '1px solid #0f0',
-            borderRadius: 4,
-            padding: '6px 10px',
-            opacity: 0.8,
-            alignSelf: 'center',
-          }}>
-            {currentPageDef?.stage} · {currentPageDef?.id} · {state.currentPage + 1}/{PAGES.length}
-          </span>
-          <button
-            onClick={goNext}
-            disabled={state.currentPage === PAGES.length - 1}
-            style={{
-              pointerEvents: 'auto',
-              padding: '6px 14px',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              background: state.currentPage === PAGES.length - 1 ? '#555' : '#1e1e1e',
-              color: '#0f0',
-              border: '1px solid #0f0',
-              borderRadius: 4,
-              cursor: state.currentPage === PAGES.length - 1 ? 'not-allowed' : 'pointer',
-              opacity: 0.8,
-            }}
-          >
-            {state.currentPage + 2} →
-          </button>
-        </div>
-      )}
     </>
   );
 }

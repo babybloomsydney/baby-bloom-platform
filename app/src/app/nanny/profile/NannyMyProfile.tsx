@@ -452,13 +452,19 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
   // Badge pills
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (profile.total_experience_years && profile.total_experience_years > 0)
-    traitBadges.push({ icon: "Clock", label: `${profile.total_experience_years}yrs exp`, primary: true });
+    traitBadges.push({ icon: "Clock", label: `${profile.total_experience_years}${profile.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
   if (profile.under_3_experience_years && profile.under_3_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${profile.under_3_experience_years}yrs with u3s`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `Toddlers, ${profile.under_3_experience_years}${profile.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
   if (profile.newborn_experience_years && profile.newborn_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${profile.newborn_experience_years}${profile.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
-  if (profile.highest_qualification)
-    traitBadges.push({ icon: "GraduationCap", label: profile.highest_qualification });
+    traitBadges.push({ icon: "Baby", label: `Babies, ${profile.newborn_experience_years}${profile.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
+  if (profile.highest_qualification) {
+    let qual = profile.highest_qualification;
+    if (qual.startsWith("Bachelor")) qual = "Bachelors";
+    else if (qual.startsWith("Diploma")) qual = "Diploma";
+    else if (qual.startsWith("Certificate IV")) qual = "Cert IV";
+    else if (qual.startsWith("Certificate III")) qual = "Cert III";
+    traitBadges.push({ icon: "GraduationCap", label: qual });
+  }
 
   // Stat boxes
   const statBoxes: { value: number; label: string }[] = [];
@@ -876,22 +882,22 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
               <h1 className="text-2xl font-bold text-slate-900">
                 {profile.first_name.charAt(0).toUpperCase() + profile.first_name.slice(1)}{age ? `, ${age}` : ""}
               </h1>
-              <div className="relative mt-0.5">
-                <div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <div className="min-w-0 pr-2">
                   {profile.nationality && (
                     <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                      <Globe className="h-3.5 w-3.5" /> {profile.nationality}
+                      <Globe className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{profile.nationality}</span>
                     </p>
                   )}
                   {displayLanguages.length > 0 && (
                     <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
-                      <Languages className="h-3 w-3" />
-                      {displayLanguages.join(", ")}
+                      <Languages className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{displayLanguages.join(", ")}</span>
                     </p>
                   )}
                   {profile.suburb && (
                     <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                      <MapPin className="h-3.5 w-3.5" /> {profile.suburb}
+                      <MapPin className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{profile.suburb}</span>
                     </p>
                   )}
                 </div>
@@ -900,17 +906,17 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
                 {additionalPhotos.length > 0 && !editMode && (
                   <button
                     onClick={() => { setPhotoViewerIndex(0); setPhotoViewerOpen(true); }}
-                    className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group mr-12"
+                    className="relative shrink-0 w-[84px] h-[48px] cursor-pointer group"
                   >
                     {additionalPhotos.slice(0, 3).map((url, i) => {
-                      const rotations = ["-rotate-[20deg]", "rotate-0", "rotate-[20deg]"];
-                      const offsets = ["left-0", "left-3", "left-6"];
+                      const rotations = ["-rotate-[15deg]", "rotate-0", "rotate-[15deg]"];
+                      const offsets = ["left-0", "left-4", "left-8"];
                       const zIndexes = ["z-[3]", "z-[2]", "z-[1]"];
                       return (
                         <div
                           key={i}
                           className={cn(
-                            "absolute top-1/2 -translate-y-1/2 h-[85%] aspect-square overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
+                            "absolute top-0 h-11 w-11 overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
                             rotations[i], offsets[i], zIndexes[i],
                           )}
                         >
@@ -972,20 +978,20 @@ export function NannyMyProfile({ profile }: { profile: NannyProfile }) {
 
           {/* Badges */}
           {traitBadges.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex flex-wrap gap-1 sm:gap-1.5">
               {traitBadges.map((badge, i) => {
                 const Icon = BADGE_ICONS[badge.icon] || Check;
                 return (
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      "inline-flex items-center tracking-tight whitespace-nowrap shrink-0 gap-0.5 sm:gap-1.5 rounded-full px-1.5 sm:px-2.5 py-0.5 sm:py-1 text-[9px] sm:text-[10px] md:text-xs font-medium",
                       badge.primary
                         ? "bg-violet-50 text-violet-700 border border-violet-200"
                         : "bg-slate-50 text-slate-600 border border-slate-200"
                     )}
                   >
-                    <Icon className="h-3 w-3" /> {badge.label}
+                    <Icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> {badge.label}
                   </span>
                 );
               })}

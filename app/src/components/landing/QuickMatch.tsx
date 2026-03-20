@@ -23,10 +23,10 @@ const DAY_KEY: Record<string, string> = {
 };
 
 const TIME_BLOCKS = [
-  { key: "morning", label: "Morning", sublabel: "6am – 10am" },
-  { key: "midday", label: "Midday", sublabel: "10am – 2pm" },
-  { key: "afternoon", label: "Afternoon", sublabel: "2pm – 6pm" },
-  { key: "evening", label: "Evening", sublabel: "6pm – 10pm" },
+  { key: "morning", label: "Morning", sublabel: "6am - 10am", short: "6am-10am" },
+  { key: "midday", label: "Midday", sublabel: "10am - 2pm", short: "10am-2pm" },
+  { key: "afternoon", label: "Afternoon", sublabel: "2pm - 6pm", short: "2pm-6pm" },
+  { key: "evening", label: "Evening", sublabel: "6pm - 10pm", short: "6pm-10pm" },
 ];
 
 export function QuickMatch() {
@@ -273,7 +273,7 @@ export function QuickMatch() {
             {/* Day + time selection — matches parent form pattern */}
             {selectedSuburb && (
             <div className="space-y-4">
-              <label className="text-sm font-medium text-slate-700 block">
+              <label className="text-sm font-medium text-slate-700 block text-center">
                 Which days do you need childcare?
               </label>
 
@@ -285,7 +285,7 @@ export function QuickMatch() {
                       key={day}
                       type="button"
                       onClick={() => toggleDay(day)}
-                      className={`px-2 py-2.5 rounded-lg border text-sm font-medium text-center transition-all duration-150 ${
+                      className={`px-2 py-2.5 rounded-lg border text-sm font-medium text-center transition-all duration-150 touch-manipulation ${
                         selectedDays.includes(day)
                           ? "bg-violet-500 text-white border-violet-500"
                           : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
@@ -301,7 +301,7 @@ export function QuickMatch() {
                       key={day}
                       type="button"
                       onClick={() => toggleDay(day)}
-                      className={`px-2 py-2.5 rounded-lg border text-sm font-medium text-center transition-all duration-150 ${
+                      className={`px-2 py-2.5 rounded-lg border text-sm font-medium text-center transition-all duration-150 touch-manipulation ${
                         selectedDays.includes(day)
                           ? "bg-violet-500 text-white border-violet-500"
                           : "bg-white text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900"
@@ -320,19 +320,22 @@ export function QuickMatch() {
                     When during the day?
                   </p>
 
-                  <div className="overflow-x-auto">
-                    <div className="min-w-[320px]">
+                  <div className="w-full overflow-hidden">
+                    <div className="w-full">
                       {/* Column headers */}
-                      <div className="grid grid-cols-[80px_repeat(4,1fr)] gap-1 mb-1">
+                      <div className="grid grid-cols-[38px_repeat(4,1fr)] sm:grid-cols-[60px_repeat(4,1fr)] md:grid-cols-[80px_repeat(4,1fr)] gap-1 sm:gap-1.5 mb-1.5">
                         <div />
                         {TIME_BLOCKS.map((block) => (
-                          <div key={block.key} className="text-center">
-                            <p className="text-[11px] font-semibold text-slate-600">
+                          <div key={block.key} className="text-center flex flex-col justify-end">
+                            <p className="text-[10px] min-[400px]:text-[11px] font-semibold text-slate-600 tracking-tight">
                               {block.label}
                             </p>
-                            <p className="text-[9px] text-slate-400">
+                            <span className="hidden sm:block text-[9px] text-slate-400 mt-0.5 whitespace-nowrap tracking-wide">
                               {block.sublabel}
-                            </p>
+                            </span>
+                            <span className="block sm:hidden text-[8px] min-[400px]:text-[9px] text-slate-400 mt-0.5 whitespace-nowrap tracking-tighter">
+                              {block.short}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -343,10 +346,10 @@ export function QuickMatch() {
                         return (
                           <div
                             key={day}
-                            className="grid grid-cols-[80px_repeat(4,1fr)] gap-1 mb-1"
+                            className="grid grid-cols-[38px_repeat(4,1fr)] sm:grid-cols-[60px_repeat(4,1fr)] md:grid-cols-[80px_repeat(4,1fr)] gap-1 sm:gap-1.5 mb-1"
                           >
                             <div className="flex items-center">
-                              <p className="text-xs font-semibold text-slate-600">
+                              <p className="text-[11px] sm:text-xs font-semibold text-slate-600 tracking-tight">
                                 {DAY_SHORT[day]}
                               </p>
                             </div>
@@ -357,10 +360,10 @@ export function QuickMatch() {
                                   key={block.key}
                                   type="button"
                                   onClick={() => toggleTimeBlock(day, block.key)}
-                                  className={`h-9 rounded-md border text-xs font-medium transition-colors ${
+                                  className={`h-8 sm:h-9 rounded-md border text-xs font-medium transition-colors touch-manipulation ${
                                     isSelected
-                                      ? "bg-violet-500 text-white border-violet-500"
-                                      : "bg-white text-slate-400 border-slate-200 hover:border-violet-400"
+                                      ? "bg-violet-500 text-white border-violet-500 shadow-sm"
+                                      : "bg-white text-slate-400 border-slate-200 hover:border-violet-400 hover:bg-slate-50"
                                   }`}
                                 >
                                   {isSelected ? "\u2713" : ""}

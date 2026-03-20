@@ -19,10 +19,10 @@ export interface NannyPreview {
 }
 
 const QUAL_ABBREV: Record<string, string> = {
-  "Bachelor of Early Childhood Education (Or Equivalent)": "Bachelor ECE",
-  "Diploma of Early Childhood Education and Care": "Diploma ECEC",
-  "Certificate IV in Education Support": "Cert IV Ed Support",
-  "Certificate III in Early Childhood Education and Care": "Cert III ECEC",
+  "Bachelor of Early Childhood Education (Or Equivalent)": "Bachelors",
+  "Diploma of Early Childhood Education and Care": "Diploma",
+  "Certificate IV in Education Support": "Cert IV",
+  "Certificate III in Early Childhood Education and Care": "Cert III",
 };
 
 interface NannyPreviewCardProps {
@@ -37,18 +37,18 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
 
   const traitBadges: { icon: typeof Clock; label: string; primary: boolean }[] = [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0)
-    traitBadges.push({ icon: Clock, label: `${nanny.total_experience_years}yrs exp`, primary: true });
+    traitBadges.push({ icon: Clock, label: `${nanny.total_experience_years}${nanny.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0)
-    traitBadges.push({ icon: Baby, label: `${nanny.under_3_experience_years}yrs with u3s`, primary: true });
+    traitBadges.push({ icon: Baby, label: `Toddlers, ${nanny.under_3_experience_years}${nanny.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0)
-    traitBadges.push({ icon: Baby, label: `${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
+    traitBadges.push({ icon: Baby, label: `Babies, ${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
   if (nanny.highest_qualification)
     traitBadges.push({ icon: GraduationCap, label: QUAL_ABBREV[nanny.highest_qualification] || nanny.highest_qualification, primary: false });
 
   return (
     <Link href={`${linkBase}/${nanny.id}`} className="block group">
       <Card className="overflow-hidden transition-all hover:shadow-lg hover:border-violet-200">
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           <div className="flex items-start gap-4">
             {/* Profile picture */}
             <div className="relative shrink-0">
@@ -96,7 +96,7 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
               </div>
 
               {nanny.ai_headline && (
-                <p className="mt-1.5 text-xs text-slate-500 italic">
+                <p className="mt-1 sm:mt-1.5 text-xs text-slate-500 italic line-clamp-2 sm:line-clamp-3">
                   {nanny.ai_headline.replace(/<[^>]*>/g, "")}
                 </p>
               )}
@@ -105,17 +105,17 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
 
           {/* Badges */}
           {traitBadges.length > 0 && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
+            <div className="mt-1.5 sm:mt-2.5 flex flex-wrap gap-1 sm:gap-1.5">
               {traitBadges.map((badge, i) => (
                 <span
                   key={i}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  className={`inline-flex items-center gap-0.5 sm:gap-1.5 rounded-full px-1.5 sm:px-2.5 py-0.5 sm:py-1 text-[9px] sm:text-[10px] md:text-xs font-medium tracking-tight whitespace-nowrap ${
                     badge.primary
                       ? "bg-violet-50 text-violet-700 border border-violet-200"
                       : "bg-slate-50 text-slate-600 border border-slate-200"
                   }`}
                 >
-                  <badge.icon className="h-3 w-3" /> {badge.label}
+                  <badge.icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> {badge.label}
                 </span>
               ))}
             </div>

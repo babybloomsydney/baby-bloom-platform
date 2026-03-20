@@ -90,7 +90,7 @@ export function NannyCard({ nanny, showRequestButton = false, onRequestInterview
         )}
 
         {nanny.ai_headline && (
-          <p className="mt-2 text-xs text-slate-500 italic line-clamp-2">
+          <p className="mt-2 text-xs text-slate-500 italic line-clamp-3">
             {nanny.ai_headline.replace(/<[^>]*>/g, "")}
           </p>
         )}

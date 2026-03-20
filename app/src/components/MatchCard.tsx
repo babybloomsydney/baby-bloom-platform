@@ -131,7 +131,7 @@ export function MatchCard({ match, actions }: MatchCardProps) {
           className={`absolute inset-0 px-5 pt-4 pb-3 flex flex-col transition-transform duration-300 ease-in-out ${getTranslateClass("overview", view)}`}
         >
           {headline && (
-            <p className="text-sm text-slate-400 italic mb-4 leading-relaxed">
+            <p className="text-sm text-slate-400 italic mb-4 leading-relaxed line-clamp-3">
               {headline.replace(/<[^>]*>/g, "")}
             </p>
           )}

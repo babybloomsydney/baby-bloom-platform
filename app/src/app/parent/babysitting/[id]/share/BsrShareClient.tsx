@@ -443,9 +443,9 @@ export function BsrShareClient({ initialData }: Props) {
   // ── Main render ──
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden">
+    <div className="mx-auto max-w-2xl overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800 text-center">Help other parents and earn a Free placement!</h1>
+        <h1 className="text-2xl font-bold text-slate-800 text-center">Earn your babysitting match</h1>
         {isAccessGranted ? (
           <p className="text-sm text-green-600 mt-1 font-medium flex items-center justify-center gap-1.5">
             <ShieldCheck className="h-4 w-4" />
@@ -455,7 +455,6 @@ export function BsrShareClient({ initialData }: Props) {
           <div className="text-sm text-slate-500 mt-1 space-y-2 text-center">
             <p>By sharing your babysitting position, you help us attract more incredible caregivers so we can support more families like yours.</p>
             <p>And as a thank you for paying it forward, we&apos;ll waive your placement fee!</p>
-            <p>Once shared, we&apos;ll immediately start reaching out to our private network of fully verified, WWCC-approved babysitters.</p>
           </div>
         )}
       </div>

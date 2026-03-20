@@ -1548,7 +1548,7 @@ function NannyMiniPopup({
 
           {/* AI Headline */}
           {nanny.aiHeadline && (
-            <p className="text-sm text-slate-500 italic line-clamp-2">
+            <p className="text-sm text-slate-500 italic line-clamp-3">
               {nanny.aiHeadline.replace(/<[^>]*>/g, "")}
             </p>
           )}

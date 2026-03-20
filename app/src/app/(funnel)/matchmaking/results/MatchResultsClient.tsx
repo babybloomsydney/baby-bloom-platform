@@ -13,6 +13,12 @@ import {
 } from "lucide-react";
 import type { MatchResult } from "@/lib/matching/types";
 
+/* ── Fixed card width ──
+   340px ≈ iPhone SE/mini viewport minus padding.
+   Breakpoints: 2 cards @ 752px, 3 cards @ 1100px, 4 cards @ 1448px
+   (340 * n + 12 * (n-1) gaps + 48px page padding) */
+const CARD_W = 345;
+
 interface MatchResultsClientProps {
   matches: MatchResult[]; // top 4
   totalEligible: number;
@@ -41,7 +47,7 @@ export function MatchResultsClient({
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, []);
 
-  // Scroll tracking
+  // Scroll tracking (mobile carousel only)
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -78,7 +84,7 @@ export function MatchResultsClient({
   const signupUrl = `/matchmaking/signup?lead=${leadId}`;
 
   return (
-    <div className="h-[100dvh] flex flex-col overflow-hidden relative bg-white">
+    <div className="min-h-[100dvh] flex flex-col relative bg-white">
       {/* Decorative blobs — Baby Bloom style */}
       <div className="absolute top-[-60px] right-[-40px] w-64 h-64 bg-violet-100 rounded-full blur-3xl opacity-50 pointer-events-none" />
       <div className="absolute bottom-[10%] left-[-60px] w-48 h-48 bg-violet-200 rounded-full blur-3xl opacity-30 pointer-events-none" />
@@ -99,12 +105,10 @@ export function MatchResultsClient({
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
           Your top matches
         </h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Swipe to explore &middot; Tap for full profile
-        </p>
+        
       </div>
 
-      {/* ═══ Zone 2: Carousel ═══ */}
+      {/* ═══ Zone 2: Cards ═══ */}
       <div
         className="relative flex-1 flex flex-col min-h-0 transition-all duration-600 ease-out"
         style={{
@@ -112,27 +116,27 @@ export function MatchResultsClient({
           transform: phase >= 2 ? "translateY(0)" : "translateY(12px)",
         }}
       >
+        {/* Mobile: horizontal scroll carousel */}
         <div
           ref={scrollRef}
-          className="flex-1 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-smooth items-stretch px-6 py-2 hide-scrollbar"
+          className="flex-1 flex gap-3 overflow-x-auto snap-x snap-mandatory scroll-smooth items-stretch py-2 hide-scrollbar md:hidden"
+          style={{ paddingInline: `max(16px, calc((100% - ${CARD_W}px) / 2))` }}
         >
           {visibleMatches.map((match) => (
             <Link
               key={match.nannyId}
               href={`/nannies/${match.nanny.id}`}
               className="block shrink-0 snap-center"
-              style={{ width: "calc(100vw - 64px)" }}
+              style={{ width: `${CARD_W}px` }}
             >
               <PublicMatchCard match={match} />
             </Link>
           ))}
-
-          {/* Blurred 4th card */}
           {blurredMatch && (
             <Link
               href={signupUrl}
               className="block shrink-0 snap-center"
-              style={{ width: "calc(100vw - 64px)" }}
+              style={{ width: `${CARD_W}px` }}
             >
               <div className="relative h-full">
                 <div className="blur-[6px] pointer-events-none select-none h-full">
@@ -152,12 +156,51 @@ export function MatchResultsClient({
           )}
         </div>
 
-        {/* Desktop arrows */}
+        {/* Desktop: fixed-width cards in a centered flex row */}
+        <div
+          className="hidden md:flex flex-1 flex-nowrap justify-center items-stretch gap-3 py-2 overflow-x-auto hide-scrollbar"
+          style={{ paddingInline: `max(16px, calc((100% - ${CARD_W}px) / 2))` }}
+        >
+          {visibleMatches.map((match) => (
+            <Link
+              key={match.nannyId}
+              href={`/nannies/${match.nanny.id}`}
+              className="block shrink-0"
+              style={{ width: `${CARD_W}px` }}
+            >
+              <PublicMatchCard match={match} />
+            </Link>
+          ))}
+          {blurredMatch && (
+            <Link
+              href={signupUrl}
+              className="block shrink-0"
+              style={{ width: `${CARD_W}px` }}
+            >
+              <div className="relative h-full">
+                <div className="blur-[6px] pointer-events-none select-none h-full">
+                  <PublicMatchCard match={blurredMatch} />
+                </div>
+                <div className="absolute inset-0 bg-white/60 rounded-2xl flex flex-col items-center justify-center">
+                  <p className="text-4xl font-bold text-violet-600">+{moreCount}</p>
+                  <p className="text-sm font-medium text-slate-700 mt-1">
+                    more {moreCount === 1 ? "nanny" : "nannies"} matched
+                  </p>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Sign up to see all your matches
+                  </p>
+                </div>
+              </div>
+            </Link>
+          )}
+        </div>
+
+        {/* Mobile carousel arrows */}
         {totalSlides > 1 && (
           <>
             <button
               onClick={() => scrollTo(activeIndex - 1)}
-              className={`absolute left-2 top-1/2 -translate-y-1/2 hidden sm:flex items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
+              className={`absolute left-2 top-1/2 -translate-y-1/2 flex md:hidden items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
                 activeIndex === 0 ? "opacity-0 pointer-events-none" : "opacity-100"
               }`}
             >
@@ -165,7 +208,7 @@ export function MatchResultsClient({
             </button>
             <button
               onClick={() => scrollTo(activeIndex + 1)}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 hidden sm:flex items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
+              className={`absolute right-2 top-1/2 -translate-y-1/2 flex md:hidden items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
                 activeIndex >= totalSlides - 1 ? "opacity-0 pointer-events-none" : "opacity-100"
               }`}
             >
@@ -174,8 +217,8 @@ export function MatchResultsClient({
           </>
         )}
 
-        {/* Dots */}
-        <div className="shrink-0 flex justify-center gap-1.5 py-2">
+        {/* Dots — mobile only */}
+        <div className="shrink-0 flex md:hidden justify-center gap-1.5 py-2">
           {Array.from({ length: totalSlides }).map((_, i) => (
             <button
               key={i}
@@ -192,7 +235,7 @@ export function MatchResultsClient({
 
       {/* ═══ Zone 3: CTA ═══ */}
       <div
-        className="relative shrink-0 px-4 pb-6 pt-1 transition-all duration-600 ease-out"
+        className="relative shrink-0 px-4 pb-6 pt-1 transition-all duration-600 ease-out max-w-2xl mx-auto w-full"
         style={{
           opacity: phase >= 3 ? 1 : 0,
           transform: phase >= 3 ? "translateY(0)" : "translateY(16px)",
@@ -207,24 +250,22 @@ export function MatchResultsClient({
             </span>
             <span className="inline-flex items-center gap-1 text-xs text-slate-500">
               <CheckCircle className="w-3.5 h-3.5 text-violet-500" />
-              200+ families
+              Expertly vetted
             </span>
           </div>
 
-          <p className="text-sm text-slate-600 leading-relaxed mb-3">
-            Sign up and we&apos;ll connect you with your top nannies automatically
-          </p>
+          
 
           <Link
             href={signupUrl}
             className="group flex items-center justify-center gap-2 h-12 w-full rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-semibold text-sm transition-all active:scale-[0.98] shadow-md shadow-violet-200"
           >
-            Connect with my top nannies
+            Connect with best matches
             <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
 
           <p className="text-xs text-slate-400 mt-2.5">
-            Free to join &middot; No commitment required
+            Free to join &middot; Free to match
           </p>
         </div>
       </div>

@@ -1,3 +1,8 @@
+// ═══════════════════════════════════════════════════════════════════
+// DEPRECATED — This is the OLD nanny profile view.
+// The NEW version is: src/app/parent/browse/[id]/ParentNannyProfileView.tsx
+// ═══════════════════════════════════════════════════════════════════
+
 "use client";
 
 import { useState } from "react";

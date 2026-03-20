@@ -65,25 +65,25 @@ export function BrowsePreview({ nannies }: BrowsePreviewProps) {
         </div>
 
         {/* Buttons — visible on mobile below cards, hidden on lg */}
-        <div className="mt-8 flex flex-row gap-3 justify-center lg:hidden">
+        <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-center items-center gap-4 lg:hidden">
           <Button
             size="lg"
             asChild
-            className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8"
+            className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 w-full sm:w-auto max-w-[280px] sm:max-w-none"
           >
             <a href="#quick-match">
               Find your Nanny
             </a>
           </Button>
           <Button
-            size="lg"
+            size="sm"
             variant="outline"
             asChild
-            className="text-base h-12 px-8 border-slate-300 text-slate-700 hover:bg-slate-100"
+            className="text-sm h-10 px-5 sm:text-base sm:h-12 sm:px-8 border-slate-300 text-slate-700 hover:bg-slate-100"
           >
             <Link href="/nannies">
               Browse all nannies
-              <ArrowRight className="ml-2 h-4 w-4" />
+              <ArrowRight className="ml-1.5 sm:ml-2 h-4 w-4" />
             </Link>
           </Button>
         </div>

@@ -24,17 +24,17 @@ function computeAge(dob: string | null | undefined): number | null {
 function buildBadges(nanny: NannyCardData): TraitBadge[] {
   const badges: TraitBadge[] = [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0) {
-    badges.push({ icon: Clock, label: `${nanny.total_experience_years}yrs exp`, variant: "violet" });
+    badges.push({ icon: Clock, label: `${nanny.total_experience_years}${nanny.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, variant: "violet" });
   }
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${nanny.under_3_experience_years}yrs with u3s`, variant: "violet" });
+    badges.push({ icon: Baby, label: `Toddlers, ${nanny.under_3_experience_years}${nanny.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, variant: "violet" });
   }
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, variant: "violet" });
+    badges.push({ icon: Baby, label: `Babies, ${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, variant: "violet" });
   }
   if (nanny.highest_qualification) {
     const abbr = abbreviateQualification(nanny.highest_qualification);
-    if (abbr) badges.push({ icon: GraduationCap, label: abbr, variant: "slate" });
+    if (abbr) badges.push({ icon: GraduationCap, label: abbr, variant: "slate", className: "hidden md:inline-flex" });
   }
   return badges;
 }
@@ -73,28 +73,22 @@ export function NannyCardBK({ nanny, linkBase = "/nannies" }: NannyCardBKProps) 
 
             {/* Name, location */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <h3 className="font-semibold text-lg text-slate-900 truncate group-hover:text-violet-600 transition-colors">
-                      {nanny.first_name.charAt(0).toUpperCase() + nanny.first_name.slice(1)}{age ? `, ${age}` : ""}
-                    </h3>
-                  </div>
-                  <div className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                    <MapPin className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">{nanny.suburb}</span>
-                  </div>
-                </div>
+              <h3 className="font-semibold text-lg text-slate-900 truncate group-hover:text-violet-600 transition-colors">
+                {nanny.first_name.charAt(0).toUpperCase() + nanny.first_name.slice(1)}{age ? <span className="text-sm font-medium text-slate-400">, {age}</span> : ""}
+              </h3>
+              <div className="flex items-center gap-1.5 text-sm text-slate-500 mt-0.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{nanny.suburb}</span>
               </div>
-
-              {/* AI headline */}
-              {nanny.ai_headline && (
-                <p className="mt-2 text-xs text-slate-500 italic line-clamp-2">
-                  {nanny.ai_headline.replace(/<[^>]*>/g, "")}
-                </p>
-              )}
             </div>
           </div>
+
+          {/* AI headline — full width below photo row */}
+          {nanny.ai_headline && (
+            <p className="mt-2 text-[11px] text-slate-500 italic line-clamp-3 leading-relaxed">
+              {nanny.ai_headline.replace(/<[^>]*>/g, "")}
+            </p>
+          )}
 
           <ExpandableBadges badges={buildBadges(nanny)} preventLinkNavigation />
         </div>

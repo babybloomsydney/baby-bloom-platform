@@ -10,7 +10,13 @@ import {
   Sparkles,
   Users,
   Loader2,
+  Clock,
+  MapPin,
+  GraduationCap,
+  CalendarDays,
+  User,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { type NannyCardData, EmptyNannyState } from "@/components/NannyCard";
 import { NannyCardBK } from "@/app/brandkit1/NannyCardBK";
 import { NannyMatchCardBK } from "@/app/brandkit1/NannyMatchCardBK";
@@ -24,21 +30,22 @@ import type { MatchResult } from "@/lib/matching/types";
 
 const PAGE_SIZE = 10;
 
-const ALL_SORT_OPTIONS = [
-  { key: "newest" as const, label: "Latest" },
-  { key: "age" as const, label: "Age" },
-  { key: "qualification" as const, label: "Qualification" },
-];
-
-const MATCH_SORT_OPTIONS = [
-  { key: "score" as const, label: "Best Match" },
-  { key: "distance" as const, label: "Distance" },
-  { key: "experience" as const, label: "Experience" },
-  { key: "qualification" as const, label: "Qualifications" },
-];
-
-type AllSortKey = "newest" | "age" | "qualification";
+type AllSortKey = "newest" | "experience" | "qualification";
 type MatchSortKey = "score" | "distance" | "experience" | "qualification";
+
+const ALL_SORT_OPTIONS: { key: AllSortKey; label: string; icon: LucideIcon }[] = [
+  { key: "newest", label: "Latest", icon: CalendarDays },
+  { key: "experience", label: "Experience", icon: Clock },
+  { key: "qualification", label: "Qualification", icon: GraduationCap },
+];
+
+const MATCH_SORT_OPTIONS: { key: MatchSortKey; label: string; icon: LucideIcon }[] = [
+  { key: "score", label: "Best Match", icon: Sparkles },
+  { key: "distance", label: "Distance", icon: MapPin },
+  { key: "experience", label: "Experience", icon: Clock },
+  { key: "qualification", label: "Qualifications", icon: GraduationCap },
+];
+
 type ViewType = "all" | "matches";
 
 const QUAL_RANK: Record<string, number> = {
@@ -61,12 +68,11 @@ const MATCH_QUAL_RANK: Record<string, number> = {
 function sortNannies(nannies: NannyCardData[], sortBy: AllSortKey): NannyCardData[] {
   if (sortBy === "newest") return nannies;
   const sorted = [...nannies];
-  if (sortBy === "age") {
+  if (sortBy === "experience") {
     sorted.sort((a, b) => {
-      if (!a.date_of_birth && !b.date_of_birth) return 0;
-      if (!a.date_of_birth) return 1;
-      if (!b.date_of_birth) return -1;
-      return new Date(a.date_of_birth).getTime() - new Date(b.date_of_birth).getTime();
+      const ea = a.total_experience_years ?? 0;
+      const eb = b.total_experience_years ?? 0;
+      return eb - ea;
     });
   } else if (sortBy === "qualification") {
     sorted.sort((a, b) => {
@@ -250,35 +256,45 @@ export function BrowseNanniesTab({ initialView = "all", onViewChange }: BrowseNa
         {/* Sort toggle */}
         {view === "all" ? (
           <div className="inline-flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
-            {ALL_SORT_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                onClick={() => setAllSort(option.key)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                  option.key === allSort
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
+            {ALL_SORT_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setAllSort(option.key)}
+                  title={option.label}
+                  className={`rounded-md px-2 sm:px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
+                    option.key === allSort
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 sm:hidden" />
+                  <span className="hidden sm:inline">{option.label}</span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="inline-flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
-            {MATCH_SORT_OPTIONS.map((option) => (
-              <button
-                key={option.key}
-                onClick={() => setMatchSort(option.key)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                  option.key === matchSort
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
+            {MATCH_SORT_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.key}
+                  onClick={() => setMatchSort(option.key)}
+                  title={option.label}
+                  className={`rounded-md px-2 sm:px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
+                    option.key === matchSort
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5 sm:hidden" />
+                  <span className="hidden sm:inline">{option.label}</span>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

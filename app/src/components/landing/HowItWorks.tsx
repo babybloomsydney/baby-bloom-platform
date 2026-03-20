@@ -82,7 +82,8 @@ export function HowItWorks() {
         </div>
 
         {/* ─── Mobile stepper (vertical) ─── */}
-        <div className="md:hidden max-w-sm mx-auto">
+        <div className="md:hidden flex justify-center">
+          <div className="flex flex-col">
           {STEPS.map((step, i) => {
             const isLast = i === STEPS.length - 1;
 
@@ -110,6 +111,7 @@ export function HowItWorks() {
               </div>
             );
           })}
+          </div>
         </div>
       </div>
     </section>

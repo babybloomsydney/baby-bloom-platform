@@ -435,9 +435,9 @@ export function NannyShareClient({ initialData }: Props) {
   // ── Main render ──
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 overflow-x-hidden">
+    <div className="mx-auto max-w-2xl overflow-x-hidden rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Share your profile to unlock babysitting</h1>
+        <h1 className="text-2xl font-bold text-slate-800 text-center">Share your profile to unlock babysitting</h1>
         {isAccessGranted ? (
           <p className="text-sm text-green-600 mt-1 font-medium flex items-center gap-1.5">
             <ShieldCheck className="h-4 w-4" />
@@ -445,7 +445,7 @@ export function NannyShareClient({ initialData }: Props) {
           </p>
         ) : (
           <p className="text-sm text-slate-500 mt-1">
-            We want as many opportunities for our nannies as possible, help us to help you by sharing your own profile to a relevant local Facebook group. This helps us to bring more work your way!
+            
           </p>
         )}
       </div>

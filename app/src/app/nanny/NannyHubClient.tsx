@@ -168,13 +168,11 @@ export function NannyHubClient({
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (p) {
     if (p.total_experience_years && p.total_experience_years > 0)
-      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years}yrs exp`, primary: true });
+      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years}${p.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
     if (p.under_3_experience_years && p.under_3_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `${p.under_3_experience_years}yrs with u3s`, primary: true });
+      traitBadges.push({ icon: "Baby", label: `Toddlers, ${p.under_3_experience_years}${p.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
     if (p.newborn_experience_years && p.newborn_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `${p.newborn_experience_years}${p.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
-    if (p.highest_qualification)
-      traitBadges.push({ icon: "GraduationCap", label: p.highest_qualification });
+      traitBadges.push({ icon: "Baby", label: `Babies, ${p.newborn_experience_years}${p.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
   }
 
   // ── Stat boxes for experience tab ──
@@ -260,7 +258,7 @@ export function NannyHubClient({
                 {p?.additional_photos && p.additional_photos.length > 0 && (
                   <button
                     onClick={() => { setPhotoViewerIndex(0); setPhotoViewerOpen(true); }}
-                    className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group mr-12"
+                    className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group"
                   >
                     {p.additional_photos.slice(0, 3).map((url, i) => {
                       const rotations = ["-rotate-[20deg]", "rotate-0", "rotate-[20deg]"];
@@ -295,20 +293,20 @@ export function NannyHubClient({
 
           {/* Trait badges */}
           {traitBadges.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex gap-1.5">
               {traitBadges.map((badge, i) => {
                 const Icon = BADGE_ICONS[badge.icon] || Check;
                 return (
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      "flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] sm:text-xs font-medium whitespace-nowrap",
                       badge.primary
-                        ? "bg-violet-50 text-violet-700 border border-violet-200"
-                        : "bg-slate-50 text-slate-600 border border-slate-200"
+                        ? "bg-violet-100 text-violet-700"
+                        : "bg-slate-100 text-slate-600"
                     )}
                   >
-                    <Icon className="h-3 w-3" /> {badge.label}
+                    <Icon className="h-3 w-3 shrink-0" /> {badge.label}
                   </span>
                 );
               })}

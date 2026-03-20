@@ -45,6 +45,7 @@ export interface NannyMatchData {
   non_smoker: boolean | null;
   comfortable_with_pets: boolean | null;
   hourly_rate_min: number | null;
+  nationality: string | null;
   languages: string[] | null;
   role_types_preferred: string[] | null;
   level_of_support_offered: string[] | null;

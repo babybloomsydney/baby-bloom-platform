@@ -96,7 +96,7 @@ export default async function ParentBrowseNannyPage({
   return (
     <div className="mx-auto max-w-3xl">
       <Link
-        href="/parent/browse"
+        href="/parent?t=childcare&s=nannies"
         className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 transition-colors mb-4"
       >
         <ChevronLeft className="h-3.5 w-3.5" />

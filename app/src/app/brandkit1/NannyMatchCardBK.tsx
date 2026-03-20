@@ -26,17 +26,17 @@ function buildBadges(match: MatchResult): TraitBadge[] {
   const badges: TraitBadge[] = [];
   const n = match.nanny;
   if (n.total_experience_years && n.total_experience_years > 0) {
-    badges.push({ icon: Clock, label: `${n.total_experience_years}yrs exp`, variant: "violet" });
+    badges.push({ icon: Clock, label: `${n.total_experience_years}${n.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, variant: "violet" });
   }
   if (n.under_3_experience_years && n.under_3_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${n.under_3_experience_years}yrs with u3s`, variant: "violet" });
+    badges.push({ icon: Baby, label: `Toddlers, ${n.under_3_experience_years}${n.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, variant: "violet" });
   }
   if (n.newborn_experience_years && n.newborn_experience_years > 0) {
-    badges.push({ icon: Baby, label: `${n.newborn_experience_years}${n.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, variant: "violet" });
+    badges.push({ icon: Baby, label: `Babies, ${n.newborn_experience_years}${n.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, variant: "violet" });
   }
   if (match.highestQualification) {
     const abbr = abbreviateQualification(match.highestQualification);
-    if (abbr) badges.push({ icon: GraduationCap, label: abbr, variant: "slate" });
+    if (abbr) badges.push({ icon: GraduationCap, label: abbr, variant: "slate", className: "hidden md:inline-flex" });
   }
   return badges;
 }
@@ -71,9 +71,17 @@ export function NannyMatchCardBK({ match, linkBase = "/parent/browse" }: NannyMa
 
   return (
     <Link href={`${linkBase}/${nanny.id}`} className="block group">
-      <Card className="overflow-hidden transition-all hover:shadow-lg hover:border-violet-200">
+      <Card className="overflow-hidden transition-all hover:shadow-lg hover:border-violet-200 relative">
+        {/* Match % badge — top right corner */}
+        <Badge
+          variant="outline"
+          className={`absolute top-3 right-3 text-[11px] font-semibold px-2 py-0.5 ${getMatchBadgeStyle(match.finalScore)}`}
+        >
+          {Math.round(match.finalScore)}% Match
+        </Badge>
+
         <div className="p-5">
-          <div className="flex items-start gap-4">
+          <div className="flex items-center gap-4">
             {/* Profile picture */}
             <div className="relative shrink-0">
               {profile.profile_picture_url ? (
@@ -96,41 +104,29 @@ export function NannyMatchCardBK({ match, linkBase = "/parent/browse" }: NannyMa
               )}
             </div>
 
-            {/* Name, location, match badge */}
+            {/* Name, location */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-lg text-slate-900 truncate group-hover:text-violet-600 transition-colors">
-                    {profile.first_name.charAt(0).toUpperCase() + profile.first_name.slice(1)}{age ? `, ${age}` : ""}
-                  </h3>
-                  <div className="flex items-center gap-1.5 text-sm text-slate-500 mt-0.5">
-                    <MapPin className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {profile.suburb}
-                      {match.distanceKm != null && (
-                        <span className="text-xs text-slate-400">, {Math.round(match.distanceKm)}km</span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Match % badge */}
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 text-xs font-semibold px-2 py-0.5 ${getMatchBadgeStyle(match.finalScore)}`}
-                >
-                  {Math.round(match.finalScore)}% Match
-                </Badge>
+              <h3 className="font-semibold text-lg text-slate-900 truncate group-hover:text-violet-600 transition-colors">
+                {profile.first_name.charAt(0).toUpperCase() + profile.first_name.slice(1)}{age ? <span className="text-sm font-medium text-slate-400">, {age}</span> : ""}
+              </h3>
+              <div className="flex items-center gap-1.5 text-sm text-slate-500 mt-0.5">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">
+                  {profile.suburb}
+                  {match.distanceKm != null && (
+                    <span className="text-xs text-slate-400">, {Math.round(match.distanceKm)}km</span>
+                  )}
+                </span>
               </div>
-
-              {/* AI headline */}
-              {headline && (
-                <p className="mt-2 text-xs text-slate-500 italic line-clamp-2">
-                  {headline.replace(/<[^>]*>/g, "")}
-                </p>
-              )}
             </div>
           </div>
+
+          {/* AI headline — full width below photo row */}
+          {headline && (
+            <p className="mt-2 text-[11px] text-slate-500 italic line-clamp-3 leading-relaxed">
+              {headline.replace(/<[^>]*>/g, "")}
+            </p>
+          )}
 
           {/* Experience badges */}
           <ExpandableBadges badges={buildBadges(match)} preventLinkNavigation />

@@ -1087,7 +1087,7 @@ export function ParentHubClient({
                         Find my nanny for me
                       </Link>
                     </Button>
-                    <Link href="/parent/browse" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 transition-colors">
+                    <Link href="/parent?t=childcare&s=nannies" className="inline-flex items-center gap-1 text-sm text-slate-400 hover:text-slate-600 transition-colors">
                       Browse nannies
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
@@ -1259,7 +1259,7 @@ export function ParentHubClient({
                     Connections{nonDfyIntros.length > 0 ? ` (${nonDfyIntros.length})` : ""}
                   </p>
                   {nonDfyIntros.length > 0 && (
-                    <Link href="/parent/browse" className="inline-flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                    <Link href="/parent?t=childcare&s=nannies" className="inline-flex items-center gap-0.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
                       Browse nannies
                       <ChevronRight className="w-3 h-3" />
                     </Link>
@@ -1268,7 +1268,7 @@ export function ParentHubClient({
                 {nonDfyIntros.length === 0 ? (
                   <div className="text-center py-4">
                     <p className="text-sm text-slate-400">No connections yet</p>
-                    <Link href="/parent/browse" className="inline-flex items-center gap-1 mt-2 text-sm text-violet-600 hover:text-violet-700 transition-colors">
+                    <Link href="/parent?t=childcare&s=nannies" className="inline-flex items-center gap-1 mt-2 text-sm text-violet-600 hover:text-violet-700 transition-colors">
                       Browse nannies
                       <ArrowRight className="w-3.5 h-3.5" />
                     </Link>
@@ -1650,7 +1650,7 @@ export function ParentHubClient({
                         )}
                       </div>
                       {bsrSelectedNanny.aiHeadline && (
-                        <p className="text-sm text-slate-500 italic line-clamp-2">
+                        <p className="text-sm text-slate-500 italic line-clamp-3">
                           {bsrSelectedNanny.aiHeadline.replace(/<[^>]*>/g, "")}
                         </p>
                       )}

@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { NannyMatchCardBK } from "@/app/brandkit1/NannyMatchCardBK";
+import { Sparkles, MapPin, Clock, GraduationCap } from "lucide-react";
 import type { MatchResult } from "@/lib/matching/types";
+import type { LucideIcon } from "lucide-react";
 
 type SortKey = "score" | "distance" | "experience" | "qualification";
 
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "score", label: "Best Match" },
-  { key: "distance", label: "Distance" },
-  { key: "experience", label: "Experience" },
-  { key: "qualification", label: "Qualifications" },
+const SORT_OPTIONS: { key: SortKey; label: string; icon: LucideIcon }[] = [
+  { key: "score", label: "Best Match", icon: Sparkles },
+  { key: "distance", label: "Distance", icon: MapPin },
+  { key: "experience", label: "Experience", icon: Clock },
+  { key: "qualification", label: "Qualifications", icon: GraduationCap },
 ];
 
 const QUAL_RANK: Record<string, number> = {
@@ -72,17 +74,20 @@ export function BrowseMatchesClient({ matches, stats, children }: BrowseMatchesC
         <div className="inline-flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
           {SORT_OPTIONS.map((option) => {
             const isActive = option.key === sortBy;
+            const Icon = option.icon;
             return (
               <button
                 key={option.key}
                 onClick={() => setSortBy(option.key)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                title={option.label}
+                className={`rounded-md px-2 sm:px-3 py-1.5 text-xs font-medium transition-all flex items-center gap-1 ${
                   isActive
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-400 hover:text-slate-600"
                 }`}
               >
-                {option.label}
+                <Icon className="w-3.5 h-3.5 sm:hidden" />
+                <span className="hidden sm:inline">{option.label}</span>
               </button>
             );
           })}

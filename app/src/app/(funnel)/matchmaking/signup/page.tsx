@@ -17,13 +17,17 @@ export default async function MatchmakingSignupPage({ searchParams }: Props) {
   const { matches, totalEligible } = await runPreAuthMatching(lead);
   const topMatch = matches[0] ?? null;
 
+  const topPhotos = matches
+    .slice(0, 3)
+    .map((m) => ({
+      url: m.profile.profile_picture_url,
+      initial: m.profile.first_name?.[0]?.toUpperCase() ?? "?",
+    }));
+
   const matchSummary = topMatch
     ? {
         totalEligible,
-        topMatchName: topMatch.profile.first_name,
-        topMatchSuburb: topMatch.profile.suburb,
-        topMatchScore: topMatch.finalScore,
-        topMatchPhoto: topMatch.profile.profile_picture_url,
+        topPhotos,
       }
     : null;
 

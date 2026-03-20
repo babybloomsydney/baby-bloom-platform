@@ -98,13 +98,11 @@ export function ParentNannyProfileView({
   // ── Badge pills ──
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0)
-    traitBadges.push({ icon: "Clock", label: `${nanny.total_experience_years}yrs exp`, primary: true });
+    traitBadges.push({ icon: "Clock", label: `${nanny.total_experience_years}${nanny.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${nanny.under_3_experience_years}yrs with u3s`, primary: true });
+    traitBadges.push({ icon: "Baby", label: `Toddlers, ${nanny.under_3_experience_years}${nanny.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0)
-    traitBadges.push({ icon: "Baby", label: `${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'} newborns`, primary: true });
-  if (nanny.highest_qualification)
-    traitBadges.push({ icon: "GraduationCap", label: nanny.highest_qualification });
+    traitBadges.push({ icon: "Baby", label: `Babies, ${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
 
   // ── Stat boxes ──
   const statBoxes: { value: number; label: string }[] = [];
@@ -179,22 +177,22 @@ export function ParentNannyProfileView({
               <h1 className="text-2xl font-bold text-slate-900">
                 {firstName}{age ? `, ${age}` : ""}
               </h1>
-              <div className="relative mt-0.5">
-                <div>
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <div className="min-w-0 pr-2">
                   {nanny.nationality && (
                     <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                      <Globe className="h-3.5 w-3.5" /> {nanny.nationality}
+                      <Globe className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{nanny.nationality}</span>
                     </p>
                   )}
                   {nanny.languages && nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").length > 0 && (
                     <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
-                      <Languages className="h-3 w-3" />
-                      {nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}
+                      <Languages className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{nanny.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}</span>
                     </p>
                   )}
                   {nanny.suburb && (
                     <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
-                      <MapPin className="h-3.5 w-3.5" /> {nanny.suburb}
+                      <MapPin className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{nanny.suburb}</span>
                     </p>
                   )}
                 </div>
@@ -203,17 +201,17 @@ export function ParentNannyProfileView({
                 {nanny.additional_photos && nanny.additional_photos.length > 0 && (
                   <button
                     onClick={() => { setPhotoViewerIndex(0); setPhotoViewerOpen(true); }}
-                    className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group mr-12"
+                    className="relative shrink-0 w-[84px] h-[48px] cursor-pointer group"
                   >
                     {nanny.additional_photos.slice(0, 3).map((url, i) => {
-                      const rotations = ["-rotate-[20deg]", "rotate-0", "rotate-[20deg]"];
-                      const offsets = ["left-0", "left-3", "left-6"];
+                      const rotations = ["-rotate-[15deg]", "rotate-0", "rotate-[15deg]"];
+                      const offsets = ["left-0", "left-4", "left-8"];
                       const zIndexes = ["z-[3]", "z-[2]", "z-[1]"];
                       return (
                         <div
                           key={i}
                           className={cn(
-                            "absolute top-1/2 -translate-y-1/2 h-[85%] aspect-square overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
+                            "absolute top-0 h-11 w-11 overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
                             rotations[i], offsets[i], zIndexes[i],
                           )}
                         >
@@ -237,20 +235,20 @@ export function ParentNannyProfileView({
 
           {/* Trait badges */}
           {traitBadges.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-3 flex gap-1.5">
               {traitBadges.map((badge, i) => {
                 const Icon = BADGE_ICONS[badge.icon] || Check;
                 return (
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+                      "flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] sm:text-xs font-medium whitespace-nowrap",
                       badge.primary
-                        ? "bg-violet-50 text-violet-700 border border-violet-200"
-                        : "bg-slate-50 text-slate-600 border border-slate-200"
+                        ? "bg-violet-100 text-violet-700"
+                        : "bg-slate-100 text-slate-600"
                     )}
                   >
-                    <Icon className="h-3 w-3" /> {badge.label}
+                    <Icon className="h-3 w-3 shrink-0" /> {badge.label}
                   </span>
                 );
               })}
@@ -411,7 +409,7 @@ export function ParentNannyProfileView({
                 />
               )}
               {nanny.personality_traits && nanny.personality_traits.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex gap-1.5 overflow-hidden">
                   {nanny.personality_traits.map((trait) => (
                     <Tag key={trait} variant="violet">{trait}</Tag>
                   ))}

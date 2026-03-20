@@ -10,11 +10,12 @@ export default function AuthLayout({
       <div className="w-full max-w-md px-4">
         {/* Logo */}
         <div className="text-center mb-8">
-          <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-bold text-primary">
-              Baby Bloom
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">Sydney</p>
+          <Link href="/" className="inline-flex flex-col items-center">
+            <div className="flex items-center gap-0.5 text-4xl font-bold tracking-tight">
+              <span className="text-slate-900">Baby</span>
+              <span className="text-violet-500">Bloom</span>
+            </div>
+            <p className="text-sm text-slate-500 mt-1">Sydney</p>
           </Link>
         </div>
 

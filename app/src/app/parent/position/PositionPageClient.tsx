@@ -1487,7 +1487,7 @@ export function PositionPageClient({
                         )}
                       </div>
                       {bsrSelectedNanny.aiHeadline && (
-                        <p className="text-sm text-slate-500 italic line-clamp-2">
+                        <p className="text-sm text-slate-500 italic line-clamp-3">
                           {bsrSelectedNanny.aiHeadline.replace(/<[^>]*>/g, "")}
                         </p>
                       )}

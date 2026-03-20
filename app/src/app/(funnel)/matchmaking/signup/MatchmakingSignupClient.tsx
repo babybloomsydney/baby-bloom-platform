@@ -21,7 +21,6 @@ import {
   ShieldCheck,
   CheckCircle,
   Sparkles,
-  MapPin,
   ArrowRight,
 } from "lucide-react";
 
@@ -42,10 +41,7 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 interface MatchSummary {
   totalEligible: number;
-  topMatchName: string;
-  topMatchSuburb: string | null;
-  topMatchScore: number;
-  topMatchPhoto: string | null;
+  topPhotos: { url: string | null; initial: string }[];
 }
 
 interface MatchmakingSignupClientProps {
@@ -105,10 +101,6 @@ export function MatchmakingSignupClient({
     );
   }
 
-  const initials = matchSummary
-    ? matchSummary.topMatchName[0]
-    : "";
-
   return (
     <div className="min-h-[100dvh] flex flex-col bg-white relative overflow-hidden">
       {/* Decorative blobs */}
@@ -117,66 +109,46 @@ export function MatchmakingSignupClient({
 
       <div className="relative flex-1 flex flex-col items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
-          {/* Logo */}
-          <div className="text-center mb-6">
-            <Link href="/">
-              <h1 className="text-2xl font-bold text-violet-500">
-                Baby Bloom
-              </h1>
-            </Link>
-          </div>
-
-          {/* Match context banner */}
-          {matchSummary && (
-            <div className="mb-6 rounded-2xl bg-violet-50 border border-violet-100 p-4">
-              <div className="flex items-center gap-1.5 justify-center mb-3">
-                <Sparkles className="w-4 h-4 text-violet-500" />
-                <p className="text-sm font-semibold text-violet-700">
-                  Your {matchSummary.totalEligible} matches are waiting
-                </p>
-              </div>
-
-              {/* Top match preview */}
-              <div className="flex items-center gap-3 bg-white rounded-xl p-3 border border-violet-100">
-                {matchSummary.topMatchPhoto ? (
-                  <img
-                    src={matchSummary.topMatchPhoto}
-                    alt={matchSummary.topMatchName}
-                    className="w-10 h-10 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center">
-                    <span className="text-sm font-semibold text-violet-500">
-                      {initials}
-                    </span>
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900">
-                    {matchSummary.topMatchName}
-                  </p>
-                  {matchSummary.topMatchSuburb && (
-                    <p className="text-xs text-slate-400 flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />
-                      {matchSummary.topMatchSuburb}
-                    </p>
-                  )}
-                </div>
-                <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-green-100 text-green-700">
-                  {matchSummary.topMatchScore}% match
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-400 text-center mt-2">
-                {matchSummary.totalEligible > 1
-                  ? `+ ${matchSummary.totalEligible - 1} more verified nannies`
-                  : "Your top match is ready"}
-              </p>
-            </div>
-          )}
-
           {/* Form card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+            {/* Match context — overlapping profile pictures */}
+            {matchSummary && (
+              <div className="flex flex-col items-center mb-5">
+                <div className="flex -space-x-3 mb-3">
+                  {matchSummary.topPhotos.map((photo, i) => (
+                    <div
+                      key={i}
+                      className="relative h-16 w-16 sm:h-24 sm:w-24 rounded-full border-3 border-white bg-violet-100 overflow-hidden shadow-sm"
+                      style={{ zIndex: matchSummary.topPhotos.length + 1 - i }}
+                    >
+                      {photo.url ? (
+                        <img
+                          src={photo.url}
+                          alt="Matched nanny"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-base font-semibold text-violet-400">
+                          {photo.initial}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {matchSummary.totalEligible > 3 && (
+                    <div className="relative h-16 w-16 sm:h-24 sm:w-24 rounded-full border-3 border-white bg-violet-100 overflow-hidden shadow-sm flex items-center justify-center">
+                      <span className="text-sm font-bold text-violet-500">+{matchSummary.totalEligible - 3}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-violet-500" />
+                  <p className="text-sm font-semibold text-violet-700">
+                    {matchSummary.totalEligible} matches are waiting
+                  </p>
+                </div>
+              </div>
+            )}
             <h2 className="text-xl font-bold text-slate-900 text-center mb-1">
               Create your account
             </h2>
@@ -271,7 +243,7 @@ export function MatchmakingSignupClient({
                       <FormControl>
                         <Input
                           type="password"
-                          placeholder="Min 8 characters"
+                          placeholder="Create your password"
                           autoComplete="new-password"
                           disabled={isLoading}
                           {...field}
@@ -304,6 +276,7 @@ export function MatchmakingSignupClient({
                   )}
                 />
 
+                <div className="pt-4" />
                 <Button
                   type="submit"
                   className="w-full h-12 bg-violet-500 hover:bg-violet-600 text-white font-semibold shadow-md shadow-violet-200"
@@ -323,18 +296,18 @@ export function MatchmakingSignupClient({
                 </Button>
               </form>
             </Form>
-          </div>
 
-          {/* Trust signals */}
-          <div className="flex items-center justify-center gap-4 mt-4">
-            <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-              <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
-              WWCC verified
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-              <CheckCircle className="w-3.5 h-3.5 text-violet-500" />
-              200+ families
-            </span>
+            {/* Trust signals */}
+            <div className="flex items-center justify-center gap-4 mt-6">
+              <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
+                Vetted nannies
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                <CheckCircle className="w-3.5 h-3.5 text-violet-500" />
+                Education-focused
+              </span>
+            </div>
           </div>
 
           {/* Sign in link */}

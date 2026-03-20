@@ -19,19 +19,21 @@ interface QuickMatchResponse {
   topNannies: QuickMatchNanny[];
 }
 
-const MATCHING_FACTORS = [
-  "Location & proximity",
-  "Schedule compatibility",
-  "Years of experience",
-  "Newborn & toddler experience",
-  "Qualifications & certifications",
-  "Role fit & care style",
-  "Child age range",
-  "Developmental support level",
-  "Driver's licence & car",
-  "Language preferences",
-  "Vaccination status",
-  "Pet comfort",
+const BASIC_FACTORS = [
+  "Location",
+  "Schedule",
+];
+
+const ADVANCED_FACTORS = [
+  "Total Experience",
+  "Toddler Experience",
+  "Newborn Experience",
+  "Level of Support",
+  "Educational Support",
+  "Developmental Support",
+  "Language",
+  "Driver status",
+  "and more",
 ];
 
 export function QuickMatchResultsClient() {
@@ -119,17 +121,17 @@ export function QuickMatchResultsClient() {
       <div className="absolute top-20 right-[10%] w-72 h-72 bg-violet-100 rounded-full blur-3xl opacity-50" />
       <div className="absolute bottom-10 left-[5%] w-48 h-48 bg-violet-200 rounded-full blur-2xl opacity-30" />
 
-      <div className="relative z-10 py-12 md:py-16">
+      <div className="relative z-10 py-6 md:py-16">
         <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-2xl mx-auto">
             {/* Results header */}
-            <div className="text-center mb-8">
+            <div className="text-center mb-4 md:mb-8">
               {totalMatches > 0 ? (
                 <>
                   <h2 className="text-2xl md:text-3xl font-bold text-slate-900">
                     {totalMatches} match{totalMatches !== 1 ? "es" : ""} near {suburb}
                   </h2>
-                  <p className="mt-2 text-slate-500 text-sm">
+                  <p className="mt-1 md:mt-2 text-slate-500 text-sm">
                     Matched by location and schedule.
                   </p>
                 </>
@@ -147,7 +149,7 @@ export function QuickMatchResultsClient() {
 
             {/* Top nanny cards */}
             {topNannies.length > 0 && (
-              <div className="space-y-3 mb-8">
+              <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-8">
                 {topNannies.map((nanny) => (
                   <NannyPreviewCard
                     key={nanny.id}
@@ -159,44 +161,43 @@ export function QuickMatchResultsClient() {
               </div>
             )}
 
-            {/* CTAs */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-              {totalMatches > 0 && (
-                <Button asChild className="w-full bg-violet-500 hover:bg-violet-600 h-11 text-sm">
-                  <Link href="/signup">
-                    See all matches
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
-              )}
+            {/* "See all matches" subtle text link — directly under nanny cards */}
+            {totalMatches > 0 && (
+              <div className="flex justify-center mb-4 sm:mb-8">
+                <Link
+                  href="/signup"
+                  className="text-sm text-slate-400 hover:text-violet-500 transition-colors flex items-center gap-1"
+                >
+                  See all matches
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            )}
 
-              <div className="border-t border-slate-100 pt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
-                  <p className="text-sm font-medium text-slate-900">
-                    Advanced matchmaking. 12 factors. Top matches contacted directly.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mb-4 pl-6">
-                  {MATCHING_FACTORS.map((item) => (
+            {/* Advanced matchmaking CTA */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-3 sm:space-y-5">
+              <Button
+                asChild
+                className="w-full bg-violet-500 hover:bg-violet-600 h-10 sm:h-11 text-sm touch-manipulation"
+              >
+                <Link href="/matchmaking/onboarding">
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Advanced Matchmaking
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Advanced matchmaking includes:
+                </p>
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1">
+                  {ADVANCED_FACTORS.map((item) => (
                     <p key={item} className="text-xs text-slate-500">
-                      <span className="text-violet-500 font-medium">+</span> {item}
+                      <span className="font-medium">+</span> {item}
                     </p>
                   ))}
                 </div>
-                <p className="text-xs text-slate-400 mb-3 pl-6">
-                  Top matches contacted directly.
-                </p>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="w-full h-11 text-sm border-slate-200"
-                >
-                  <Link href="/matchmaking/onboarding">
-                    Advanced Matchmaking
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Link>
-                </Button>
               </div>
 
               <button

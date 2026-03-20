@@ -55,15 +55,12 @@ export function CompoundPageShell({
 
       {/* Content */}
       <div
-        className={`flex-1 pt-10 pb-6 transition-opacity duration-300 ${
-          visible ? 'opacity-100' : 'opacity-0'
-        }`}
+        className={`flex-1 pt-10 pb-6 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'
+          }`}
       >
         {/* Title */}
         <div className="text-center mb-6">
-          {questionNumber && (
-            <span className="text-xs text-slate-300 font-medium tracking-wide">{questionNumber}</span>
-          )}
+
           <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">
             {title}
           </h2>

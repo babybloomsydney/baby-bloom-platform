@@ -66,9 +66,7 @@ export function NannyQuestionShell({
         }`}
       >
         <div className="text-center max-w-lg">
-          {questionNumber && (
-            <span className="text-xs text-slate-300 font-medium tracking-wide">{questionNumber}</span>
-          )}
+
           {question && (
             <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">
               {question}

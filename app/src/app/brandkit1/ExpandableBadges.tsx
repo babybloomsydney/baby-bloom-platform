@@ -18,6 +18,7 @@ export interface TraitBadge {
   icon: React.ElementType;
   label: string;
   variant: "violet" | "slate";
+  className?: string;
 }
 
 interface ExpandableBadgesProps {
@@ -94,7 +95,7 @@ export function ExpandableBadges({ badges, preventLinkNavigation }: ExpandableBa
     <div
       ref={containerRef}
       className={cn(
-        "mt-3 flex gap-1.5",
+        "mt-3 flex gap-1 sm:gap-1.5",
         expanded ? "flex-wrap" : "flex-nowrap overflow-hidden"
       )}
       style={!expanded && measured ? { maxHeight: "1.75rem" } : undefined}
@@ -104,11 +105,12 @@ export function ExpandableBadges({ badges, preventLinkNavigation }: ExpandableBa
           key={i}
           variant="secondary"
           className={cn(
-            "text-xs whitespace-nowrap shrink-0",
-            b.variant === "violet" ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600"
+            "rounded-lg text-[9px] sm:text-[10px] md:text-xs font-medium tracking-tight whitespace-nowrap shrink-0 px-1.5 sm:px-2.5 py-0.5 sm:py-0.5 md:py-1",
+            b.variant === "violet" ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-600",
+            b.className
           )}
         >
-          <b.icon className="mr-1 h-3 w-3" /> {b.label}
+          <b.icon className="mr-0.5 sm:mr-1 h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> {b.label}
         </Badge>
       ))}
       {!expanded && overflowing && (
@@ -116,7 +118,7 @@ export function ExpandableBadges({ badges, preventLinkNavigation }: ExpandableBa
           onClick={(e) => { handleClick(e); setExpanded(true); }}
           className="shrink-0"
         >
-          <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors whitespace-nowrap">
+          <Badge variant="secondary" className="rounded-lg text-[9px] sm:text-[10px] md:text-xs font-medium tracking-tight px-1.5 sm:px-2.5 py-0.5 sm:py-0.5 md:py-1 bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors whitespace-nowrap">
             + {hiddenCount} more
           </Badge>
         </button>
@@ -126,7 +128,7 @@ export function ExpandableBadges({ badges, preventLinkNavigation }: ExpandableBa
           onClick={(e) => { handleClick(e); setExpanded(false); }}
           className="shrink-0"
         >
-          <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors whitespace-nowrap">
+          <Badge variant="secondary" className="rounded-lg text-[9px] sm:text-[10px] md:text-xs font-medium tracking-tight px-1.5 sm:px-2.5 py-0.5 sm:py-0.5 md:py-1 bg-slate-100 text-slate-600 cursor-pointer hover:bg-slate-200 transition-colors whitespace-nowrap">
             − less
           </Badge>
         </button>

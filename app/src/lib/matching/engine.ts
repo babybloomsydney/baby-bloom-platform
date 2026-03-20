@@ -37,7 +37,7 @@ export async function fetchAndScoreNannies(
   // ── Fetch all visible nannies (single query for nannies, then batch related) ──
   const { data: nannies, error: nannyError } = await supabase
     .from('nannies')
-    .select('id, user_id, total_experience_years, nanny_experience_years, under_3_experience_years, newborn_experience_years, max_children, min_child_age_months, max_child_age_months, additional_needs_ok, drivers_license, has_car, vaccination_status, non_smoker, comfortable_with_pets, hourly_rate_min, languages, role_types_preferred, level_of_support_offered, immediate_start_available, ai_content')
+    .select('id, user_id, total_experience_years, nanny_experience_years, under_3_experience_years, newborn_experience_years, max_children, min_child_age_months, max_child_age_months, additional_needs_ok, drivers_license, has_car, vaccination_status, non_smoker, comfortable_with_pets, hourly_rate_min, nationality, languages, role_types_preferred, level_of_support_offered, immediate_start_available, ai_content')
     .gte('verification_level', 3);
 
   if (nannyError || !nannies || nannies.length === 0) {

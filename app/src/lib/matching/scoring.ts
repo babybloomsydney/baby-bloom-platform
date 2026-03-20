@@ -439,59 +439,59 @@ export function calculateOverQualifiedMultiplier(
   const bonuses: string[] = [];
 
   // 1 — Experience
-  if (required > 0 && nannyExp > required) {
-    bonuses.push(`${nannyExp} yrs exp (${nannyExp - required} yrs over)`);
-  } else if (nannyExp > 0) {
-    bonuses.push(`${nannyExp} years experience`);
+  if (nannyExp > 0) {
+    bonuses.push(`${nannyExp} ${nannyExp === 1 ? 'yr' : 'yrs'} in childcare`);
   }
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0) {
-    bonuses.push(`${nanny.under_3_experience_years} yrs with under 3s`);
+    const u3 = nanny.under_3_experience_years;
+    bonuses.push(`${u3} ${u3 === 1 ? 'yr' : 'yrs'} with toddlers`);
   }
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0) {
-    bonuses.push(`${nanny.newborn_experience_years} yrs with newborns`);
+    const nb = nanny.newborn_experience_years;
+    bonuses.push(`${nb} ${nb === 1 ? 'yr' : 'yrs'} with newborns`);
   }
 
   // 2 — Over min age
   if (ageOver > 0) {
-    bonuses.push(`${ageOver} yrs older than desired`);
+    bonuses.push(`${ageOver} ${ageOver === 1 ? 'yr' : 'yrs'} older`);
   }
 
   // 3 — Qualifications
   if (bestQual && bestQual !== 'No Qualifications' && bestQual !== 'Other') {
     const shortQual = bestQual
-      .replace('Certificate III in Early Childhood Education and Care', 'Cert III Early Childhood')
-      .replace('Certificate IV in Education Support', 'Cert IV Education Support')
-      .replace('Diploma of Early Childhood Education and Care', 'Diploma Early Childhood')
-      .replace('Bachelor of Early Childhood Education (Or Equivalent)', 'Bachelor Early Childhood');
+      .replace('Certificate III in Early Childhood Education and Care', 'Cert III Childcare')
+      .replace('Certificate IV in Education Support', 'Cert IV Childcare')
+      .replace('Diploma of Early Childhood Education and Care', 'Diploma in Childcare')
+      .replace('Bachelor of Early Childhood Education (Or Equivalent)', 'Bachelors in Childcare');
     bonuses.push(shortQual);
   }
 
-  // 4 — Certifications (specific names)
+  // 4 — Certifications (drop "certified" suffix)
   if (certs.length > 0) {
     const hasChildFA = certs.some((c) => c.toLowerCase().includes('childcare') || c.toLowerCase().includes('child first aid'));
     const displayCerts = certs
       .map((c) => (c.toLowerCase().includes('childcare') ? 'Child First Aid' : c))
       .filter((c) => !(hasChildFA && c === 'First Aid'));
     for (const cert of displayCerts) {
-      bonuses.push(`${cert} certified`);
+      bonuses.push(cert);
     }
   }
 
   // 5 — Languages (non-English only)
   if (nonEnglishLangs.length > 0) {
-    bonuses.push(`Speaks ${nonEnglishLangs.join(', ')}`);
+    bonuses.push(`Bilingual (${nonEnglishLangs.join(', ')})`);
   }
 
-  // 6 — Vehicle (licence > car)
+  // 6 — Vehicle
   if (nanny.drivers_license) bonuses.push("Driver's licence");
-  if (nanny.has_car) bonuses.push('Their own car');
+  if (nanny.has_car) bonuses.push('Owns a car');
 
   // 7 — Vaccinated
   if (nanny.vaccination_status) bonuses.push('Fully vaccinated');
 
   // 8 — Immediate start
   if (position.urgency === 'As soon as possible' && nanny.immediate_start_available) {
-    bonuses.push('Can start immediately');
+    bonuses.push('Immediate start');
   }
 
   return {
