@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/dfy-waves",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-pipeline",
+      "schedule": "0 14 * * *"
     }
   ]
 }

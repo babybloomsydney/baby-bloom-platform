@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { VisitorTracker } from "@/components/providers/VisitorTracker";
 import { DevToolbar } from "@/components/dev/DevToolbar";
 import { DevSidebar } from "@/components/dev/DevSidebar";
+import { Analytics } from "@vercel/analytics/next";
 
 const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
@@ -37,8 +39,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
       >
         <SessionProvider>
+          <VisitorTracker />
           {isDevMode && <DevSidebar />}
           {children}
+          <Analytics />
           {isDevMode && <DevToolbar />}
         </SessionProvider>
       </body>

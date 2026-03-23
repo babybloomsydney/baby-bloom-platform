@@ -24,6 +24,7 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   const firstName = formData.get('firstName') as string;
   const lastName = formData.get('lastName') as string;
   const role = formData.get('role') as UserRole;
+  const signupSource = (formData.get('signupSource') as string) || 'direct';
 
   // Validate required fields
   if (!email || !password || !firstName || !lastName || !role) {
@@ -127,6 +128,7 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
         .insert({
           user_id: userId,
           status: 'active',
+          signup_source: signupSource,
         });
 
       if (parentError) {

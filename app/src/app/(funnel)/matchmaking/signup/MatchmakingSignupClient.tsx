@@ -78,6 +78,7 @@ export function MatchmakingSignupClient({
     formData.append("firstName", data.firstName);
     formData.append("lastName", data.lastName);
     formData.append("role", "parent");
+    formData.append("signupSource", "advanced_match");
 
     const result = await signUpAndConvertLead(formData, leadId);
 

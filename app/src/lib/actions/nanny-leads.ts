@@ -50,6 +50,8 @@ export async function createNannyLead(data: {
   experience: NannyLeadExperience;
   qualifications: NannyLeadQualifications;
   residency: NannyLeadResidency;
+  visitor_id?: string;
+  highest_page_reached?: number;
 }): Promise<ActionResult> {
   const adminClient = createAdminClient();
 
@@ -82,6 +84,8 @@ export async function createNannyLead(data: {
         lead_status: 'applied',
         funnel_step: 'N1',
         last_active_at: new Date().toISOString(),
+        ...(data.visitor_id && { visitor_id: data.visitor_id }),
+        ...(data.highest_page_reached != null && { highest_page_reached: data.highest_page_reached }),
       })
       .select('id')
       .single();
@@ -116,6 +120,8 @@ export async function createNannyLead(data: {
               lead_status: 'applied',
               funnel_step: 'N1',
               last_active_at: new Date().toISOString(),
+              ...(data.visitor_id && { visitor_id: data.visitor_id }),
+              ...(data.highest_page_reached != null && { highest_page_reached: data.highest_page_reached }),
             })
             .eq('id', existing.id)
             .select('id')
@@ -155,6 +161,7 @@ export async function updateNannyLead(
     ai_content?: Record<string, unknown>;
     lead_status?: string;
     funnel_step?: string;
+    highest_page_reached?: number;
   }
 ): Promise<ActionResult> {
   const adminClient = createAdminClient();
@@ -163,6 +170,8 @@ export async function updateNannyLead(
     const updateData: Record<string, unknown> = {
       last_active_at: new Date().toISOString(),
     };
+
+    if (data.highest_page_reached != null) updateData.highest_page_reached = data.highest_page_reached;
 
     if (data.preferences) updateData.preferences = data.preferences;
     if (data.availability) updateData.availability = data.availability;

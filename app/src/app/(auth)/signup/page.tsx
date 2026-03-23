@@ -72,6 +72,18 @@ export default function SignupPage() {
     formData.append("lastName", data.lastName);
     formData.append("role", "parent");
 
+    // Determine signup source from referrer
+    const ref = document.referrer || '';
+    let source = 'direct';
+    if (/\/nannies\/[^/]+/.test(ref)) source = 'profile';
+    else if (ref.includes('/nannies')) source = 'browse';
+    else if (ref.includes('/matchmaking/results')) source = 'quick_match';
+    else if (ref.includes('/matchmaking')) source = 'advanced_match';
+    else if (ref.includes('/babysitting/')) source = 'bsr';
+    else if (ref.includes('/position/')) source = 'position';
+    else if (ref.includes('/pricing')) source = 'pricing';
+    formData.append("signupSource", source);
+
     const result = await signUp(formData);
 
     if (result.error) {
