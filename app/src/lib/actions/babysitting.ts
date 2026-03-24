@@ -1531,6 +1531,19 @@ export async function parentAcceptNanny(
         const valid = emails.filter((e): e is NonNullable<typeof e> => e !== null);
         if (valid.length > 0) await sendBatchEmails(valid);
       }).catch(err => console.error('[BSR] BSR-011 batch email error:', err));
+
+      // BINB-011: Inbox messages for unsuccessful nannies
+      for (const n of unsuccessfulNannies) {
+        createInboxMessage({
+          userId: n.user_id,
+          type: 'bsr_position_filled',
+          title: 'Babysitting job filled',
+          body: `The babysitting job in ${bsr.suburb}${firstSlotDisplay ? ` (${firstSlotDisplay})` : ''} has been filled. Keep an eye out for new opportunities!`,
+          actionUrl: '/nanny/babysitting',
+          referenceId: babysittingRequestId,
+          referenceType: 'babysitting_request',
+        }).catch(err => console.error('[BSR] BINB-011 inbox error:', err));
+      }
     }
   }
 

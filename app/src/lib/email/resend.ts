@@ -13,6 +13,7 @@ export interface SendEmailParams {
   replyTo?: string;
   emailType: string;
   recipientUserId?: string;
+  attachments?: Array<{ filename: string; content: Buffer }>;
 }
 
 export interface SendEmailResult {
@@ -22,7 +23,7 @@ export interface SendEmailResult {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { to, subject, html, text, replyTo, emailType, recipientUserId } = params;
+  const { to, subject, html, text, replyTo, emailType, recipientUserId, attachments } = params;
   const recipientEmail = Array.isArray(to) ? to[0] : to;
 
   try {
@@ -33,6 +34,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       html,
       ...(text ? { text } : {}),
       ...(replyTo ? { replyTo } : {}),
+      ...(attachments?.length ? { attachments } : {}),
     });
 
     if (error) {

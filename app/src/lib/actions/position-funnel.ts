@@ -9,6 +9,7 @@ import { getNannyId, scheduleConnectionTime } from './connection';
 import { createInboxMessage, logConnectionEvent } from './connection-helpers';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
+import { sendHireConfirmationEmails } from '@/lib/email/hire-emails';
 import {
   CONNECTION_STAGE,
   POSITION_STAGE,
@@ -881,6 +882,40 @@ async function _createPlacement(
 
   if (closeOthersErr) console.warn(`[_createPlacement] Step 5 — failed to close other connections:`, closeOthersErr.message);
 
+  // PINB-020: Notify not-selected nannies (inbox only — bad news, fire-and-forget)
+  (async () => {
+    try {
+      const { data: closedConns } = await adminClient
+        .from('connection_requests')
+        .select('nanny_id')
+        .eq('position_id', positionId)
+        .eq('connection_stage', CONNECTION_STAGE.NOT_SELECTED)
+        .eq('status', 'expired')
+        .neq('id', requestId);
+
+      if (closedConns && closedConns.length > 0) {
+        const nannyIds = [...new Set(closedConns.map(c => c.nanny_id))];
+        const { data: nannies } = await adminClient
+          .from('nannies')
+          .select('id, user_id')
+          .in('id', nannyIds);
+
+        for (const n of nannies ?? []) {
+          await createInboxMessage({
+            userId: n.user_id,
+            type: 'not_selected',
+            title: 'Position filled',
+            body: 'The family has filled their position with another nanny. Keep an eye out for new opportunities.',
+            actionUrl: '/nanny/positions',
+            referenceType: 'connection_request',
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('[_createPlacement] PINB-020 inbox notifications failed:', err);
+    }
+  })();
+
   funnelLog('_createPlacement', requestId, 'other connections → Not Selected(36) + expired', { positionId });
 
   // 5b. Expire all remaining DFY notifications for this position
@@ -1000,6 +1035,21 @@ export async function confirmPlacement(
 
   // Notifications
   const parties = await getConnectionParties(adminClient, req.parent_id, req.nanny_id);
+
+  // Hire confirmation PDFs + detailed emails (fire-and-forget)
+  if (result.placementId && parties.parentEmail && parties.nannyEmail && parties.parentUserId && parties.nannyUserId) {
+    sendHireConfirmationEmails({
+      placementId: result.placementId,
+      nannyId: req.nanny_id,
+      parentId: req.parent_id,
+      parentName: parties.parentName,
+      nannyName: parties.nannyName,
+      parentEmail: parties.parentEmail,
+      nannyEmail: parties.nannyEmail,
+      parentUserId: parties.parentUserId,
+      nannyUserId: parties.nannyUserId,
+    }).catch(err => funnelError('confirmPlacement', requestId, 'Hire confirmation emails failed', err));
+  }
 
   // POST-004 to nanny: "Congratulations!"
   if (parties.nannyUserId) {
@@ -1224,6 +1274,21 @@ export async function nannyConfirmPosition(
 
   // Notifications
   const parties = await getConnectionParties(adminClient, req.parent_id, req.nanny_id);
+
+  // Hire confirmation PDFs + detailed emails (fire-and-forget)
+  if (result.placementId && parties.parentEmail && parties.nannyEmail && parties.parentUserId && parties.nannyUserId) {
+    sendHireConfirmationEmails({
+      placementId: result.placementId,
+      nannyId: req.nanny_id,
+      parentId: req.parent_id,
+      parentName: parties.parentName,
+      nannyName: parties.nannyName,
+      parentEmail: parties.parentEmail,
+      nannyEmail: parties.nannyEmail,
+      parentUserId: parties.parentUserId,
+      nannyUserId: parties.nannyUserId,
+    }).catch(err => funnelError('nannyConfirmPosition', requestId, 'Hire confirmation emails failed', err));
+  }
 
   // POST-007 to parent: "Your nanny is confirmed!"
   if (parties.parentUserId) {
@@ -2983,6 +3048,20 @@ export async function rejectHiredClaim(
   }
 
   funnelLog('reject-claim', requestId, '33 → 35 (parent rejected nanny hired claim — disconnected)');
+
+  // PINB-024: Notify nanny (inbox only — bad news)
+  const parties = await getConnectionParties(adminClient, req.parent_id, req.nanny_id);
+  if (parties.nannyUserId) {
+    await createInboxMessage({
+      userId: parties.nannyUserId,
+      type: 'hired_claim_rejected',
+      title: 'Update on your connection',
+      body: `The ${parties.parentName} family has decided to go in a different direction. Keep an eye out for new opportunities.`,
+      actionUrl: '/nanny/positions',
+      referenceId: requestId,
+      referenceType: 'connection_request',
+    });
+  }
 
   revalidatePath('/parent');
   revalidatePath('/nanny/positions');
