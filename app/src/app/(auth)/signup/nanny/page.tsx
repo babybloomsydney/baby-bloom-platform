@@ -24,7 +24,10 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 
 const nannySignupSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[0-9]/, "Password must include a number")
+    .regex(/[^A-Za-z0-9]/, "Password must include a special character"),
   confirmPassword: z.string(),
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),

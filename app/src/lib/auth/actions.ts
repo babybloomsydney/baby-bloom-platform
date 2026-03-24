@@ -37,9 +37,15 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     return { error: 'Please enter a valid email address' };
   }
 
-  // Validate password length
+  // Validate password strength
   if (password.length < 8) {
     return { error: 'Password must be at least 8 characters' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { error: 'Password must include a number' };
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return { error: 'Password must include a special character' };
   }
 
   // Validate role
@@ -158,24 +164,78 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     if (role === 'nanny') {
       sendEmail({
         to: email,
-        subject: 'Welcome to Baby Bloom! 🎉',
-        html: `<div style="${baseStyle}">
-          <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] ACC-001 — Nanny Welcome. Welcomes nanny to Baby Bloom. Next step: complete your profile and start verification to become visible to families.</p>
-          <p style="margin-top: 24px;"><a href="${appUrl}/nanny/profile" style="${btnStyle}">Complete Your Profile</a></p>
-        </div>`,
+        subject: `Welcome to Baby Bloom, ${firstName}!`,
+        html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
+    </div>
+    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
+    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
+    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
+    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
+      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
+        <li>Complete your profile with your experience and qualifications</li>
+        <li>Upload your ID and WWCC for verification</li>
+        <li>Once verified, families in Sydney can find and connect with you</li>
+      </ol>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/profile" style="${btnStyle}">Complete Your Profile</a>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms of Service</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
         emailType: 'welcome',
         recipientUserId: userId,
       }).catch(err => console.error('[Signup] ACC-001 email error:', err));
     } else {
       sendEmail({
         to: email,
-        subject: 'Welcome to Baby Bloom! 🎉',
-        html: `<div style="${baseStyle}">
-          <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] ACC-002 — Parent Welcome. Welcomes parent to Baby Bloom. Next step: browse verified nannies and create a position to start matching.</p>
-          <p style="margin-top: 24px;"><a href="${appUrl}/parent/browse" style="${btnStyle}">Browse Nannies</a></p>
-        </div>`,
+        subject: `Welcome to Baby Bloom, ${firstName}!`,
+        html: `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
+    </div>
+    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
+    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
+    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
+    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
+      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
+        <li>Browse our verified, education-focused nannies</li>
+        <li>Create a position to start matching with the right nanny</li>
+        <li>Request a meet and greet when you find a great fit</li>
+      </ol>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/parent/dashboard" style="${btnStyle}">Go to Your Dashboard</a>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/client-terms" style="color:#7c3aed;">Terms of Service</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
         emailType: 'welcome',
         recipientUserId: userId,
       }).catch(err => console.error('[Signup] ACC-002 email error:', err));
@@ -283,6 +343,12 @@ export async function resetPassword(formData: FormData): Promise<ActionResult> {
 
   if (password.length < 8) {
     return { error: 'Password must be at least 8 characters' };
+  }
+  if (!/[0-9]/.test(password)) {
+    return { error: 'Password must include a number' };
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return { error: 'Password must include a special character' };
   }
 
   const { error } = await supabase.auth.updateUser({
