@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { createClient } from "@/lib/supabase/client";
@@ -29,6 +29,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 function LoginForm() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const redirectTo = searchParams.get("redirect");
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -67,7 +68,7 @@ function LoginForm() {
     } else if (result.redirectTo) {
       const dest = redirectTo || result.redirectTo;
       setIsRedirecting(true);
-      window.location.href = dest;
+      router.push(dest);
     }
   }
 

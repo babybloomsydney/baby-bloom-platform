@@ -17,6 +17,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { signUp } from "@/lib/auth/actions";
+import { recordConsent } from "@/lib/legal/record-consent";
+import { AGR02_CHECKPOINTS } from "@/lib/legal/checkpoints";
+import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 const nannySignupSchema = z.object({
@@ -36,6 +39,7 @@ export default function NannySignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -54,9 +58,22 @@ export default function NannySignupPage() {
     },
   });
 
+  const allConsentsChecked = AGR02_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+
   async function onSubmit(data: NannySignupFormData) {
+    if (!allConsentsChecked) return;
     setIsLoading(true);
     setError(null);
+
+    try {
+      await recordConsent(
+        AGR02_CHECKPOINTS.map((cp) => ({
+          agreementId: 'AGR-02',
+          checkpointId: cp.id,
+          checkpointText: cp.text,
+        }))
+      );
+    } catch {}
 
     const formData = new FormData();
     formData.append("email", data.email);
@@ -209,14 +226,24 @@ export default function NannySignupPage() {
             )}
           />
 
-          <Button type="submit" className="w-full" disabled={isLoading}>
+          <div>
+            <ConsentCheckboxGroup
+              checkpoints={AGR02_CHECKPOINTS}
+              checked={consentChecked}
+              onChange={(id, checked) =>
+                setConsentChecked((prev) => ({ ...prev, [id]: checked }))
+              }
+            />
+          </div>
+
+          <Button type="submit" className="w-full" disabled={isLoading || !allConsentsChecked}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Creating account...
               </>
             ) : (
-              "Create account"
+              "Create Account"
             )}
           </Button>
         </form>

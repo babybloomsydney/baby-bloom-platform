@@ -6,6 +6,7 @@ import { VisitorTracker } from "@/components/providers/VisitorTracker";
 import { DevToolbar } from "@/components/dev/DevToolbar";
 import { DevSidebar } from "@/components/dev/DevSidebar";
 import { Analytics } from "@vercel/analytics/next";
+import { CookieConsentBanner } from "@/components/legal/CookieConsentBanner";
 
 const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
@@ -43,6 +44,7 @@ export default function RootLayout({
           {isDevMode && <DevSidebar />}
           {children}
           <Analytics />
+          <CookieConsentBanner />
           {isDevMode && <DevToolbar />}
         </SessionProvider>
       </body>

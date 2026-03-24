@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { StageProps } from '../../FunnelOrchestrator';
 import { CompoundPageShell } from '../../shared/CompoundPageShell';
 import { convertLeadToAccount } from '@/lib/actions/nanny-leads';
+import { recordConsent } from '@/lib/legal/record-consent';
+import { AGR02_CHECKPOINTS } from '@/lib/legal/checkpoints';
+import { ConsentCheckboxGroup } from '@/components/legal/ConsentCheckboxGroup';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +15,7 @@ import { Loader2, Lock } from 'lucide-react';
 export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, questionNumber }: StageProps) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
@@ -20,7 +23,8 @@ export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, que
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email);
   const passwordValid = password.length >= 8;
   const passwordsMatch = password === confirmPassword;
-  const canSubmit = emailValid && passwordValid && passwordsMatch && termsAccepted && state.leadId;
+  const allConsentsChecked = AGR02_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+  const canSubmit = emailValid && passwordValid && passwordsMatch && allConsentsChecked && state.leadId;
 
   const handleSubmit = async () => {
     setAttempted(true);
@@ -29,7 +33,17 @@ export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, que
     setSubmitting(true);
     setError(null);
 
-    const result = await convertLeadToAccount(state.leadId, password);
+    try {
+      await recordConsent(
+        AGR02_CHECKPOINTS.map((cp) => ({
+          agreementId: 'AGR-02',
+          checkpointId: cp.id,
+          checkpointText: cp.text,
+        }))
+      );
+    } catch {}
+
+    const result = await convertLeadToAccount(state.leadId, password, state.email);
 
     if (result.success) {
       // Clear localStorage since conversion is done
@@ -110,25 +124,14 @@ export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, que
           )}
         </div>
 
-        {/* Terms */}
-        <div className="flex items-start gap-3">
-          <input
-            type="checkbox"
-            id="terms"
-            checked={termsAccepted}
-            onChange={(e) => setTermsAccepted(e.target.checked)}
-            className="mt-1 w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500 cursor-pointer"
+        <div>
+          <ConsentCheckboxGroup
+            checkpoints={AGR02_CHECKPOINTS}
+            checked={consentChecked}
+            onChange={(id, checked) =>
+              setConsentChecked((prev) => ({ ...prev, [id]: checked }))
+            }
           />
-          <label htmlFor="terms" className="text-sm text-slate-600 cursor-pointer">
-            I agree to Baby Bloom&apos;s{' '}
-            <a href="/terms" target="_blank" className="text-violet-600 underline hover:text-violet-700">
-              Terms of Service
-            </a>{' '}
-            and{' '}
-            <a href="/privacy" target="_blank" className="text-violet-600 underline hover:text-violet-700">
-              Privacy Policy
-            </a>
-          </label>
         </div>
 
         {error && (

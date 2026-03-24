@@ -168,7 +168,7 @@ export function QuickMatchResultsClient() {
                   href="/signup"
                   className="text-sm text-slate-400 hover:text-violet-500 transition-colors flex items-center gap-1"
                 >
-                  See all matches
+                  Create account to see all matches
                   <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
@@ -182,7 +182,7 @@ export function QuickMatchResultsClient() {
               >
                 <Link href="/matchmaking/onboarding">
                   <Sparkles className="mr-2 h-4 w-4" />
-                  Advanced Matchmaking
+                  Try Advanced Matchmaking
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>

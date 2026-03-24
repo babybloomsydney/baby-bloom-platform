@@ -213,6 +213,7 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
   const [dob, setDob] = useState(verification?.date_of_birth ?? "");
   const [issuingCountry, setIssuingCountry] = useState(verification?.issuing_country ?? "");
   const [confirmed, setConfirmed] = useState(false);
+  const [biometricConsent, setBiometricConsent] = useState(false);
 
   // Upload state — upload eagerly on file selection
   const uploadAbortRef = useRef<AbortController | null>(null);
@@ -317,7 +318,8 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
     selfieUrl &&
     documentUploadState === "done" &&
     selfieUploadState === "done" &&
-    confirmed;
+    confirmed &&
+    biometricConsent;
 
   async function handleSaveAndVerify() {
     if (!documentUrl || !selfieUrl) return;
@@ -603,18 +605,41 @@ export function ParentIdentitySection({ verification, documentType, onSaved, onM
         </div>
       </div>
 
-      <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <input
-          id="document_confirmed"
-          type="checkbox"
-          checked={confirmed}
-          onChange={(e) => setConfirmed(e.target.checked)}
-          disabled={isSaving}
-          className="mt-0.5 h-4 w-4 accent-violet-600 cursor-pointer flex-shrink-0"
-        />
-        <Label htmlFor="document_confirmed" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
-          I confirm that the document I have provided is genuine, valid, and issued to me.
-        </Label>
+      <div className="space-y-1.5">
+        <label htmlFor="document_confirmed" className="flex items-start gap-2 cursor-pointer">
+          <input
+            id="document_confirmed"
+            type="checkbox"
+            checked={confirmed}
+            onChange={(e) => setConfirmed(e.target.checked)}
+            disabled={isSaving}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I confirm that the document I have provided is genuine, valid, and issued to me.
+          </span>
+        </label>
+        <label htmlFor="biometric_consent" className="flex items-start gap-2 cursor-pointer">
+          <input
+            id="biometric_consent"
+            type="checkbox"
+            checked={biometricConsent}
+            onChange={(e) => setBiometricConsent(e.target.checked)}
+            disabled={isSaving}
+            className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded border-slate-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+          />
+          <span className="text-xs text-slate-500 leading-relaxed">
+            I have read the{" "}
+            <a
+              href="/legal/biometric-notice-client?from=/parent/verification"
+              className="text-violet-600 underline hover:text-violet-700"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Biometric Data Collection Notice
+            </a>{" "}
+            and consent to the collection and processing of my biometric data as described.
+          </span>
+        </label>
       </div>
 
       <Button

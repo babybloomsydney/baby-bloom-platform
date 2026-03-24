@@ -11,6 +11,7 @@ import {
   scheduleConnectionTime,
 } from "@/lib/actions/connection";
 import { confirmPlacement } from "@/lib/actions/position-funnel";
+import { recordInformedAction } from "@/lib/legal/record-consent";
 import { CONNECTION_STAGE } from "@/lib/position/constants";
 import { formatSydneyDate, TIME_BRACKETS, BRACKET_KEYS, getBracketTimeOptions } from "@/lib/timezone";
 import {
@@ -64,6 +65,14 @@ export function ParentConnectionsClient({ requests }: ParentConnectionsClientPro
   const handleConfirmPlacement = async (requestId: string) => {
     setConfirmingId(requestId);
     setConfirmError(null);
+
+    recordInformedAction({
+      agreementId: 'AGR-10',
+      buttonText: 'Confirm Placement',
+      modalContentVersion: 'v3.0-2026-03-23',
+      relatedEntityId: requestId,
+    }).catch(() => {});
+
     const result = await confirmPlacement(requestId);
     setConfirmingId(null);
     if (!result.success) {
@@ -127,6 +136,12 @@ export function ParentConnectionsClient({ requests }: ParentConnectionsClientPro
                     </p>
                   </div>
                 </div>
+                <p className="text-[10px] text-slate-400 text-center">
+                  By confirming, you agree to the{" "}
+                  <Link href="/legal/client-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
+                  {" "}&amp;{" "}
+                  <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+                </p>
                 <div className="flex gap-3">
                   <Button
                     variant="outline"

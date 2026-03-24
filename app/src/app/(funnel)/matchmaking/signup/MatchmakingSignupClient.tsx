@@ -16,6 +16,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { signUpAndConvertLead } from "@/lib/actions/lead-conversion";
+import { recordConsent } from "@/lib/legal/record-consent";
+import { AGR01_CHECKPOINTS } from "@/lib/legal/checkpoints";
+import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
 import {
   Loader2,
   ShieldCheck,
@@ -56,6 +59,7 @@ export function MatchmakingSignupClient({
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
 
   const form = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
@@ -68,9 +72,22 @@ export function MatchmakingSignupClient({
     },
   });
 
+  const allConsentsChecked = AGR01_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+
   async function onSubmit(data: SignupFormData) {
+    if (!allConsentsChecked) return;
     setIsLoading(true);
     setError(null);
+
+    try {
+      await recordConsent(
+        AGR01_CHECKPOINTS.map((cp) => ({
+          agreementId: 'AGR-01',
+          checkpointId: cp.id,
+          checkpointText: cp.text,
+        }))
+      );
+    } catch {}
 
     const formData = new FormData();
     formData.append("email", data.email);
@@ -277,11 +294,21 @@ export function MatchmakingSignupClient({
                   )}
                 />
 
-                <div className="pt-4" />
+                <div className="pt-2">
+                  <ConsentCheckboxGroup
+                    checkpoints={AGR01_CHECKPOINTS}
+                    checked={consentChecked}
+                    onChange={(id, checked) =>
+                      setConsentChecked((prev) => ({ ...prev, [id]: checked }))
+                    }
+                  />
+                </div>
+
+                <div className="pt-2" />
                 <Button
                   type="submit"
                   className="w-full h-12 bg-violet-500 hover:bg-violet-600 text-white font-semibold shadow-md shadow-violet-200"
-                  disabled={isLoading}
+                  disabled={isLoading || !allConsentsChecked}
                 >
                   {isLoading ? (
                     <>
@@ -290,7 +317,7 @@ export function MatchmakingSignupClient({
                     </>
                   ) : (
                     <>
-                      Create account & connect
+                      Create Account
                       <ArrowRight className="ml-2 w-4 h-4" />
                     </>
                   )}
@@ -325,11 +352,11 @@ export function MatchmakingSignupClient({
           {/* Terms */}
           <p className="text-center text-xs text-slate-300 mt-4">
             By continuing, you agree to our{" "}
-            <Link href="/terms" className="text-violet-400 hover:underline">
+            <Link href="/legal/client-terms" className="text-violet-400 hover:underline">
               Terms
             </Link>{" "}
             and{" "}
-            <Link href="/privacy" className="text-violet-400 hover:underline">
+            <Link href="/legal/privacy-policy" className="text-violet-400 hover:underline">
               Privacy Policy
             </Link>
           </p>

@@ -31,6 +31,7 @@ import {
   Lock,
 } from "lucide-react";
 import Link from "next/link";
+import { recordInformedAction } from "@/lib/legal/record-consent";
 
 // ── Helpers ──
 
@@ -464,6 +465,15 @@ function JobDetailModal({
   const handleRequest = async () => {
     setError(null);
     setAccepting(true);
+
+    // Record informed consent — non-blocking
+    recordInformedAction({
+      agreementId: 'AGR-09',
+      buttonText: 'Request Job',
+      modalContentVersion: 'v3.0-2026-03-23',
+      relatedEntityId: job.id,
+    }).catch(() => {});
+
     const result = await requestBabysittingJob(job.id);
     setAccepting(false);
     if (!result.success) {
@@ -709,7 +719,14 @@ function JobDetailModal({
 
           {/* Actions for available jobs */}
           {isAvailable && !banned && !allClash && (
-            <div className="flex gap-2">
+            <div className="space-y-2">
+              <p className="text-[10px] text-slate-400 text-center">
+                By requesting this job, your phone number will be shared with the family if they accept you.{" "}
+                <Link href="/legal/professional-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
+                {" "}&amp;{" "}
+                <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+              </p>
+              <div className="flex gap-2">
               <Button
                 className="flex-1 bg-violet-500 hover:bg-violet-600"
                 disabled={accepting || declining}
@@ -735,6 +752,7 @@ function JobDetailModal({
                 )}
                 Decline
               </Button>
+              </div>
             </div>
           )}
 

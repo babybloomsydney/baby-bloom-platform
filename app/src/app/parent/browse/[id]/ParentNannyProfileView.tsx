@@ -6,6 +6,7 @@ import type { PublicNannyProfile } from "@/lib/actions/nanny";
 import { Button } from "@/components/ui/button";
 import { ConnectModal } from "@/components/ConnectModal";
 import { cn } from "@/lib/utils";
+import { InlineQuickMatch } from "@/components/landing/InlineQuickMatch";
 import {
   User,
   MapPin,
@@ -32,6 +33,7 @@ import {
   Languages,
   Pencil,
   AlertTriangle,
+  ArrowRight,
 } from "lucide-react";
 
 import { Tag } from "@/components/profile/Tag";
@@ -52,6 +54,7 @@ interface ParentNannyProfileViewProps {
   existingRequestStatus?: string | null;
   hasActivePlacement?: boolean;
   isActiveNanny?: boolean;
+  hidePromoTile?: boolean;
 }
 
 const PROFILE_TABS = [
@@ -72,6 +75,7 @@ export function ParentNannyProfileView({
   existingRequestStatus = null,
   hasActivePlacement = false,
   isActiveNanny = false,
+  hidePromoTile = false,
 }: ParentNannyProfileViewProps) {
   const [profileTab, setProfileTab] = useState<ProfileTabId>("about");
   const [showConnectModal, setShowConnectModal] = useState(false);
@@ -287,9 +291,9 @@ export function ParentNannyProfileView({
                   Connect with {firstName}
                 </Button>
               ) : (
-                <Link href="/signup">
+                <Link href="/matchmaking/onboarding">
                   <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white font-medium h-10">
-                    Sign Up to Connect with {firstName}
+                    Connect with {firstName}
                   </Button>
                 </Link>
               )}
@@ -612,21 +616,7 @@ export function ParentNannyProfileView({
       {/* ── Availability sub-tab ── */}
       {profileTab === "availability" && (
         <div className="space-y-3 mt-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            {isGuest ? (
-              <div className="text-center py-8 space-y-3">
-                <Clock className="h-8 w-8 text-slate-300 mx-auto" />
-                <p className="text-sm text-slate-500">
-                  Sign up to see {firstName}&apos;s availability
-                </p>
-                <Link href="/signup">
-                  <Button size="sm" className="bg-violet-500 hover:bg-violet-600">
-                    Sign Up to See Availability
-                  </Button>
-                </Link>
-              </div>
-            ) : (
-              <>
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-violet-400" />
@@ -643,10 +633,33 @@ export function ParentNannyProfileView({
                 ) : (
                   <p className="text-sm text-slate-400 italic">Availability not set yet.</p>
                 )}
-              </>
-            )}
+
+                {/* Inline quickmatch — guests only */}
+                {isGuest && (
+                  <>
+                    <div className="border-t border-slate-100 my-5" />
+                    <InlineQuickMatch />
+                  </>
+                )}
           </div>
         </div>
+      )}
+
+      {/* Childcare Professional tile — guests only, hidden during onboarding */}
+      {isGuest && !hidePromoTile && (
+        <Link
+          href="/apply/nanny"
+          className="flex items-center justify-between max-w-sm mx-auto w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow mt-4 px-4 py-3"
+          style={{ background: 'linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 50%, #C4B5FD 100%)' }}
+        >
+          <div>
+            <p className="text-sm font-bold text-violet-900 leading-snug">Childcare Professional?</p>
+            <p className="text-xs text-violet-700 mt-0.5">Help us to develop young minds</p>
+          </div>
+          <div className="shrink-0 ml-3 inline-flex items-center gap-1 bg-white text-violet-700 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm">
+            Apply <ArrowRight className="h-3 w-3" />
+          </div>
+        </Link>
       )}
 
       {/* Photo viewer modal */}

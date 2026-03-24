@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createConnectionRequest } from "@/lib/actions/connection";
+import { recordInformedAction } from "@/lib/legal/record-consent";
 import {
   X,
   Loader2,
@@ -74,6 +75,13 @@ export function ConnectModal({ isOpen, onClose, nanny, pendingRequestCount }: Co
 
     setSubmitting(true);
     setError(null);
+
+    // Record informed action (non-blocking, never blocks connection flow)
+    recordInformedAction({
+      agreementId: 'AGR-06',
+      buttonText: `Connect with ${firstName}`,
+      modalContentVersion: 'v3.0-2026-03-23',
+    }).catch(() => {});
 
     const result = await createConnectionRequest(nanny.id, message || undefined);
 
@@ -248,8 +256,16 @@ export function ConnectModal({ isOpen, onClose, nanny, pendingRequestCount }: Co
                 <p className="text-sm text-red-600">{error}</p>
               )}
 
+              {/* Terms notice */}
+              <p className="text-[10px] text-slate-400 text-center">
+                By connecting, you agree to our{" "}
+                <Link href="/legal/client-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
+                {" "}and{" "}
+                <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+              </p>
+
               {/* Actions */}
-              <div className="flex gap-2.5 pt-1">
+              <div className="flex gap-2.5">
                 <Button
                   type="button"
                   variant="outline"

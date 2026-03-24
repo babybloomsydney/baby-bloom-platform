@@ -126,6 +126,18 @@ export default function ForNanniesPage() {
               about child development. No commission. No middleman. Meaningful
               work with the right people.
             </p>
+            <div className="mt-8">
+              <Button
+                size="lg"
+                asChild
+                className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 shadow-lg shadow-violet-500/20"
+              >
+                <Link href="/apply/nanny">
+                  Apply Now
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </div>
       </section>
@@ -295,18 +307,10 @@ export default function ForNanniesPage() {
                 asChild
                 className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 shadow-lg shadow-violet-500/20"
               >
-                <Link href="/nanny/apply">
+                <Link href="/apply/nanny">
                   Apply Now
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                asChild
-                className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-base h-12 px-8"
-              >
-                <Link href="/contact">Questions? Get in Touch</Link>
               </Button>
             </div>
           </div>

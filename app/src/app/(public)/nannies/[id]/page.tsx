@@ -31,7 +31,7 @@ export async function generateMetadata({
     .trim() || `Find a verified, trusted nanny in ${suburb} on Baby Bloom Sydney.`;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app-babybloom.vercel.app";
-  const ogImageUrl = `${siteUrl}/api/og/nanny/${params.id}`;
+  const ogImageUrl = `${siteUrl}/api/og/nanny-v2/${params.id}`;
   const pageUrl = `${siteUrl}/nannies/${params.id}`;
 
   return {
@@ -58,9 +58,12 @@ export async function generateMetadata({
 
 export default async function NannyProfilePage({
   params,
+  searchParams,
 }: {
   params: { id: string };
+  searchParams: { from?: string };
 }) {
+  const hidePromoTile = searchParams.from === 'matchmaking' || searchParams.from === 'onboarding';
   const { data: nanny, error } = await getPublicNannyProfile(params.id);
 
   if (error || !nanny) {
@@ -160,6 +163,7 @@ export default async function NannyProfilePage({
         existingRequestStatus={existingRequestStatus}
         hasActivePlacement={hasActivePlacement}
         isActiveNanny={isActiveNanny}
+        hidePromoTile={hidePromoTile}
       />
     </div>
   );

@@ -140,7 +140,7 @@ export function ParentContactSection({ verification, locked, onSaved }: ParentCo
       setAddressLoading(true);
       try {
         const res = await fetch(
-          `https://api.addressr.io/addresses?q=${encodeURIComponent(query)}`
+          `/api/address-search?q=${encodeURIComponent(query)}`
         );
         if (!res.ok) {
           setAddressResults([]);
@@ -320,7 +320,7 @@ export function ParentContactSection({ verification, locked, onSaved }: ParentCo
             )}
           </div>
           {showAddressDropdown && (
-            <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+            <div className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}>
               {addressResults.map((r) => (
                 <button
                   key={r.pid}

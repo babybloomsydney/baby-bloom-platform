@@ -17,6 +17,9 @@ import {
 } from "@/components/ui/form";
 import { signUp } from "@/lib/auth/actions";
 import { createClient } from "@/lib/supabase/client";
+import { recordConsent } from "@/lib/legal/record-consent";
+import { AGR01_CHECKPOINTS } from "@/lib/legal/checkpoints";
+import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
 import {
   Loader2,
   ShieldCheck,
@@ -43,6 +46,9 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
+
+  const allConsentsChecked = AGR01_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -83,6 +89,18 @@ export default function SignupPage() {
     else if (ref.includes('/position/')) source = 'position';
     else if (ref.includes('/pricing')) source = 'pricing';
     formData.append("signupSource", source);
+
+    try {
+      await recordConsent(
+        AGR01_CHECKPOINTS.map((cp) => ({
+          agreementId: 'AGR-01',
+          checkpointId: cp.id,
+          checkpointText: cp.text,
+        }))
+      );
+    } catch {
+      // Consent recording failed (DB tables may not exist yet) — don't block signup
+    }
 
     const result = await signUp(formData);
 
@@ -243,20 +261,20 @@ export default function SignupPage() {
                   )}
                 />
 
-                <p className="text-center text-[10px] text-slate-300 pt-4 whitespace-nowrap">
-                  By continuing, you agree to our{" "}
-                  <Link href="/terms" className="text-violet-400 hover:underline">
-                    Terms
-                  </Link>{" "}
-                  and{" "}
-                  <Link href="/privacy" className="text-violet-400 hover:underline">
-                    Privacy Policy
-                  </Link>
-                </p>
+                <div className="pt-2">
+                  <ConsentCheckboxGroup
+                    checkpoints={AGR01_CHECKPOINTS}
+                    checked={consentChecked}
+                    onChange={(id, checked) =>
+                      setConsentChecked((prev) => ({ ...prev, [id]: checked }))
+                    }
+                  />
+                </div>
+
                 <Button
                   type="submit"
                   className="w-full h-12 bg-violet-500 hover:bg-violet-600 text-white font-semibold shadow-md shadow-violet-200"
-                  disabled={isLoading}
+                  disabled={isLoading || !allConsentsChecked}
                 >
                   {isLoading ? (
                     <>

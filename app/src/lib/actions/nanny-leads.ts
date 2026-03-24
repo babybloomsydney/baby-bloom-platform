@@ -204,7 +204,8 @@ export async function updateNannyLead(
 
 export async function convertLeadToAccount(
   leadId: string,
-  password: string
+  password: string,
+  email?: string
 ): Promise<ActionResult> {
   const adminClient = createAdminClient();
 
@@ -221,9 +222,12 @@ export async function convertLeadToAccount(
       return { success: false, error: 'Application not found.' };
     }
 
+    // Use the email from the account creation form (may differ from lead email)
+    const finalEmail = email?.trim() || lead.email;
+
     // 2. Create Supabase auth user
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email: lead.email,
+      email: finalEmail,
       password: password,
       email_confirm: true,
       user_metadata: {
@@ -257,7 +261,7 @@ export async function convertLeadToAccount(
           user_id: userId,
           first_name: lead.first_name,
           last_name: lead.last_name,
-          email: lead.email,
+          email: finalEmail,
           mobile_number: lead.phone,
           date_of_birth: lead.experience?.date_of_birth || null,
           suburb: lead.residency?.suburb || null,
@@ -398,7 +402,7 @@ export async function convertLeadToAccount(
       // 11. Sign the user in via the cookie-based client
       const supabase = createClient();
       await supabase.auth.signInWithPassword({
-        email: lead.email,
+        email: finalEmail,
         password: password,
       });
 

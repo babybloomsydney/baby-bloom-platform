@@ -458,28 +458,6 @@ export function OnboardingFlow() {
     }
   };
 
-  // ── DEV TOOLBAR (remove before production) ──
-  const devToolbar = (
-    <div className="fixed bottom-0 left-0 right-0 z-[9999] bg-black/90 text-white px-4 py-2 flex items-center justify-between text-xs font-mono">
-      <button
-        type="button"
-        onClick={() => { if (currentIndex > 0) { setCurrentIndex(currentIndex - 1); setShowConditional(false); } }}
-        className="px-3 py-1 bg-white/20 rounded hover:bg-white/30"
-      >
-        ← Prev
-      </button>
-      <span>
-        Q{currentIndex + 1}/{QUESTIONS.length} — <span className="text-yellow-300">{currentQ.id}</span> ({currentQ.type})
-      </span>
-      <button
-        type="button"
-        onClick={() => { if (currentIndex < QUESTIONS.length - 1) { setCurrentIndex(currentIndex + 1); setShowConditional(false); } }}
-        className="px-3 py-1 bg-white/20 rounded hover:bg-white/30"
-      >
-        Next →
-      </button>
-    </div>
-  );
 
   // Interstitial screen
   if (currentQ.type === "interstitial") {
@@ -504,7 +482,6 @@ export function OnboardingFlow() {
             </p>
           </div>
         </div>
-        {devToolbar}
       </>
     );
   }
@@ -555,7 +532,6 @@ export function OnboardingFlow() {
         <div className="flex-1 flex flex-col px-2 overflow-hidden">
           {renderQuestion()}
         </div>
-        {devToolbar}
       </div>
     );
   }
@@ -579,7 +555,6 @@ export function OnboardingFlow() {
           {renderQuestion()}
         </QuestionShell>
       </div>
-      {devToolbar}
     </>
   );
 }

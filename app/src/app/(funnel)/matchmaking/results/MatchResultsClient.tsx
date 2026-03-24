@@ -125,7 +125,7 @@ export function MatchResultsClient({
           {visibleMatches.map((match) => (
             <Link
               key={match.nannyId}
-              href={`/nannies/${match.nanny.id}`}
+              href={`/nannies/${match.nanny.id}?from=matchmaking`}
               className="block shrink-0 snap-center"
               style={{ width: `${CARD_W}px` }}
             >
@@ -164,7 +164,7 @@ export function MatchResultsClient({
           {visibleMatches.map((match) => (
             <Link
               key={match.nannyId}
-              href={`/nannies/${match.nanny.id}`}
+              href={`/nannies/${match.nanny.id}?from=matchmaking`}
               className="block shrink-0"
               style={{ width: `${CARD_W}px` }}
             >

@@ -36,6 +36,7 @@ import { AvailabilityGrid } from "./AvailabilityGrid";
 import { ScheduleTimeGrid } from "./ScheduleTimeGrid";
 import { ScoreBar, AvailabilityTable, getScoreBadgeStyle } from "@/components/match/match-helpers";
 import Link from "next/link";
+import { recordInformedAction } from "@/lib/legal/record-consent";
 
 // ── Start week options ──
 function formatStartWeek(d: Date): string {
@@ -1086,8 +1087,22 @@ export function ConnectionDetailPopup({
                 <p className="text-sm font-medium text-slate-700">
                   {name} has selected you! Confirm to get started.
                 </p>
+                <p className="text-[10px] text-slate-400 text-center">
+                  By confirming, you agree to the{" "}
+                  <Link href="/legal/professional-terms" target="_blank" className="text-violet-500 hover:underline">Professional Terms</Link>
+                  {" "}&amp;{" "}
+                  <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+                </p>
                 <Button size="sm" className="w-full bg-green-600 hover:bg-green-700" disabled={submitting}
-                  onClick={() => handleAction(() => onConfirmPosition(intro.connectionId), "Position confirmed!")}>
+                  onClick={() => {
+                    recordInformedAction({
+                      agreementId: 'AGR-11',
+                      buttonText: 'Confirm Position',
+                      modalContentVersion: 'v3.0-2026-03-23',
+                      relatedEntityId: intro.connectionId,
+                    }).catch(() => {});
+                    handleAction(() => onConfirmPosition(intro.connectionId), "Position confirmed!");
+                  }}>
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}
                   Confirm Position
                 </Button>
@@ -1120,10 +1135,22 @@ export function ConnectionDetailPopup({
                       onCustomDateChange={setCustomStartDate}
                       includeTbc
                     />
+                    <p className="text-[10px] text-slate-400 text-center">
+                      By confirming, you agree to the{" "}
+                      <Link href="/legal/client-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
+                      {" "}&amp;{" "}
+                      <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+                    </p>
                     <Button size="sm" className="w-full bg-green-600 hover:bg-green-700"
                       disabled={submitting || !selectedStartWeek || (selectedStartWeek === "custom" && !customStartDate)}
                       onClick={() => {
                         const startVal = selectedStartWeek === "custom" ? customStartDate : (selectedStartWeek ?? undefined);
+                        recordInformedAction({
+                          agreementId: 'AGR-10',
+                          buttonText: 'Confirm Placement',
+                          modalContentVersion: 'v3.0-2026-03-23',
+                          relatedEntityId: intro.connectionId,
+                        }).catch(() => {});
                         handleAction(() => onConfirmPlacement(intro.connectionId, startVal), "Placement confirmed!");
                       }}>
                       {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <CheckCircle className="h-4 w-4 mr-1" />}

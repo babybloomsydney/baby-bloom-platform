@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   MapPin,
   Calendar,
@@ -37,6 +38,15 @@ interface Props {
 }
 
 export function PositionJobView({ position }: Props) {
+  const { user, role } = useAuth();
+
+  // "Get a Nanny" link destination
+  const getNannyHref = !user
+    ? '/matchmaking/onboarding'
+    : role === 'parent'
+      ? '/parent/matchmaking'
+      : '/matchmaking/onboarding';
+
   // Hide global footer on this page
   useEffect(() => {
     const footer = document.querySelector('footer');
@@ -47,29 +57,13 @@ export function PositionJobView({ position }: Props) {
   return (
     <div className="mx-auto max-w-2xl px-4 py-4 space-y-3 flex flex-col min-h-[calc(100dvh-56px)]">
       {/* Header */}
-      <div className="relative max-w-[23rem] mx-auto">
-        <div className="absolute -left-14 top-1/2 -translate-y-1/2">
-          {position.parentProfilePic ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={position.parentProfilePic}
-              alt={position.parentFirstName}
-              className="h-10 w-10 rounded-full object-cover border-2 border-violet-200"
-            />
-          ) : (
-            <div className="h-10 w-10 rounded-full bg-violet-100 flex items-center justify-center border-2 border-violet-200">
-              <Baby className="h-5 w-5 text-violet-600" />
-            </div>
-          )}
-        </div>
-        <div>
-          <h1 className="text-base font-bold text-slate-800 leading-tight">
-            The {position.parentLastName ?? position.parentFirstName} family is looking for a nanny
-          </h1>
-          <p className="text-xs text-slate-500">
-            Posted by {position.parentFirstName}
-          </p>
-        </div>
+      <div className="w-full max-w-[23rem] mx-auto">
+        <h1 className="text-base font-bold text-slate-800 leading-tight">
+          The {position.parentLastName ?? position.parentFirstName} family is looking for a nanny
+        </h1>
+        <p className="text-xs text-slate-500">
+          Posted by {position.parentFirstName}
+        </p>
       </div>
 
       {/* OG Preview Image */}
@@ -142,27 +136,44 @@ export function PositionJobView({ position }: Props) {
       </div>
 
       {/* CTA */}
-      <div className="w-full space-y-2 max-w-[23rem] mx-auto">
-        <Link href="/nanny/apply">
-          <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white h-10 text-sm">
-            Apply on Baby Bloom <ArrowRight className="ml-2 h-4 w-4" />
+      <div className="w-full max-w-[23rem] mx-auto">
+        <Link href="/apply/nanny">
+          <Button
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white h-10 text-sm"
+          >
+            Nanny for the {position.parentLastName ?? position.parentFirstName} family <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         </Link>
       </div>
 
-      {/* Footer */}
-      <div className="text-center pt-1 pb-1 space-y-0.5">
-        <p className="text-[10px] text-slate-400">
-          Powered by{" "}
-          <Link href="/" className="text-violet-600 hover:underline font-medium">
-            Baby Bloom Sydney
-          </Link>
-        </p>
-        <div className="flex justify-center gap-3 text-[10px] text-slate-400">
-          <Link href="/about" className="hover:underline">About</Link>
-          <Link href="/privacy" className="hover:underline">Privacy</Link>
-          <Link href="/terms" className="hover:underline">Terms</Link>
+      {/* Childcare Professional Ad Tile */}
+      <Link
+        href="/apply/nanny"
+        className="flex items-center justify-between max-w-sm mx-auto w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow px-4 py-3"
+        style={{ background: 'linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 50%, #C4B5FD 100%)' }}
+      >
+        <div>
+          <p className="text-sm font-bold text-violet-900 leading-snug">Childcare Professional?</p>
+          <p className="text-xs text-violet-700 mt-0.5">Help us to develop young minds</p>
         </div>
+        <div className="shrink-0 ml-3 inline-flex items-center gap-1 bg-white text-violet-700 text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm">
+          Apply <ArrowRight className="h-3 w-3" />
+        </div>
+      </Link>
+
+      {/* Get a Nanny — below the ad tile */}
+      <Link
+        href={getNannyHref}
+        className="text-xs text-violet-600 hover:underline text-center block w-full max-w-[23rem] mx-auto"
+      >
+        Get a Nanny
+      </Link>
+
+      {/* Footer */}
+      <div className="flex justify-center gap-3 text-[10px] text-slate-400 pt-1 pb-1">
+        <Link href="/about" className="hover:underline">About</Link>
+        <Link href="/legal/privacy-policy" className="hover:underline">Privacy</Link>
+        <Link href="/legal/client-terms" className="hover:underline">Terms</Link>
       </div>
     </div>
   );

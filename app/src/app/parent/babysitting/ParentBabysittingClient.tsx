@@ -37,6 +37,8 @@ import {
   Pencil,
   CreditCard,
 } from "lucide-react";
+import Link from "next/link";
+import { recordInformedAction } from "@/lib/legal/record-consent";
 
 // ── Time options (15-min intervals, 6am to 11:45pm) ──
 
@@ -200,7 +202,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
       setAddressLoading(true);
       try {
         const res = await fetch(
-          `https://api.addressr.io/addresses?q=${encodeURIComponent(query)}`
+          `/api/address-search?q=${encodeURIComponent(query)}`
         );
         if (!res.ok) {
           setAddressResults([]);
@@ -523,7 +525,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                       )}
                     </div>
                     {showAddressDropdown && (
-                      <div className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                      <div className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}>
                         {addressResults.map((r) => (
                           <button
                             key={r.pid}
@@ -1223,6 +1225,15 @@ function BSRDetailModal({
               onAccept={async () => {
                 setAcceptingNanny(true);
                 setError(null);
+
+                // Record informed consent — non-blocking
+                recordInformedAction({
+                  agreementId: 'AGR-07',
+                  buttonText: 'Accept Babysitter',
+                  modalContentVersion: 'v3.0-2026-03-23',
+                  relatedEntityId: request.id,
+                }).catch(() => {});
+
                 const result = await parentAcceptNanny(request.id, selectedNanny.nannyId);
                 setAcceptingNanny(false);
                 if (!result.success) {
@@ -1562,6 +1573,12 @@ function NannyMiniPopup({
 
           {/* Actions */}
           <div className="space-y-2">
+            <p className="text-[10px] text-slate-400 text-center">
+              By accepting, your full booking address will be shared with your babysitter.{" "}
+              <Link href="/legal/client-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
+              {" "}&amp;{" "}
+              <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+            </p>
             <Button
               className="w-full bg-violet-500 hover:bg-violet-600"
               disabled={accepting}

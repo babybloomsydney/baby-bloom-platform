@@ -38,6 +38,8 @@ import {
   isShareAccessGranted,
   type ViralShareRow,
 } from "@/lib/viral-loop/constants";
+import { recordInformedAction } from "@/lib/legal/record-consent";
+import Link from "next/link";
 
 // ── Types ──
 
@@ -263,6 +265,14 @@ export function NannyShareClient({ initialData }: Props) {
     if (!share?.id || isMarking) return;
     setIsMarking(true);
     setError(null);
+
+    recordInformedAction({
+      agreementId: 'AGR-12',
+      buttonText: 'Shared to Facebook',
+      modalContentVersion: 'v3.0-2026-03-23',
+      relatedEntityId: share.id,
+    }).catch(() => {});
+
     const result = await markShareCompleted(share.id);
     if (result.success) {
       setShare((prev) =>
@@ -571,7 +581,7 @@ export function NannyShareClient({ initialData }: Props) {
                     <div className="aspect-[1.91/1] bg-white overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={`/api/og/nanny/${initialData.nannyId}`}
+                        src={`/api/og/nanny-v2/${initialData.nannyId}`}
                         alt="Link preview"
                         className="w-full h-full object-cover"
                       />
@@ -641,6 +651,12 @@ export function NannyShareClient({ initialData }: Props) {
                   <p className="text-sm text-slate-500">
                     Share your profile to a relevant Facebook group.
                   </p>
+                  <p className="text-[10px] text-slate-400">
+                    By sharing, you agree to the{" "}
+                    <Link href="/legal/professional-terms" target="_blank" className="text-violet-500 hover:underline">Professional Terms</Link>
+                    {" "}&amp;{" "}
+                    <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+                  </p>
 
                   {isMobile ? (
                     <>
@@ -662,13 +678,6 @@ export function NannyShareClient({ initialData }: Props) {
                           className="text-xs text-violet-600 hover:underline"
                         >
                           Already shared!
-                        </button>
-                        <span className="text-xs text-slate-300">|</span>
-                        <button
-                          onClick={() => setShowGroupsModal(true)}
-                          className="text-xs text-slate-500 hover:underline"
-                        >
-                          I am not in a relevant group
                         </button>
                       </div>
                     </>
@@ -705,14 +714,6 @@ export function NannyShareClient({ initialData }: Props) {
                           <><CheckCircle2 className="mr-2 h-4 w-4" /> Done, I&apos;ve shared it</>
                         )}
                       </Button>
-                      <div className="flex items-center justify-center gap-3">
-                        <button
-                          onClick={() => setShowGroupsModal(true)}
-                          className="text-xs text-slate-500 hover:underline"
-                        >
-                          I am not in a relevant group
-                        </button>
-                      </div>
                     </div>
                   )}
                   <div id="cta-share" />

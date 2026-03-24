@@ -517,6 +517,7 @@ export async function updateNannyProfile(
 
   revalidatePath('/nanny/profile');
   revalidatePath('/nanny');
+  revalidatePath(`/nannies/${nanny.id}`);
   return { success: true, error: null };
 }
 

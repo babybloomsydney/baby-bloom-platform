@@ -1,7 +1,7 @@
 'use client';
 
 import { StageProps } from '../../FunnelOrchestrator';
-import { NannyProfileView } from '@/app/(public)/nannies/[id]/NannyProfileView';
+import { ParentNannyProfileView } from '@/app/parent/browse/[id]/ParentNannyProfileView';
 import { PublicNannyProfile } from '@/lib/actions/nanny';
 import { NannyLeadFunnelState } from '@/types/nanny-leads';
 import { Button } from '@/components/ui/button';
@@ -107,14 +107,10 @@ export function N4ProfileReview({ state, goNext }: StageProps) {
       </div>
 
       {/* ── Profile (rises up) ── */}
-      <div className="animate-in slide-in-from-bottom-6 fade-in duration-700 fill-mode-both" style={{ animationDelay: '400ms' }}>
-        <NannyProfileView
+      <div className="animate-in slide-in-from-bottom-6 fade-in duration-700 fill-mode-both px-4" style={{ animationDelay: '400ms' }}>
+        <ParentNannyProfileView
           nanny={profile}
-          connectOverride={{
-            label: `Connect with ${state.first_name}`,
-            onClick: goNext,
-          }}
-          initiallyCollapsed
+          isActiveNanny
         />
       </div>
 
