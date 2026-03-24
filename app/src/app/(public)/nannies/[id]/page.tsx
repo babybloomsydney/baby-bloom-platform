@@ -37,6 +37,7 @@ export async function generateMetadata({
   return {
     title,
     description,
+    alternates: { canonical: `/nannies/${params.id}` },
     openGraph: {
       title,
       description,
@@ -152,8 +153,50 @@ export default async function NannyProfilePage({
     // Not authenticated — that's fine
   }
 
+  const personJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Person',
+    name: `${nanny.first_name ?? 'Nanny'} ${(nanny.last_name ?? '').charAt(0) || ''}.`.trim(),
+    jobTitle: 'Verified Nanny',
+    description: String(nanny.ai_content?.parent_pitch ?? '').replace(/<[^>]*>/g, '').slice(0, 200).trim() || undefined,
+    image: nanny.profile_picture_url || undefined,
+    address: {
+      '@type': 'PostalAddress',
+      addressLocality: nanny.suburb ?? 'Sydney',
+      addressRegion: 'NSW',
+      addressCountry: 'AU',
+    },
+    worksFor: {
+      '@type': 'Organization',
+      name: 'Baby Bloom Sydney',
+      url: 'https://babybloomsydney.com.au',
+    },
+  };
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://babybloomsydney.com.au' },
+      { '@type': 'ListItem', position: 2, name: 'Nannies', item: 'https://babybloomsydney.com.au/nannies' },
+      { '@type': 'ListItem', position: 3, name: nanny.first_name ?? 'Nanny', item: `https://babybloomsydney.com.au/nannies/${params.id}` },
+    ],
+  };
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(personJsonLd).replace(/</g, '\\u003c'),
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(breadcrumbJsonLd).replace(/</g, '\\u003c'),
+        }}
+      />
       <ParentNannyProfileView
         nanny={nanny}
         isOwner={isOwner}

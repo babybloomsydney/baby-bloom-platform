@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: 'How Baby Bloom Works — Find a Nanny in 3 Steps',
+  description: 'See how Baby Bloom matches Sydney families with WWCC-verified nannies. Browse profiles, get matched, and arrange a meet and greet — it\'s simple.',
+  alternates: { canonical: '/how-it-works' },
+};
+
 export default function HowItWorksPage() {
   return (
     <div className="container mx-auto py-10">

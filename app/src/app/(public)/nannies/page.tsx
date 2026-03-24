@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ChevronLeft } from "lucide-react";
@@ -5,6 +6,16 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NannyPreviewCard, type NannyPreview } from "@/components/landing/NannyPreviewCard";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: 'Browse Verified Nannies in Sydney',
+  description: 'Browse trusted, WWCC-verified nannies available in Sydney. Every nanny on Baby Bloom is background-checked, ID-verified, and education-focused.',
+  alternates: { canonical: '/nannies' },
+  openGraph: {
+    title: 'Browse Verified Nannies in Sydney | Baby Bloom',
+    description: 'Browse trusted, WWCC-verified nannies available in Sydney. Every nanny on Baby Bloom is background-checked, ID-verified, and education-focused.',
+  },
+};
 
 const QUAL_RANK: Record<string, number> = {
   "Bachelor of Early Childhood Education (Or Equivalent)": 5,

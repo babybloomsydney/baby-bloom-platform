@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { type PublicBsrProfile } from "@/lib/actions/babysitting";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -50,12 +49,6 @@ export function BsrJobView({ bsr }: Props) {
       ? '/parent/babysitting'
       : '/nanny/babysitting';
 
-  // Hide global footer on this page
-  useEffect(() => {
-    const footer = document.querySelector('footer');
-    if (footer) footer.style.display = 'none';
-    return () => { if (footer) footer.style.display = ''; };
-  }, []);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-4 space-y-3 flex flex-col min-h-[calc(100dvh-56px)]">
@@ -187,12 +180,6 @@ export function BsrJobView({ bsr }: Props) {
         Get a babysitter
       </Link>
 
-      {/* Footer */}
-      <div className="flex justify-center gap-3 text-[10px] text-slate-400 pt-1 pb-1">
-        <Link href="/about" className="hover:underline">About</Link>
-        <Link href="/legal/privacy-policy" className="hover:underline">Privacy</Link>
-        <Link href="/legal/client-terms" className="hover:underline">Terms</Link>
-      </div>
     </div>
   );
 }

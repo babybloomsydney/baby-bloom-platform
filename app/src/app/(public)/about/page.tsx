@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,6 +9,16 @@ import {
   GraduationCap,
   UserCheck,
 } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "About Us — Sydney's Trusted Nanny Platform",
+  description: 'Baby Bloom connects Sydney families with verified, education-focused nannies. Learn about our mission, our verification process, and why families trust us.',
+  alternates: { canonical: '/about' },
+  openGraph: {
+    title: 'About Baby Bloom Sydney',
+    description: 'Baby Bloom connects Sydney families with verified, education-focused nannies. Learn about our mission, our verification process, and why families trust us.',
+  },
+};
 
 const DIFFERENTIATORS = [
   {

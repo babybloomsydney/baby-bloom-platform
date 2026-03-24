@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   MapPin,
@@ -47,12 +46,6 @@ export function PositionJobView({ position }: Props) {
       ? '/parent/matchmaking'
       : '/matchmaking/onboarding';
 
-  // Hide global footer on this page
-  useEffect(() => {
-    const footer = document.querySelector('footer');
-    if (footer) footer.style.display = 'none';
-    return () => { if (footer) footer.style.display = ''; };
-  }, []);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-4 space-y-3 flex flex-col min-h-[calc(100dvh-56px)]">
