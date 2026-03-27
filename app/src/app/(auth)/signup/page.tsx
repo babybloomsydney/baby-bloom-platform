@@ -321,7 +321,7 @@ export default function SignupPage() {
             <p className="text-center text-sm mt-3">
               <span className="text-slate-400">Childcare Professional? </span>
               <Link
-                href="/apply/nanny"
+                href="/apply"
                 className="text-violet-500 font-medium hover:underline"
               >
                 Apply

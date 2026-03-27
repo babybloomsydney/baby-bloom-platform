@@ -17,7 +17,7 @@ import {
 export const metadata: Metadata = {
   title: 'Work as a Nanny in Sydney',
   description: 'Join Baby Bloom as a childcare professional in Sydney. Get matched with local families who value quality early childhood education and care.',
-  alternates: { canonical: '/for-nannies' },
+  alternates: { canonical: '/childcare-professionals' },
   openGraph: {
     title: 'Work as a Nanny in Sydney | Baby Bloom',
     description: 'Join Baby Bloom as a childcare professional in Sydney. Get matched with local families who value quality early childhood education and care.',
@@ -143,7 +143,7 @@ export default function ForNanniesPage() {
                 asChild
                 className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 shadow-lg shadow-violet-500/20"
               >
-                <Link href="/apply/nanny">
+                <Link href="/apply">
                   Apply Now
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
@@ -318,7 +318,7 @@ export default function ForNanniesPage() {
                 asChild
                 className="bg-violet-500 hover:bg-violet-600 text-white text-base h-12 px-8 shadow-lg shadow-violet-500/20"
               >
-                <Link href="/apply/nanny">
+                <Link href="/apply">
                   Apply Now
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>

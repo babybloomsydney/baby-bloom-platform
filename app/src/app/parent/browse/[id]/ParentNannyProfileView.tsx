@@ -648,7 +648,7 @@ export function ParentNannyProfileView({
       {/* Childcare Professional tile — guests only, hidden during onboarding */}
       {isGuest && !hidePromoTile && (
         <Link
-          href="/apply/nanny"
+          href="/apply"
           className="flex items-center justify-between max-w-sm mx-auto w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow mt-4 px-4 py-3"
           style={{ background: 'linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 50%, #C4B5FD 100%)' }}
         >

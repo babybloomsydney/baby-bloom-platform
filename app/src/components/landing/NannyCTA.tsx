@@ -10,7 +10,7 @@ export function NannyCTA() {
             Are you a nanny?
           </p>
           <Link
-            href="/for-nannies"
+            href="/childcare-professionals"
             className="text-sm font-medium text-violet-600 hover:text-violet-700 transition-colors inline-flex items-center gap-1"
           >
             Learn more

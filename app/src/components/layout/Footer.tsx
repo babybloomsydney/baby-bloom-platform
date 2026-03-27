@@ -13,8 +13,8 @@ const footerLinks = {
   nannies: {
     title: "For Nannies",
     links: [
-      { href: "/for-nannies", label: "Why Baby Bloom" },
-      { href: "/nanny/apply", label: "Apply Now" },
+      { href: "/childcare-professionals", label: "Why Baby Bloom" },
+      { href: "/apply", label: "Apply Now" },
       { href: "/pricing", label: "Services" },
     ],
   },

@@ -183,7 +183,7 @@ export default function AboutPage() {
                 asChild
                 className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-base h-12 px-8"
               >
-                <Link href="/nanny/apply">Apply as a Nanny</Link>
+                <Link href="/apply">Apply as a Nanny</Link>
               </Button>
             </div>
           </div>

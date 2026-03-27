@@ -380,7 +380,7 @@ async function fetchCohort(admin: any, range: DateRange) {
   const [visitsRes, applyVisitsRes, nanniesRes, parentsRes, placementsRes, positionsRes, leadsRes] =
     await Promise.all([
       wd(admin.from("page_visits").select("visitor_id, referrer_source, page_path, created_at")),
-      wd(admin.from("page_visits").select("visitor_id, created_at").like("page_path", "/apply/nanny%")),
+      wd(admin.from("page_visits").select("visitor_id, created_at").or("page_path.like./apply/nanny%,page_path.eq./apply")),
       wd(admin.from("nannies").select("id, user_id, verification_level, visible_in_bsr, created_at, updated_at")),
       wd(admin.from("parents").select("id, user_id, signup_source, created_at, updated_at")),
       wd(admin.from("nanny_placements").select("id, nanny_id, parent_id, created_at")),
@@ -947,14 +947,14 @@ async function getPipelineData(
   //          6=HowItWorks, 7=Pricing, 8=ApplyPage, 9=SignupPages, 10=Login
   const pageCategories: { label: string; tooltip: string; match: (path: string) => boolean }[] = [
     { label: "Home", tooltip: "Visits to the homepage (/)", match: (p) => p === "/" },
-    { label: "For Nannies", tooltip: "Visits to /for-nannies", match: (p) => p === "/for-nannies" },
+    { label: "For Nannies", tooltip: "Visits to /childcare-professionals", match: (p) => p === "/for-nannies" || p === "/childcare-professionals" },
     { label: "Browse Nannies", tooltip: "Visits to /nannies and nanny profiles", match: (p) => p === "/nannies" || p.startsWith("/nannies/") },
     { label: "Quick Match Results", tooltip: "Visits to /matchmaking/results (from quick match widget)", match: (p) => p.startsWith("/matchmaking/results") },
     { label: "Matchmaking Form", tooltip: "Visits to /matchmaking/onboarding (advanced matchmaking)", match: (p) => p.startsWith("/matchmaking/onboarding") },
     { label: "Matchmaking Signup", tooltip: "Visits to /matchmaking/signup (signup after matching)", match: (p) => p.startsWith("/matchmaking/signup") },
     { label: "How It Works", tooltip: "Visits to /how-it-works", match: (p) => p === "/how-it-works" },
     { label: "Pricing", tooltip: "Visits to /pricing", match: (p) => p === "/pricing" },
-    { label: "Apply Page", tooltip: "Visits to /apply/nanny", match: (p) => p.startsWith("/apply/nanny") },
+    { label: "Apply Page", tooltip: "Visits to /apply", match: (p) => p.startsWith("/apply/nanny") || p === "/apply" },
     { label: "Signup Pages", tooltip: "Visits to /signup pages", match: (p) => p.startsWith("/signup") },
     { label: "Login", tooltip: "Visits to /login", match: (p) => p === "/login" },
     { label: "Nanny Profiles", tooltip: "Visits to individual nanny profile pages (shared to Facebook)", match: (p) => /^\/nannies\/[^/]+/.test(p) },

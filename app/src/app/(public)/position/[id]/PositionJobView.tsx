@@ -130,7 +130,7 @@ export function PositionJobView({ position }: Props) {
 
       {/* CTA */}
       <div className="w-full max-w-[23rem] mx-auto">
-        <Link href="/apply/nanny">
+        <Link href="/apply">
           <Button
             className="w-full bg-violet-600 hover:bg-violet-700 text-white h-10 text-sm"
           >
@@ -141,7 +141,7 @@ export function PositionJobView({ position }: Props) {
 
       {/* Childcare Professional Ad Tile */}
       <Link
-        href="/apply/nanny"
+        href="/apply"
         className="flex items-center justify-between max-w-sm mx-auto w-full rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow px-4 py-3"
         style={{ background: 'linear-gradient(135deg, #EDE9FE 0%, #DDD6FE 50%, #C4B5FD 100%)' }}
       >

@@ -331,7 +331,7 @@ export default function ServicesPage() {
                     asChild
                     className="border-violet-200 text-violet-600 hover:bg-violet-50 text-sm h-11 px-6"
                   >
-                    <Link href="/for-nannies">
+                    <Link href="/childcare-professionals">
                       Learn more
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
