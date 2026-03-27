@@ -1270,7 +1270,7 @@ function parseAIProfileSections(raw: string): Record<string, string> {
 /**
  * Generate an AI profile for a nanny (7 sections) using o4-mini
  */
-async function generateNannyBio(userId: string, data: CreateNannyProfileData): Promise<void> {
+export async function generateNannyBio(userId: string, data: CreateNannyProfileData): Promise<void> {
   // Use admin client — this runs as fire-and-forget after the server action returns,
   // so the cookie-based request context is gone and createClient() can't authenticate.
   const supabase = createAdminClient();

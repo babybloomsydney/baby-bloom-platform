@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { LEVEL_LABELS, STATUS_LABELS } from "@/lib/verification";
-import { adminDeleteUser, adminChangeRole, adminResetVerification } from "@/lib/actions/admin";
+import { adminDeleteUser, adminChangeRole, adminResetVerification, adminRegenerateNannyBio } from "@/lib/actions/admin";
 import { CheckCircle2, Clock, XCircle, MapPin, Mail, Phone, Calendar, Shield, Baby, Loader2, Trash2, RefreshCw, UserCog } from "lucide-react";
 import type { UserData } from "./page";
 
@@ -63,6 +63,19 @@ function AdminActions({ user, onClose }: { user: UserData; onClose: () => void }
     if (res.success) {
       setResult({ type: "success", message: `Role changed to ${selectedRole}` });
       setShowRoleConfirm(false);
+      router.refresh();
+    } else {
+      setResult({ type: "error", message: res.error || "Failed" });
+    }
+  };
+
+  const handleRegenerateBio = async () => {
+    setLoading("regenerate");
+    setResult(null);
+    const res = await adminRegenerateNannyBio(user.user_id);
+    setLoading(null);
+    if (res.success) {
+      setResult({ type: "success", message: "AI profile regenerated" });
       router.refresh();
     } else {
       setResult({ type: "error", message: res.error || "Failed" });
@@ -171,6 +184,27 @@ function AdminActions({ user, onClose }: { user: UserData; onClose: () => void }
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Regenerate AI Profile (nannies only) */}
+        {user.role === "nanny" && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-slate-500 uppercase">Regenerate AI Profile</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              onClick={handleRegenerateBio}
+              disabled={loading === "regenerate"}
+            >
+              {loading === "regenerate" ? (
+                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-3.5 w-3.5" />
+              )}
+              {loading === "regenerate" ? "Regenerating..." : "Regenerate Profile"}
+            </Button>
           </div>
         )}
 

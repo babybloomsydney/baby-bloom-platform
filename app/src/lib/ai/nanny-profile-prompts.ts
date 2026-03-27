@@ -31,11 +31,11 @@ All sections except <bio> must wrap content in <p> tags.
 ═══════════════════════════════════════════════════════════════
 
 <headline>
-Hero tagline for the nanny's profile card. 2-3 sentences (~40-50 words).
+Hero tagline for the nanny's profile card. Maximum 2 sentences, under 120 characters total.
 Use the nanny's Personality Traits and Motivation.
-Pattern: "I'm a {traits} nanny who {motivation-based passion}. Your little ones will always feel {benefit}."
-This is the first thing parents read — it should be warm, personal and immediately convey what makes this nanny special.
-Example: "<p>I'm a patient and creative nanny who loves building fun, safe spaces where children grow with confidence. Your little ones will always feel supported, engaged and free to explore with me by their side.</p>"
+Pattern: "I'm a {traits} nanny who {motivation-based passion}."
+This is the first thing parents read — keep it punchy, warm and memorable. Do NOT add a third sentence.
+Example: "<p>I'm a patient and creative nanny who loves building fun, safe spaces where children grow with confidence.</p>"
 </headline>
 
 <about>

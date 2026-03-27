@@ -17,6 +17,8 @@ import { runCrossCheckPhase } from '@/lib/ai/verification-pipeline';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
 import { createInboxMessage } from '@/lib/actions/connection-helpers';
+import { openai } from '@/lib/ai/client';
+import { V2_SYSTEM_PROMPT, buildV2Prompt, parseAIProfileSections, generateV2Checklist } from '@/lib/ai/nanny-profile-prompts';
 
 // ── Helper: require admin role ──
 
@@ -539,5 +541,157 @@ export async function adminRejectParentIdentity(
   }).catch(err => console.error('[adminRejectParentIdentity] Inbox error:', err));
 
   revalidatePath('/admin/users');
+  return { success: true, error: null };
+}
+
+// ── Admin: Regenerate Nanny AI Bio ──
+
+export async function adminRegenerateNannyBio(
+  userId: string
+): Promise<{ success: boolean; error: string | null }> {
+  const { error: authErr } = await requireAdmin();
+  if (authErr) return { success: false, error: authErr };
+
+  const admin = createAdminClient();
+
+  // Fetch nanny record
+  const { data: nanny } = await admin
+    .from('nannies')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (!nanny) return { success: false, error: 'Nanny record not found' };
+
+  // Fetch profile + credentials in parallel
+  const [{ data: profile }, { data: credentials }] = await Promise.all([
+    admin
+      .from('user_profiles')
+      .select('first_name, last_name, suburb, date_of_birth')
+      .eq('user_id', userId)
+      .single(),
+    admin
+      .from('nanny_credentials')
+      .select('credential_category, qualification_type, certification_type')
+      .eq('nanny_id', nanny.id),
+  ]);
+
+  if (!profile) return { success: false, error: 'User profile not found' };
+
+  const highest_qualification = credentials
+    ?.find(c => c.credential_category === 'qualification')?.qualification_type || null;
+  const certificates = (credentials || [])
+    .filter(c => c.credential_category === 'certification')
+    .map(c => c.certification_type)
+    .filter((t): t is string => t !== null);
+
+  // Convert months to age labels for V2 prompt
+  const monthsToLabel = (m: number | null): string | null => {
+    if (m === null || m === undefined) return null;
+    if (m === 0) return 'Newborn';
+    if (m < 12) return `${m} months`;
+    if (m === 12) return '12 months';
+    const years = Math.round(m / 12);
+    return `${years} years`;
+  };
+
+  const childcareRoles = (nanny.childcare_roles || []) as Array<{ role: string; duration: number }>;
+
+  // Build V2 prompt data from live nanny profile
+  const promptData = {
+    firstName: profile.first_name,
+    lastName: profile.last_name,
+    suburb: profile.suburb || null,
+    dateOfBirth: profile.date_of_birth || null,
+    nationality: nanny.nationality || null,
+    motivation: nanny.motivation || null,
+    personalityTraits: nanny.personality_traits || [],
+    levelOfSupport: nanny.level_of_support_offered || [],
+    professionalValues: nanny.professional_values || [],
+    totalExperience: nanny.total_experience_years != null ? String(nanny.total_experience_years) : null,
+    under3Experience: nanny.under_3_experience_years,
+    newbornExperience: nanny.newborn_experience_years,
+    childcareRoles,
+    highestQualification: highest_qualification,
+    certificates,
+    roleTypes: nanny.role_types_preferred || [],
+    minAge: monthsToLabel(nanny.min_child_age_months),
+    maxAge: monthsToLabel(nanny.max_child_age_months),
+    additionalNeeds: nanny.additional_needs_ok,
+    languages: nanny.languages || [],
+    driversLicense: nanny.drivers_license,
+    hasCar: nanny.has_car,
+    vaccinationStatus: nanny.vaccination_status,
+    comfortableWithPets: nanny.comfortable_with_pets,
+    nonSmoker: nanny.non_smoker,
+  };
+
+  try {
+    const userMessage = buildV2Prompt(promptData);
+
+    const completion = await openai.chat.completions.create({
+      model: 'o4-mini',
+      messages: [
+        { role: 'developer', content: V2_SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
+      max_completion_tokens: 10000,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim();
+    if (!raw) return { success: false, error: 'No content generated' };
+
+    const sections = parseAIProfileSections(raw);
+
+    if (!sections.headline && !sections.about && !sections.experience) {
+      return { success: false, error: 'AI generation returned incomplete content' };
+    }
+
+    const checklist = generateV2Checklist({
+      personalityTraits: nanny.personality_traits || [],
+      childcareRoles,
+      totalExperience: nanny.total_experience_years != null ? String(nanny.total_experience_years) : null,
+      under3Experience: nanny.under_3_experience_years,
+      newbornExperience: nanny.newborn_experience_years,
+      highestQualification: highest_qualification,
+      certificates,
+      roleTypes: nanny.role_types_preferred || [],
+      levelOfSupport: nanny.level_of_support_offered || [],
+      minAge: monthsToLabel(nanny.min_child_age_months),
+      maxAge: monthsToLabel(nanny.max_child_age_months),
+      driversLicense: nanny.drivers_license,
+      hasCar: nanny.has_car,
+      comfortableWithPets: nanny.comfortable_with_pets,
+      vaccinationStatus: nanny.vaccination_status,
+      nonSmoker: nanny.non_smoker,
+    });
+
+    const aiContent = {
+      headline: sections.headline || '',
+      parent_pitch: sections.bio || '',
+      bio_summary: {
+        about: sections.about || '',
+        personality: sections.personality || '',
+        values: sections.values || '',
+        background: sections.background || '',
+        what_i_offer: sections.what_i_offer || '',
+      },
+      experience_summary: sections.experience || '',
+      skills_highlight: checklist,
+      ai_model: 'o4-mini',
+      generated_at: new Date().toISOString(),
+    };
+
+    await admin
+      .from('nannies')
+      .update({ ai_content: aiContent })
+      .eq('id', nanny.id);
+  } catch (err) {
+    console.error('[adminRegenerateNannyBio] AI error:', err);
+    return { success: false, error: 'AI bio generation failed' };
+  }
+
+  revalidatePath('/admin/users');
+  revalidatePath('/nannies');
   return { success: true, error: null };
 }
