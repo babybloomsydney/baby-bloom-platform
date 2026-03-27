@@ -85,7 +85,7 @@ export function ClientHireSummaryPDF({
         <Text style={styles.listItem}>Service NSW WWCC: service.nsw.gov.au/transaction/apply-for-a-working-with-children-check</Text>
 
         <View style={styles.footer}>
-          <Text>Baby Bloom Sydney Pty Ltd | ABN: [ABN NUMBER]</Text>
+          <Text>Baby Bloom Sydney</Text>
           <Text>Document generated: {new Date().toLocaleDateString('en-AU')}</Text>
           <Text>This document is for your records. Please retain it for the duration of the arrangement.</Text>
         </View>

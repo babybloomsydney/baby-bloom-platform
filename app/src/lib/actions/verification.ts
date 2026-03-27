@@ -222,11 +222,30 @@ export async function submitIdentityForManualReview(): Promise<{ success: boolea
     sendEmail({
       to: userInfo.email,
       subject: "We're reviewing your documents",
-      html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-004 — Submitted for Manual Review. Confirms documents received for manual review. Expected turnaround 24-48 hours.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/nanny/verification" style="background: #8B5CF6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">View Status</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">We've received your documents</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${userInfo.firstName}, your identity documents have been submitted for manual review by our team.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">We'll review everything and get back to you within <strong>24–48 hours</strong>. No further action is needed from you right now.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">You can check the status of your verification at any time from your dashboard.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/verification" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View Status</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'verification_pending',
       recipientUserId: user.id,
     }).catch(err => console.error('[ManualReview] VER-004 email error:', err));

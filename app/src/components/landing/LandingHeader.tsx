@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -11,9 +12,14 @@ const DASHBOARDS: Record<string, string> = {
   super_admin: "/admin/dashboard",
 };
 
+const HIDDEN_PATHS = ["/matchmaking/onboarding"];
+
 export function LandingHeader() {
   const { user, role, isLoading } = useAuth();
+  const pathname = usePathname();
   const dashboard = role ? DASHBOARDS[role] : null;
+
+  if (HIDDEN_PATHS.some(p => pathname.startsWith(p))) return null;
 
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">

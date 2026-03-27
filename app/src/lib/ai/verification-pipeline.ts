@@ -358,11 +358,30 @@ export async function runCrossCheckPhase(verificationId: string): Promise<void> 
     sendEmail({
       to: userInfo.email,
       subject: "You're verified! Welcome to Baby Bloom 🎉",
-      html: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-001 — Provisionally Verified. Congratulates nanny on passing verification. Profile now visible to families. Can start receiving interview requests.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/nanny/profile" style="background: #8B5CF6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">View Your Profile</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;text-align:center;margin:0 0 8px;">You're verified, ${userInfo.firstName}!</h1>
+    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your identity and WWCC have been confirmed.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Your profile is now visible to families on Baby Bloom. When a family is interested, they'll send you a connection request — you'll be notified by email and in your dashboard.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Make sure your profile is up to date so families can see the best version of you.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/profile" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View Your Profile</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'verification_approved',
       recipientUserId: claimed.user_id,
     }).catch(err => console.error('[CrossCheck] VER-001 email error:', err));

@@ -67,11 +67,29 @@ export async function GET(request: NextRequest) {
     await sendEmail({
       to: userInfo.email,
       subject: 'Action needed: Your identity verification',
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-002 — Identity Verification Failed (delayed 10min). ID check needs attention. No failure details in email — directs to website for guidance and resubmission.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/nanny/verification" style="${btnStyle}">Fix It Now</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">Your identity check needs attention</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${userInfo.firstName}, we weren't able to verify your identity documents. This can happen if the photo was unclear, details didn't match, or there was a technical issue.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Head to your verification page to see what went wrong and resubmit. It usually only takes a minute.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/verification" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Fix It Now</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'verification_rejected',
       recipientUserId: v.user_id,
     });
@@ -111,11 +129,29 @@ export async function GET(request: NextRequest) {
     await sendEmail({
       to: userInfo.email,
       subject: 'Action needed: Your WWCC verification',
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-003 — WWCC Verification Failed (delayed 10min). WWCC check needs attention. No failure details in email — directs to website for guidance and resubmission.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/nanny/verification" style="${btnStyle}">Fix It Now</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">Your WWCC check needs attention</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${userInfo.firstName}, we weren't able to verify your Working With Children Check. This can happen if the document was unclear, the details didn't match, or your WWCC number couldn't be confirmed.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Visit your verification page to see what needs fixing and resubmit your WWCC details.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/verification" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Fix It Now</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'verification_rejected',
       recipientUserId: v.user_id,
     });
@@ -186,12 +222,29 @@ export async function GET(request: NextRequest) {
     await sendEmail({
       to: parentInfo.email,
       subject: `How are things going with ${nannyName}?`,
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hi ${parentInfo.firstName}, it's been a couple of days since your meet and greet with ${nannyName}. We'd love to know how things are going!</p>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">If you'd like to move forward, you can confirm the arrangement in your dashboard. If it wasn't the right fit, we're here to help you find another nanny.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/parent/connections" style="${btnStyle}">View Connection</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">How are things going with ${nannyName}?</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${parentInfo.firstName}, it's been a couple of days since your meet and greet. We'd love to know how things are going!</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">If you'd like to move forward, you can confirm the arrangement in your dashboard. If it wasn't the right fit, we're here to help you find another nanny.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/parent/connections" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View Connection</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/client-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'service_followup',
       recipientUserId: parentData.user_id,
     });
@@ -255,11 +308,28 @@ export async function GET(request: NextRequest) {
     await sendEmail({
       to: nannyInfo.email,
       subject: `How did your meet and greet with ${parentName} go?`,
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">Hi ${nannyInfo.firstName}, we haven't heard from you about your meet and greet with ${parentName}. When you have a moment, let us know how it went so we can help with next steps.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/nanny/positions" style="${btnStyle}">Update in My Positions</a></p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">How did it go with ${parentName}?</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${nannyInfo.firstName}, we haven't heard from you about your meet and greet. When you have a moment, let us know how it went so we can help with next steps.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/positions" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Update in My Positions</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'stale_connection_followup',
       recipientUserId: nannyData.user_id,
     });

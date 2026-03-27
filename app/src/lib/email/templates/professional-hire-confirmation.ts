@@ -64,7 +64,7 @@ export function buildProfessionalHireConfirmationEmail(params: ProfessionalHireE
 
     <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
       <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
-        Baby Bloom Sydney Pty Ltd | ABN: [ABN NUMBER]<br/>
+        Baby Bloom Sydney<br/>
         This email was sent because you confirmed a hire on Baby Bloom.<br/>
         <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
         <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms of Service</a><br/>

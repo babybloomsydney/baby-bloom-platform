@@ -100,7 +100,7 @@ export function ProfessionalHireSummaryPDF({
         <Text style={styles.listItem}>ATO ABN Registration: abr.business.gov.au</Text>
 
         <View style={styles.footer}>
-          <Text>Baby Bloom Sydney Pty Ltd | ABN: [ABN NUMBER]</Text>
+          <Text>Baby Bloom Sydney</Text>
           <Text>Document generated: {new Date().toLocaleDateString('en-AU')}</Text>
           <Text>This document is for your records. Please retain it for the duration of the arrangement.</Text>
         </View>

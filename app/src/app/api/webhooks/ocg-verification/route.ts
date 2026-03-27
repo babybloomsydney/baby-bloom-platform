@@ -450,10 +450,27 @@ async function sendOCGResultEmails(
     await sendEmail({
       to: userInfo.email,
       subject: 'Important: Your Baby Bloom account has been restricted',
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-010 — OCG Barred / Account Restricted. Account suspended due to OCG BARRED status. No resubmission possible. Contact Baby Bloom if believed to be an error.</p>
-      </div>`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">Your account has been restricted</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Hi ${userInfo.firstName}, following a check with the NSW Office of the Children's Guardian, your Working With Children Check status has been returned as barred.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">As a result, your Baby Bloom account has been suspended and your profile is no longer visible to families. This decision cannot be overridden through Baby Bloom.</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">If you believe this is an error, please contact the Office of the Children's Guardian directly. You can also reply to this email if you need to speak with our team.</p>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'verification_rejected',
       recipientUserId: userId,
     });
@@ -462,41 +479,65 @@ async function sendOCGResultEmails(
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@babybloomsydney.com.au';
     await sendEmail({
       to: adminEmail,
-      subject: `⚠️ BARRED nanny account suspended: ${userInfo.firstName} ${userInfo.lastName}`,
-      html: `<div style="${baseStyle}">
-        <h1 style="color: #EF4444; font-size: 24px; margin-bottom: 16px;">⚠️ BARRED Account</h1>
-        <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] VER-011 — Admin Alert: Barred Account. Nanny ${userInfo.firstName} ${userInfo.lastName} (${userInfo.email}) barred by OCG. Account auto-suspended.</p>
-        <p style="margin-top: 24px;"><a href="${appUrl}/admin/users" style="${btnStyle}">View in Admin</a></p>
-      </div>`,
+      subject: `BARRED nanny account suspended: ${userInfo.firstName} ${userInfo.lastName}`,
+      html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:24px;">
+      <h1 style="font-size:18px;font-weight:700;color:#dc2626;margin:0 0 8px;">Barred Account — Auto-Suspended</h1>
+      <p style="font-size:14px;color:#991b1b;margin:0;">Immediate action may be required.</p>
+    </div>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 8px;"><strong>Nanny:</strong> ${userInfo.firstName} ${userInfo.lastName}</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 8px;"><strong>Email:</strong> ${userInfo.email}</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 16px;"><strong>OCG Status:</strong> BARRED</p>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">This nanny's account has been automatically suspended and their profile removed from public view. All active connections have been preserved for review.</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/admin/users" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">View in Admin</a>
+    </div>
+  </div>
+</div>
+</body></html>`,
       emailType: 'admin_notification',
     });
     return;
   }
 
   // OCG non-cleared, non-barred results: NOT FOUND, EXPIRED, CLOSED, APPLICATION IN PROGRESS
-  const emailMap: Record<string, { id: string; subject: string; summary: string; emailType: string }> = {
+  const emailMap: Record<string, { subject: string; heading: string; body: string; cta: string; ctaUrl: string; emailType: string }> = {
     'NOT FOUND': {
-      id: 'VER-006',
       subject: 'Important: Your WWCC verification needs attention',
-      summary: 'OCG could not find WWCC number with provided details. Nanny needs to check details and resubmit via website.',
+      heading: 'We couldn\u2019t find your WWCC',
+      body: `Hi ${userInfo.firstName}, the Office of the Children\u2019s Guardian was unable to find a Working With Children Check matching the details you provided. This usually means there\u2019s a typo in the WWCC number or the name doesn\u2019t match exactly.</p><p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Please double-check your WWCC number and name, then resubmit from your verification page.`,
+      cta: 'Update WWCC Details',
+      ctaUrl: `${appUrl}/nanny/verification`,
       emailType: 'verification_rejected',
     },
     'EXPIRED': {
-      id: 'VER-007',
       subject: 'Important: Your WWCC has expired',
-      summary: 'OCG confirmed WWCC has expired. Nanny needs to apply for new WWCC at OCG website then resubmit.',
+      heading: 'Your WWCC has expired',
+      body: `Hi ${userInfo.firstName}, the Office of the Children\u2019s Guardian has confirmed that your Working With Children Check has expired. You\u2019ll need to apply for a new WWCC before you can be verified on Baby Bloom.</p><p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Once you\u2019ve received your new clearance, come back and resubmit your WWCC details.`,
+      cta: 'View Verification',
+      ctaUrl: `${appUrl}/nanny/verification`,
       emailType: 'wwcc_expired',
     },
     'CLOSED': {
-      id: 'VER-008',
       subject: 'Important: Your WWCC application has been closed',
-      summary: 'OCG indicated WWCC application was closed. Nanny needs to submit new application at OCG website then resubmit.',
+      heading: 'Your WWCC application was closed',
+      body: `Hi ${userInfo.firstName}, the Office of the Children\u2019s Guardian has indicated that your WWCC application has been closed. This may mean the application was withdrawn or not completed.</p><p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">You\u2019ll need to submit a new WWCC application through the OCG, then resubmit your details on Baby Bloom once it\u2019s approved.`,
+      cta: 'View Verification',
+      ctaUrl: `${appUrl}/nanny/verification`,
       emailType: 'verification_rejected',
     },
     'APPLICATION IN PROGRESS': {
-      id: 'VER-009',
       subject: 'Update: Your WWCC application is still being processed',
-      summary: 'OCG confirmed WWCC application still being processed. No action needed from nanny — wait for OCG then resubmit.',
+      heading: 'Your WWCC is still being processed',
+      body: `Hi ${userInfo.firstName}, the Office of the Children\u2019s Guardian has confirmed your WWCC application is still being processed. There\u2019s nothing you need to do right now \u2014 this is normal and can take a few weeks.</p><p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">Once the OCG has issued your clearance, come back to Baby Bloom and resubmit your WWCC details to complete verification.`,
+      cta: 'View Verification',
+      ctaUrl: `${appUrl}/nanny/verification`,
       emailType: 'verification_pending',
     },
   };
@@ -507,11 +548,28 @@ async function sendOCGResultEmails(
   await sendEmail({
     to: userInfo.email,
     subject: emailConfig.subject,
-    html: `<div style="${baseStyle}">
-      <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-      <p style="color: #374151; font-size: 16px; line-height: 1.6;">[TBD] ${emailConfig.id} — ${emailConfig.summary}</p>
-      <p style="margin-top: 24px;"><a href="${appUrl}/nanny/verification" style="${btnStyle}">View Details</a></p>
-    </div>`,
+    html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">${emailConfig.heading}</h1>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">${emailConfig.body}</p>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${emailConfig.ctaUrl}" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${emailConfig.cta}</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
     emailType: emailConfig.emailType,
     recipientUserId: userId,
   });
