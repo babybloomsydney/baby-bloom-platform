@@ -379,7 +379,7 @@ async function fetchCohort(admin: any, range: DateRange) {
   }
   const [visitsRes, applyVisitsRes, nanniesRes, parentsRes, placementsRes, positionsRes, leadsRes] =
     await Promise.all([
-      wd(admin.from("page_visits").select("visitor_id, referrer_source, page_path, created_at")),
+      wd(admin.from("page_visits").select("visitor_id, referrer, page_path, created_at")),
       wd(admin.from("page_visits").select("visitor_id, created_at").or("page_path.like./apply/nanny%,page_path.eq./apply")),
       wd(admin.from("nannies").select("id, user_id, verification_level, visible_in_bsr, created_at, updated_at")),
       wd(admin.from("parents").select("id, user_id, signup_source, created_at, updated_at")),
@@ -978,7 +978,7 @@ async function getPipelineData(
   // Referrer sources (top 8)
   const wtRefMap = new Map<string, Set<string> | number>();
   for (const v of wtVisits) {
-    const src = v.referrer_source || "Direct";
+    const src = v.referrer || "Direct";
     if (wtIsAll) {
       wtRefMap.set(src, ((wtRefMap.get(src) as number) || 0) + 1);
     } else {
@@ -1007,12 +1007,20 @@ async function getPipelineData(
   const webTraffic = [
     { label: "All Visitors", tooltip: "Total unique visitors or page views across all pages", total: allVisitorsCount },
     ...pageTraffic,
-    ...wtReferrers,
     { label: "Started Application", tooltip: "Began the nanny application form", total: startedApp },
     { label: "Completed App", tooltip: "Submitted the nanny application", total: completedApp },
     { label: "Nanny Accounts", tooltip: "Nanny accounts created", total: nannyAccounts },
     { label: "Parent Accounts", tooltip: "Parent accounts created", total: parentAccounts },
   ];
+
+  // Referrers as separate table (no limit — show all)
+  const wtAllReferrers = Array.from(wtRefMap.entries())
+    .map(([label, val]) => ({
+      label,
+      tooltip: `Traffic from ${label}`,
+      total: typeof val === 'number' ? val : val.size,
+    }))
+    .sort((a, b) => b.total - a.total);
 
   // ── Internal Catalog (for custom tab recomputation) ──
   const internalCatalog = new Map<string, InternalStage[]>();
@@ -1027,7 +1035,7 @@ async function getPipelineData(
     const refName = ref.label.replace('↳ ', '');
     return {
       label: ref.label, tooltip: `Traffic from ${refName}`,
-      records: wtVisits.filter((v: any) => (v.referrer_source || "Direct") === refName),
+      records: wtVisits.filter((v: any) => (v.referrer || "Direct") === refName),
       idKey: 'visitor_id',
     };
   });
@@ -1567,7 +1575,7 @@ async function getPipelineData(
     totalPlacements: g.placements.length,
     hasVisitorTracking: g.hasVisitorTracking,
     supplyCount, demandCount, medianDays,
-    webTraffic,
+    webTraffic, referrers: wtAllReferrers,
     nannyFlow, nannyTimestamps, nannyFlowLive,
     pageDropoff, pageDropoffLive,
     parentFunnel, parentTimestamps, parentFunnelLive, parentSourceBreakdown,
@@ -2034,6 +2042,22 @@ export default async function AdminPipelinePage({
           )}
         </CardContent>
       </Card>
+
+      {/* Referrers */}
+      {data.referrers.length > 0 && (
+        <Card>
+          <CardContent className="pt-5">
+            <PipelineTable
+              title="Referrers"
+              subtitle="Where visitors came from (all referrer sources)"
+              metricType="current"
+              stages={data.referrers}
+              hideDatePicker
+              hideActiveFilter
+            />
+          </CardContent>
+        </Card>
+      )}
 
       </div>
       </PipelineTabs>

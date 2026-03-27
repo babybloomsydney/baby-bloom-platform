@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { LEVEL_LABELS, STATUS_LABELS } from "@/lib/verification";
 import { adminDeleteUser, adminChangeRole, adminResetVerification, adminRegenerateNannyBio } from "@/lib/actions/admin";
-import { CheckCircle2, Clock, XCircle, MapPin, Mail, Phone, Calendar, Shield, Baby, Loader2, Trash2, RefreshCw, UserCog } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, MapPin, Mail, Phone, Calendar, Shield, Baby, Loader2, Trash2, RefreshCw, UserCog, ExternalLink } from "lucide-react";
 import type { UserData } from "./page";
 
 interface UserDetailDrawerProps {
@@ -299,6 +299,18 @@ export function UserDetailDrawer({ user, open, onOpenChange }: UserDetailDrawerP
               )}
             </div>
           </div>
+
+          {/* View Profile */}
+          {user.role === "nanny" && user.nanny_id && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => window.open(`/nannies/${user.nanny_id}`, '_blank')}
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              View Nanny Profile
+            </Button>
+          )}
 
           {/* Personal Info */}
           <Card>

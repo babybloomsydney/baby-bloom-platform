@@ -29,6 +29,8 @@ export interface UserData {
   parent_status: string | null;
   // Babysitter eligibility (derived from visible_in_bsr)
   babysitter_eligible: boolean | null;
+  // Nanny table ID (for profile links)
+  nanny_id: string | null;
 }
 
 export interface PendingIdentityCheck {
@@ -107,7 +109,7 @@ async function getUsers(): Promise<UserData[]> {
       .select('user_id, role'),
     supabase
       .from('nannies')
-      .select('user_id, status, verification_level, wwcc_verified, identity_verified, visible_in_bsr'),
+      .select('id, user_id, status, verification_level, wwcc_verified, identity_verified, visible_in_bsr'),
     supabase
       .from('parents')
       .select('user_id, status'),
@@ -129,7 +131,7 @@ async function getUsers(): Promise<UserData[]> {
     for (const r of rolesResult.data) roleMap.set(r.user_id, r.role);
   }
 
-  const nannyMap = new Map<string, { status: string; verification_level: number; wwcc_verified: boolean; identity_verified: boolean; visible_in_bsr: boolean }>();
+  const nannyMap = new Map<string, { id: string; status: string; verification_level: number; wwcc_verified: boolean; identity_verified: boolean; visible_in_bsr: boolean }>();
   if (nanniesResult.data) {
     for (const n of nanniesResult.data) nannyMap.set(n.user_id, n);
   }
@@ -167,6 +169,7 @@ async function getUsers(): Promise<UserData[]> {
       identity_verified: nanny?.identity_verified ?? null,
       parent_status: parent?.status ?? null,
       babysitter_eligible: nanny?.visible_in_bsr ?? null,
+      nanny_id: nanny?.id ?? null,
     };
   });
 }
