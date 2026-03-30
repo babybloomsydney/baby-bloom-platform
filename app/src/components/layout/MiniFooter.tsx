@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const HIDDEN_PATHS = ['/parent/request', '/matchmaking/onboarding'];
+const HIDDEN_PATHS = ['/parent/request', '/matchmaking/onboarding', '/bb/test/onboarding-verification', '/nanny/onboarding-verification', '/apply'];
 
 export function MiniFooter() {
   const pathname = usePathname();

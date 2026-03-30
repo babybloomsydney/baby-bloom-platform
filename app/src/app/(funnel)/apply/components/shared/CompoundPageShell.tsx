@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft } from 'lucide-react';
 
 interface CompoundPageShellProps {
   title: string;
   subtitle?: string;
   progress: number;
-  showBack: boolean;
-  onBack: () => void;
+  showBack?: boolean;
+  onBack?: () => void;
   questionNumber?: string;
   children: React.ReactNode;
 }
@@ -17,9 +16,6 @@ export function CompoundPageShell({
   title,
   subtitle,
   progress,
-  showBack,
-  onBack,
-  questionNumber,
   children,
 }: CompoundPageShellProps) {
   const [visible, setVisible] = useState(false);
@@ -42,20 +38,9 @@ export function CompoundPageShell({
         </div>
       </div>
 
-      {/* Back arrow */}
-      {showBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="absolute top-3 left-0 p-1.5 text-slate-400 hover:text-slate-600 transition-colors z-10"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      )}
-
       {/* Content */}
       <div
-        className={`flex-1 pt-10 pb-6 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'
+        className={`flex-1 pt-14 pb-6 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0'
           }`}
       >
         {/* Title */}
@@ -72,7 +57,7 @@ export function CompoundPageShell({
         </div>
 
         {/* Scrollable form content */}
-        <div className="max-w-md mx-auto px-2 pb-20">
+        <div className="max-w-md mx-auto px-4 pb-20">
           {children}
         </div>
       </div>

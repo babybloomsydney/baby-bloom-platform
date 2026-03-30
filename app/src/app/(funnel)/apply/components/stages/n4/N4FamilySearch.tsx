@@ -19,21 +19,31 @@ export function N4FamilySearch({ state, dispatch, goNext }: StageProps) {
   const bioGenStarted = useRef(false);
   const spinnerIdx = useRef(0);
 
-  // Start AI content generation in background
+  // Start AI content generation in background (with retry)
   useEffect(() => {
     if (bioGenStarted.current || !state.leadId) return;
     bioGenStarted.current = true;
 
-    generateOnboardingAIContent(state.leadId).then((result) => {
-      if (result.success) {
-        if (result.bio) {
-          dispatch({ type: 'SET_AI_BIO', payload: result.bio });
+    async function runWithRetry(leadId: string, attempts = 2) {
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const result = await generateOnboardingAIContent(leadId);
+          if (result.success) {
+            if (result.bio) dispatch({ type: 'SET_AI_BIO', payload: result.bio });
+            if (result.aiContent) dispatch({ type: 'SET_AI_CONTENT', payload: result.aiContent });
+            return;
+          }
+          console.error(`[N4] AI generation attempt ${i + 1} failed:`, result.error);
+        } catch (err) {
+          console.error(`[N4] AI generation attempt ${i + 1} threw:`, err);
         }
-        if (result.aiContent) {
-          dispatch({ type: 'SET_AI_CONTENT', payload: result.aiContent });
-        }
+        // Wait 2s before retry
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
       }
-    });
+      console.error('[N4] AI generation failed after all retries');
+    }
+
+    runWithRetry(state.leadId);
   }, [state.leadId, dispatch]);
 
   // After checklist completes, cycle spinner messages then show celebration

@@ -11,6 +11,7 @@ import {
 } from '@/lib/verification';
 import { verifyPassport, type PassportVerificationResult } from './verify-passport';
 import { verifyDriversLicense, type DriversLicenseVerificationResult } from './verify-drivers-license';
+import { capitalizeName } from '@/lib/utils';
 
 type VerificationResult = PassportVerificationResult | DriversLicenseVerificationResult;
 
@@ -233,16 +234,16 @@ export async function runParentIdentityPhase(verificationId: string): Promise<vo
 
   if (claimed.document_type === 'passport') {
     const passportResult = result as PassportVerificationResult;
-    extractionUpdate.extracted_surname = passportResult.extracted?.surname || null;
-    extractionUpdate.extracted_given_names = passportResult.extracted?.given_names || null;
+    extractionUpdate.extracted_surname = capitalizeName(passportResult.extracted?.surname) || null;
+    extractionUpdate.extracted_given_names = capitalizeName(passportResult.extracted?.given_names) || null;
     extractionUpdate.extracted_dob = passportResult.extracted?.dob || null;
     extractionUpdate.extracted_nationality = passportResult.extracted?.nationality || null;
     extractionUpdate.extracted_passport_number = passportResult.extracted?.passport_number || null;
     extractionUpdate.extracted_passport_expiry = passportResult.extracted?.expiry || null;
   } else if (claimed.document_type === 'drivers_license') {
     const licenseResult = result as DriversLicenseVerificationResult;
-    extractionUpdate.extracted_surname = licenseResult.extracted?.surname || null;
-    extractionUpdate.extracted_given_names = licenseResult.extracted?.given_names || null;
+    extractionUpdate.extracted_surname = capitalizeName(licenseResult.extracted?.surname) || null;
+    extractionUpdate.extracted_given_names = capitalizeName(licenseResult.extracted?.given_names) || null;
     extractionUpdate.extracted_dob = licenseResult.extracted?.dob || null;
     extractionUpdate.extracted_license_number = licenseResult.extracted?.license_number || null;
     extractionUpdate.extracted_license_expiry = licenseResult.extracted?.license_expiry || null;

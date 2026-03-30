@@ -258,7 +258,7 @@ export function N1Experience({ state, dispatch, goNext, goBack, subPage, progres
 
           {canContinue && (
             <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-              <div className="max-w-md mx-auto px-2">
+              <div className="max-w-md mx-auto px-4">
                 <Button
                   onClick={goNext}
                   className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"
@@ -416,7 +416,7 @@ export function N1Experience({ state, dispatch, goNext, goBack, subPage, progres
 
           {canContinue && (
             <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-              <div className="max-w-md mx-auto px-2">
+              <div className="max-w-md mx-auto px-4">
                 <Button
                   onClick={goNext}
                   className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"

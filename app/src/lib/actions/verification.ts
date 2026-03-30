@@ -15,6 +15,7 @@ import {
   type CrossCheckStatus,
   type UserGuidance,
 } from '@/lib/verification';
+import { capitalizeName } from '@/lib/utils';
 import { triggerCrossCheck } from '@/lib/ai/verification-pipeline';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
@@ -69,8 +70,8 @@ export async function submitIdentitySection(
 
   const identityFields = {
     user_id: user.id,
-    surname: data.surname.trim(),
-    given_names: data.given_names.trim(),
+    surname: capitalizeName(data.surname),
+    given_names: capitalizeName(data.given_names),
     date_of_birth: data.date_of_birth,
     passport_country: data.passport_country,
     passport_upload_url: data.passport_upload_url,
@@ -311,9 +312,9 @@ export async function submitWWCCSection(
     wwcc_grant_email_url: data.wwcc_grant_email_url ?? null,
     wwcc_service_nsw_screenshot_url: data.wwcc_service_nsw_screenshot_url ?? null,
     // Extracted data (from PDF parser for grant_email)
-    extracted_wwcc_surname: data.extracted_wwcc_surname ?? null,
-    extracted_wwcc_first_name: data.extracted_wwcc_first_name ?? null,
-    extracted_wwcc_other_names: data.extracted_wwcc_other_names ?? null,
+    extracted_wwcc_surname: capitalizeName(data.extracted_wwcc_surname) || null,
+    extracted_wwcc_first_name: capitalizeName(data.extracted_wwcc_first_name) || null,
+    extracted_wwcc_other_names: capitalizeName(data.extracted_wwcc_other_names) || null,
     extracted_wwcc_number: data.extracted_wwcc_number ?? null,
     extracted_wwcc_clearance_type: data.extracted_wwcc_clearance_type ?? null,
     extracted_wwcc_expiry: data.extracted_wwcc_expiry ?? null,
@@ -376,26 +377,16 @@ export async function submitContactSection(
   const user = await getAuthUser();
   if (!user) return { success: false, error: 'Not authenticated' };
 
-  if (!data.phone_number?.trim() || !data.address_line?.trim() || !data.city?.trim() || !data.postcode?.trim()) {
+  if (!data.address_line?.trim() || !data.city?.trim() || !data.postcode?.trim()) {
     return { success: false, error: 'Missing required contact details' };
   }
 
   const admin = createAdminClient();
 
-  const { data: existing } = await admin
-    .from('verifications')
-    .select('id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!existing) {
-    return { success: false, error: 'No verification record found. Please complete Identity section first.' };
-  }
-
   const { error: updateErr } = await admin
     .from('verifications')
     .update({
-      phone_number: data.phone_number.trim(),
+      phone_number: data.phone_number?.trim() || null,
       address_line: data.address_line.trim(),
       city: data.city.trim(),
       state: data.state?.trim() ?? null,
@@ -404,12 +395,20 @@ export async function submitContactSection(
       contact_status: CONTACT_STATUS.SAVED,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', existing.id);
+    .eq('user_id', user.id);
 
   if (updateErr) {
     console.error('[submitContactSection] Update failed:', updateErr);
     return { success: false, error: 'Failed to save contact details' };
   }
+
+  // Sync verified suburb and postcode back to user_profiles
+  // (overrides the self-reported suburb from the onboarding funnel)
+  await admin.from('user_profiles').update({
+    suburb: data.city.trim(),
+    postcode: data.postcode.trim(),
+    updated_at: new Date().toISOString(),
+  }).eq('user_id', user.id);
 
   revalidatePath('/nanny/verification');
   return { success: true, error: null };

@@ -97,7 +97,7 @@ const COMPONENTS: Record<string, { name: string; render: () => React.ReactNode }
   },
   "nanny-verification": {
     name: "VerificationPageClient",
-    render: () => <VerificationPageClient initialData={MOCK_VERIFICATION_DATA} />,
+    render: () => <VerificationPageClient initialData={MOCK_VERIFICATION_DATA} profileData={null} />,
   },
   "nanny-share": {
     name: "NannyShareClient",

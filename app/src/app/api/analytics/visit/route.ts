@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const admin = createAdminClient();
-    await admin.from('page_visits').insert({
+    const { error } = await admin.from('page_visits').insert({
       visitor_id: parsed.data.visitor_id,
       page_path: parsed.data.page_path,
       referrer: parsed.data.referrer || null,
@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
       ...(parsed.data.utm_campaign && { utm_campaign: parsed.data.utm_campaign }),
       ...(parsed.data.utm_content && { utm_content: parsed.data.utm_content }),
     });
+
+    if (error) {
+      console.error('[visit-track] insert error:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch {

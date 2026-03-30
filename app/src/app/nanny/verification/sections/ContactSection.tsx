@@ -185,13 +185,12 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
   if (locked) {
     return (
       <div className="text-sm text-slate-500 py-4">
-        Complete the WWCC section first to unlock Contact Information.
+        Complete the WWCC section first to unlock residence verification.
       </div>
     );
   }
 
-  const phoneValid = AU_MOBILE_REGEX.test(normalisePhone(phone));
-  const canSave = phoneValid && selectedAddress;
+  const canSave = !!selectedAddress;
 
   async function handleSave() {
     setIsSaving(true);
@@ -236,7 +235,6 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
     return (
       <div className="space-y-4">
         <div className="space-y-1 text-sm text-green-700">
-          {phone && <p>{formatPhoneDisplay(phone) || phone}</p>}
           {displayAddress && <p>{displayAddress}</p>}
           {displaySuburb && <p>{displaySuburb}, NSW {displayPostcode}</p>}
         </div>
@@ -257,31 +255,6 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>
       )}
-
-      <div className="space-y-2">
-        <Label htmlFor="phone_number" className="text-sm font-medium text-slate-700">Phone Number</Label>
-        <div className="flex gap-2">
-          <div className="flex items-center rounded-md border border-input bg-slate-50 px-3 h-9 text-sm text-slate-700 flex-shrink-0">
-            <span>+61</span>
-          </div>
-          <div className="flex-1 space-y-1">
-            <Input
-              id="phone_number"
-              type="tel"
-              placeholder="04XX XXX XXX"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={isSaving}
-            />
-            {phoneValid && (
-              <p className="text-xs text-green-600 font-medium mt-1.5 flex items-center gap-1">
-                {formatPhoneDisplay(phone)}
-                <Check className="h-3 w-3" />
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
 
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
@@ -345,7 +318,7 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
             Verifying...
           </>
         ) : (
-          "Verify"
+          "Verify Residence"
         )}
       </Button>
     </div>

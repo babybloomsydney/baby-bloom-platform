@@ -76,7 +76,7 @@ export function N3Photos({ state, dispatch, goNext, goBack, progress, questionNu
           <label className="text-sm font-medium text-slate-700">
             Additional photos
           </label>
-          <div className="flex gap-3">
+          <div className="grid grid-cols-3 gap-3 w-full max-w-xs">
             <PhotoUpload
               value={about_you.photo_1_url}
               onChange={(url) => update({ photo_1_url: url })}
@@ -103,7 +103,7 @@ export function N3Photos({ state, dispatch, goNext, goBack, progress, questionNu
         )}
 
         <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-          <div className="max-w-md mx-auto px-2">
+          <div className="max-w-md mx-auto px-4">
             <Button
               onClick={handleSubmit}
               disabled={!hasProfilePhoto || submitting}

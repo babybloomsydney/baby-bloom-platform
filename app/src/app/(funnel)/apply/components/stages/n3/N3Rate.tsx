@@ -45,6 +45,7 @@ export function N3Rate({ state, dispatch, goNext, goBack, progress, questionNumb
             <input
               type="number"
               min={35}
+              max={100}
               step={0.25}
               value={rateValue || ''}
               onChange={(e) => {
@@ -53,7 +54,8 @@ export function N3Rate({ state, dispatch, goNext, goBack, progress, questionNumb
               }}
               onBlur={() => {
                 if (rateValue > 0) {
-                  const rounded = roundToQuarter(Math.max(rateValue, 35));
+                  const clamped = Math.min(Math.max(rateValue, 35), 100);
+                  const rounded = roundToQuarter(clamped);
                   update({ hourly_rate_min: `$${rounded.toFixed(2)}` });
                 }
               }}
@@ -63,6 +65,9 @@ export function N3Rate({ state, dispatch, goNext, goBack, progress, questionNumb
           </div>
           {salary.hourly_rate_min && rateValue > 0 && rateValue < 35 && (
             <p className="text-xs text-amber-600">Minimum rate is $35.00</p>
+          )}
+          {salary.hourly_rate_min && rateValue > 100 && (
+            <p className="text-xs text-amber-600">Maximum rate is $100.00</p>
           )}
         </div>
 
@@ -82,7 +87,7 @@ export function N3Rate({ state, dispatch, goNext, goBack, progress, questionNumb
 
         {canContinue && (
           <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-            <div className="max-w-md mx-auto px-2">
+            <div className="max-w-md mx-auto px-4">
               <Button
                 onClick={goNext}
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"

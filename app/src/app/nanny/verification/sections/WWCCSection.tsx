@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Loader2, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, AlertTriangle, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,9 +13,9 @@ import { GUIDANCE_MESSAGES } from "@/lib/verification";
 import type { VerificationData } from "@/lib/actions/verification";
 
 const WWCC_METHODS = [
-  { label: "WWCC Grant Email", value: "grant_email", time: "Instant" },
-  { label: "Service NSW App", value: "service_nsw_app", time: "Instant" },
-  { label: "Manual Entry", value: "manual_entry", time: "1-3 days" },
+  { label: "WWCC Grant Email", value: "grant_email", time: "Instant", desc: "Upload PDF of WWCC Grant Email" },
+  { label: "Service NSW App", value: "service_nsw_app", time: "Instant", desc: "Service NSW App Screenshot" },
+  { label: "Manual Entry", value: "manual_entry", time: "1-3 days", desc: "Enter your WWCC manually" },
 ] as const;
 
 const WWCC_NUMBER_REGEX = /^WWC\d{7}[A-Z]$/;
@@ -59,12 +59,11 @@ type UploadState = "idle" | "uploading" | "done" | "error";
 
 interface WWCCSectionProps {
   verification: VerificationData | null;
-  locked: boolean;
-  identityInReview?: boolean;
-  onSaved: (verificationId: string) => void;
+  identityVerified?: boolean;
+  onSaved: (verificationId: string, method: string) => void;
 }
 
-export function WWCCSection({ verification, locked, identityInReview, onSaved }: WWCCSectionProps) {
+export function WWCCSection({ verification, identityVerified, onSaved }: WWCCSectionProps) {
   const status = verification?.wwcc_status ?? "not_started";
   const isProcessing = status === "processing" || status === "pending";
   const isCompleted = status === "doc_verified";
@@ -214,25 +213,8 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
     }
   }, []);
 
-  if (identityInReview) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 space-y-1">
-        <p className="font-medium text-amber-800">Waiting for ID review</p>
-        <p>We are unable to verify your WWCC until we have verified your ID. This may take up to 3 days.</p>
-      </div>
-    );
-  }
-
-  if (locked) {
-    return (
-      <div className="text-sm text-slate-500 py-4">
-        Complete the ID section first to unlock WWCC verification.
-      </div>
-    );
-  }
-
   function handleMethodSelect(value: string) {
-    setMethod(value);
+    setMethod(method === value ? null : value);
     setPdfFileName(null);
     setPdfResult(null);
     setPdfUploadState("idle");
@@ -285,8 +267,8 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
         return;
       }
 
-      // Fire AI for Service NSW (fire-and-forget)
-      if (method === "service_nsw_app") {
+      // Fire AI for Service NSW — only if identity is already verified
+      if (method === "service_nsw_app" && identityVerified) {
         fetch("/api/run-verification", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -296,7 +278,7 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
       setIsSaving(false);
       setEditing(false);
-      onSaved(saveResult.verificationId!);
+      onSaved(saveResult.verificationId!, method!);
     } catch (err) {
       setError(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
       setIsSaving(false);
@@ -372,14 +354,28 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
         )}
 
         {needsAction && !verification?.wwcc_user_guidance && status !== "review" && (
-          <Button
-            type="button"
-            onClick={() => { setEditing(true); setWwccConfirmed(false); }}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
-            size="sm"
-          >
-            Edit & Resubmit
-          </Button>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 space-y-1">
+              <p className="font-semibold text-amber-800">WWCC verification was not successful</p>
+              <p>
+                {status === "ocg_not_found" ? "Your WWCC number could not be found in the OCG register. Please double-check your details."
+                  : status === "closed" ? "This WWCC clearance has been closed. Please contact the Office of the Children\u2019s Guardian."
+                  : status === "expired" ? "Your WWCC has expired. Please renew it before continuing."
+                  : status === "application_pending" ? "Your WWCC application is still pending with the Office of the Children\u2019s Guardian."
+                  : "Please re-upload your WWCC documents or try a different verification method."}
+              </p>
+            </div>
+            {!isBarred && (
+              <Button
+                type="button"
+                onClick={() => { setEditing(true); setWwccConfirmed(false); }}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+                size="sm"
+              >
+                Edit & Resubmit
+              </Button>
+            )}
+          </div>
         )}
       </div>
     );
@@ -387,11 +383,16 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
   // ── Editing form ──
 
-  const grantEmailValid = method === "grant_email" && pdfResult?.pass && pdfUploadState === "done";
+  const grantEmailValid = method === "grant_email" && pdfResult?.pass && pdfUploadState === "done" && wwccConfirmed;
   const grantEmailExpired = pdfResult?.issues?.some(i => i.toLowerCase().includes("expired") && !i.toLowerCase().includes("expires within"));
   const grantEmailExpiringSoon = pdfResult?.issues?.some(i => i.toLowerCase().includes("expires within"));
-  const serviceNswReady = method === "service_nsw_app" && screenshotUploadState === "done";
+  const serviceNswReady = method === "service_nsw_app" && screenshotUploadState === "done" && wwccConfirmed;
   const manualReady = method === "manual_entry" && WWCC_NUMBER_REGEX.test(wwccNumber) && !!wwccExpiry && !wwccExpiryError && wwccConfirmed;
+
+  const showCheckbox =
+    (method === "grant_email" && pdfResult?.pass && pdfUploadState === "done") ||
+    (method === "service_nsw_app" && screenshotUploadState === "done") ||
+    (method === "manual_entry" && WWCC_NUMBER_REGEX.test(wwccNumber) && !!wwccExpiry && !wwccExpiryError);
 
   const canSave = grantEmailValid || serviceNswReady || manualReady;
   const isUploading = pdfUploadState === "uploading" || screenshotUploadState === "uploading";
@@ -404,21 +405,24 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
       {/* Method selection */}
       <div className="space-y-3">
-        <p className="text-sm font-medium text-slate-700">How would you like to verify your WWCC?</p>
-        <div className="flex flex-wrap gap-2">
-          {WWCC_METHODS.map((m) => (
+        <p className="text-sm font-medium text-slate-700">WWCC verification method</p>
+        <div className="space-y-2">
+          {WWCC_METHODS.filter((m) => !method || m.value === method).map((m) => (
             <button
               key={m.value}
               type="button"
               onClick={() => handleMethodSelect(m.value)}
               disabled={isSaving}
-              className={`px-4 py-2 rounded-full border text-sm font-medium cursor-pointer transition-colors ${
+              className={`w-full text-left rounded-xl border p-4 transition-all ${
                 method === m.value
-                  ? "bg-violet-600 text-white border-violet-600"
-                  : "bg-white text-slate-700 border-slate-300 hover:border-violet-400"
+                  ? "border-violet-500 bg-violet-50 ring-1 ring-inset ring-violet-500"
+                  : "border-slate-200 bg-white hover:border-slate-300 active:bg-slate-50"
               }`}
             >
-              {m.label} ({m.time})
+              <p className={`text-sm font-medium ${method === m.value ? "text-violet-700" : "text-slate-800"}`}>
+                {m.label} ({m.time})
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">{m.desc}</p>
             </button>
           ))}
         </div>
@@ -427,75 +431,71 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
       {/* ── Grant Email ── */}
       {method === "grant_email" && (
         <div className="space-y-4">
-          <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 text-sm text-blue-800 space-y-2">
-            <p className="font-medium">How to upload your WWCC Grant Email:</p>
-            <ol className="list-decimal list-inside space-y-1 text-blue-700">
-              <li>Find the email from WWCCNotification@ocg.nsw.gov.au</li>
-              <li>Open the email and click Print</li>
-              <li>Choose &quot;Save as PDF&quot;</li>
-              <li>Upload the PDF below</li>
+          <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 text-xs text-blue-700 space-y-1.5">
+            <p className="font-medium text-blue-800">Uploading your WWCC Grant Email</p>
+            <ol className="list-decimal list-inside space-y-0.5 text-blue-600">
+              <li>Locate grant email from WWCCNotification@ocg.nsw.gov.au</li>
+              <li>Click &apos;Print&apos; → &apos;Save as PDF&apos;</li>
+              <li>Upload PDF below</li>
             </ol>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-sm font-medium text-slate-700">Upload WWCC Grant Email PDF</Label>
-            <div
-              onClick={() => !isSaving && !pdfValidating && pdfUploadState !== "uploading" && pdfInputRef.current?.click()}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (isSaving || pdfValidating || pdfUploadState === "uploading") return;
-                const file = e.dataTransfer.files?.[0];
-                if (file) handlePdfSelect(file);
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              className={`flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors ${
-                isSaving || pdfValidating || pdfUploadState === "uploading"
-                  ? "border-slate-200 bg-slate-100"
-                  : "border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50"
-              }`}
-            >
-              {pdfValidating ? (
-                <div className="flex items-center gap-2 text-violet-600">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-sm font-medium">Validating PDF...</span>
-                </div>
-              ) : pdfUploadState === "uploading" ? (
-                <div className="flex flex-col items-center gap-2">
-                  <CircularProgress percent={pdfUploadProgress} />
-                  <span className="text-xs text-slate-500">Uploading {pdfFileName}...</span>
-                </div>
-              ) : pdfUploadState === "done" ? (
-                <div className="flex items-center gap-2 text-green-600">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="text-sm font-medium">{pdfFileName}</span>
-                  <span className="text-xs text-slate-500 ml-2">Click to replace</span>
-                </div>
-              ) : (
-                <>
-                  {pdfUploadError && <p className="text-xs text-red-500 mb-1">{pdfUploadError}</p>}
-                  <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700">Upload WWCC Grant Email PDF</p>
-                    <p className="text-xs text-slate-500 mt-0.5">Drag & drop or click to upload</p>
-                  </div>
-                </>
-              )}
-            </div>
-            <input
-              ref={pdfInputRef}
-              type="file"
-              accept="application/pdf,.pdf"
-              className="hidden"
-              disabled={isSaving || pdfValidating || pdfUploadState === "uploading"}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handlePdfSelect(file);
-                e.target.value = "";
-              }}
-            />
-          </div>
+          <button
+            type="button"
+            onClick={() => !isSaving && !pdfValidating && pdfUploadState !== "uploading" && pdfInputRef.current?.click()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (isSaving || pdfValidating || pdfUploadState === "uploading") return;
+              const file = e.dataTransfer.files?.[0];
+              if (file) handlePdfSelect(file);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            disabled={isSaving || pdfValidating || pdfUploadState === "uploading"}
+            className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-all duration-300 ${
+              pdfUploadState === "done"
+                ? "border-green-300 bg-green-50"
+                : pdfValidating || pdfUploadState === "uploading"
+                ? "border-violet-300 bg-violet-50/30 cursor-wait"
+                : pdfUploadState === "error"
+                ? "border-red-300 bg-red-50 hover:border-red-400"
+                : "border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-50"
+            }`}
+          >
+            {pdfValidating ? (
+              <div className="flex flex-col items-center gap-2">
+                <Loader2 className="h-8 w-8 text-violet-500 animate-spin" />
+                <span className="text-xs text-slate-500">Validating PDF...</span>
+              </div>
+            ) : pdfUploadState === "uploading" ? (
+              <div className="flex flex-col items-center gap-2">
+                <CircularProgress percent={pdfUploadProgress} />
+                <span className="text-xs text-slate-500">Uploading...</span>
+              </div>
+            ) : pdfUploadState === "done" ? (
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-5 w-5" />
+                <span className="text-sm font-medium">PDF uploaded & validated</span>
+              </div>
+            ) : (
+              <>
+                {pdfUploadError && <p className="text-xs text-red-500 mb-1">{pdfUploadError}</p>}
+                <Upload className="h-7 w-7 text-violet-500" />
+                <p className="text-sm font-medium text-slate-700">Tap to upload</p>
+              </>
+            )}
+          </button>
+          <input
+            ref={pdfInputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            disabled={isSaving || pdfValidating || pdfUploadState === "uploading"}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handlePdfSelect(file);
+              e.target.value = "";
+            }}
+          />
 
           {/* PDF validation result */}
           {pdfResult && !pdfValidating && (
@@ -564,9 +564,9 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
 
       {/* ── Service NSW Screenshot ── */}
       {method === "service_nsw_app" && (
-        <div className="space-y-2">
-          <Label className="text-sm font-medium text-slate-700">Upload Service NSW Screenshot</Label>
-          <div
+        <div className="space-y-1.5">
+          <button
+            type="button"
             onClick={() => !isSaving && screenshotUploadState !== "uploading" && screenshotInputRef.current?.click()}
             onDrop={(e) => {
               e.preventDefault();
@@ -575,36 +575,35 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
               if (file) handleScreenshotSelect(file);
             }}
             onDragOver={(e) => e.preventDefault()}
-            className={`flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-8 text-center cursor-pointer transition-colors ${
-              isSaving || screenshotUploadState === "uploading"
-                ? "border-slate-200 bg-slate-100"
-                : "border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50"
+            disabled={isSaving || screenshotUploadState === "uploading"}
+            className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-all duration-300 ${
+              screenshotUploadState === "done"
+                ? "border-green-300 bg-green-50"
+                : screenshotUploadState === "uploading"
+                ? "border-violet-300 bg-violet-50/30 cursor-wait"
+                : screenshotUploadState === "error"
+                ? "border-red-300 bg-red-50 hover:border-red-400"
+                : "border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-50"
             }`}
           >
             {screenshotUploadState === "uploading" ? (
               <div className="flex flex-col items-center gap-2">
                 <CircularProgress percent={screenshotUploadProgress} />
-                <span className="text-xs text-slate-500">Uploading {screenshotFileName}...</span>
+                <span className="text-xs text-slate-500">Uploading...</span>
               </div>
             ) : screenshotUploadState === "done" ? (
               <div className="flex items-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
-                <span className="text-sm font-medium">{screenshotFileName}</span>
-                {!isSaving && <span className="text-xs text-slate-500 ml-2">Click to replace</span>}
+                <span className="text-sm font-medium">Screenshot uploaded</span>
               </div>
             ) : (
               <>
                 {screenshotUploadError && <p className="text-xs text-red-500 mb-1">{screenshotUploadError}</p>}
-                <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium text-slate-700">Upload Service NSW Screenshot</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Screenshot from your Service NSW wallet</p>
-                </div>
+                <Upload className="h-7 w-7 text-violet-500" />
+                <p className="text-sm font-medium text-slate-700">Tap to upload</p>
               </>
             )}
-          </div>
+          </button>
           <input
             ref={screenshotInputRef}
             type="file"
@@ -617,7 +616,6 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
               e.target.value = "";
             }}
           />
-          <p className="text-xs text-slate-500 italic">Must be the full unedited screenshot from within your Service NSW wallet.</p>
         </div>
       )}
 
@@ -665,20 +663,25 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
             {!wwccExpiryError && <p className="text-xs text-slate-500">Found on your WWCC grant email or Service NSW app</p>}
           </div>
 
-          <div className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        </>
+      )}
+
+      {/* Confirmation checkbox (all methods) */}
+      {showCheckbox && (
+        <div className="transition-all duration-300">
+          <label className="flex items-start gap-2.5 cursor-pointer">
             <input
-              id="wwcc_confirmed_manual"
               type="checkbox"
               checked={wwccConfirmed}
               onChange={(e) => setWwccConfirmed(e.target.checked)}
               disabled={isSaving}
-              className="mt-0.5 h-4 w-4 accent-violet-600 cursor-pointer flex-shrink-0"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 text-violet-600 focus:ring-violet-500 accent-violet-600 cursor-pointer"
             />
-            <Label htmlFor="wwcc_confirmed_manual" className="text-sm text-slate-700 cursor-pointer leading-relaxed">
+            <span className="text-xs text-slate-500 leading-relaxed">
               I confirm that the WWCC I have provided is genuine, valid, and issued to me.
-            </Label>
-          </div>
-        </>
+            </span>
+          </label>
+        </div>
       )}
 
       {/* Save button */}
@@ -700,7 +703,7 @@ export function WWCCSection({ verification, locked, identityInReview, onSaved }:
               Uploading...
             </>
           ) : (
-            "Verify"
+            "Verify WWCC"
           )}
         </Button>
       )}

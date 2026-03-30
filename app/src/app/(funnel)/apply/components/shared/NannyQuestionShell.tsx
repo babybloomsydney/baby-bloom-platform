@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronLeft } from 'lucide-react';
 
 interface NannyQuestionShellProps {
   question: string;
   subtitle?: string;
   progress: number;
-  showBack: boolean;
-  onBack: () => void;
+  showBack?: boolean;
+  onBack?: () => void;
   questionNumber?: string;
   children: React.ReactNode;
 }
@@ -17,9 +16,6 @@ export function NannyQuestionShell({
   question,
   subtitle,
   progress,
-  showBack,
-  onBack,
-  questionNumber,
   children,
 }: NannyQuestionShellProps) {
   const [questionVisible, setQuestionVisible] = useState(false);
@@ -48,17 +44,6 @@ export function NannyQuestionShell({
         </div>
       </div>
 
-      {/* Back arrow */}
-      {showBack && (
-        <button
-          type="button"
-          onClick={onBack}
-          className="absolute top-3 left-0 p-1.5 text-slate-400 hover:text-slate-600 transition-colors z-10"
-        >
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      )}
-
       {/* Question text — centered on page */}
       <div
         className={`flex-1 flex items-center justify-center px-4 transition-opacity duration-300 ${
@@ -82,7 +67,7 @@ export function NannyQuestionShell({
 
       {/* Options — pinned to bottom, staggered entrance */}
       <div
-        className={`w-full max-w-md mx-auto pb-6 px-2 transition-all duration-500 ease-out ${
+        className={`w-full max-w-md mx-auto pb-6 px-4 transition-all duration-500 ease-out ${
           optionsVisible
             ? 'opacity-100'
             : 'opacity-0 translate-y-8'

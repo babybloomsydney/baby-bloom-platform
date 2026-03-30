@@ -13,6 +13,7 @@ import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
 import { createInboxMessage } from '@/lib/actions/connection-helpers';
 import { ParentVerificationData } from '@/types/parent';
+import { capitalizeName } from '@/lib/utils';
 
 // ── Shared auth helper ──
 
@@ -67,8 +68,8 @@ export async function submitParentIdentitySection(
     user_id: user.id,
     document_type: data.document_type,
     issuing_country: data.issuing_country,
-    surname: data.surname.trim(),
-    given_names: data.given_names.trim(),
+    surname: capitalizeName(data.surname),
+    given_names: capitalizeName(data.given_names),
     date_of_birth: data.date_of_birth,
     document_upload_url: data.document_upload_url,
     identification_photo_url: data.identification_photo_url,

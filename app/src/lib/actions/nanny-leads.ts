@@ -2,6 +2,8 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { capitalizeName } from '@/lib/utils';
+import { sendEmail } from '@/lib/email/resend';
 import {
   NannyLeadIdentity,
   NannyLeadExperience,
@@ -73,8 +75,8 @@ export async function createNannyLead(data: {
     const { data: lead, error } = await adminClient
       .from('nanny_leads')
       .insert({
-        first_name: data.first_name,
-        last_name: data.last_name,
+        first_name: capitalizeName(data.first_name),
+        last_name: capitalizeName(data.last_name),
         email: data.email,
         phone: data.phone,
         identity: data.identity,
@@ -110,8 +112,8 @@ export async function createNannyLead(data: {
           const { data: updated, error: updateErr } = await adminClient
             .from('nanny_leads')
             .update({
-              first_name: data.first_name,
-              last_name: data.last_name,
+              first_name: capitalizeName(data.first_name),
+              last_name: capitalizeName(data.last_name),
               phone: data.phone,
               identity: data.identity,
               experience: data.experience,
@@ -231,8 +233,8 @@ export async function convertLeadToAccount(
       password: password,
       email_confirm: true,
       user_metadata: {
-        first_name: lead.first_name,
-        last_name: lead.last_name,
+        first_name: capitalizeName(lead.first_name),
+        last_name: capitalizeName(lead.last_name),
       },
     });
 
@@ -259,8 +261,8 @@ export async function convertLeadToAccount(
         .from('user_profiles')
         .insert({
           user_id: userId,
-          first_name: lead.first_name,
-          last_name: lead.last_name,
+          first_name: capitalizeName(lead.first_name),
+          last_name: capitalizeName(lead.last_name),
           email: finalEmail,
           mobile_number: lead.phone,
           date_of_birth: lead.experience?.date_of_birth || null,
@@ -377,7 +379,17 @@ export async function convertLeadToAccount(
         }
       }
 
-      // 8. Insert user_progress
+      // 8. Create verifications record (empty — all statuses not_started)
+      await adminClient.from('verifications').insert({
+        user_id: userId,
+        identity_status: 'not_started',
+        wwcc_status: 'not_started',
+        contact_status: 'not_started',
+        cross_check_status: 'not_started',
+        verification_status: 0,
+      });
+
+      // 9. Insert user_progress
       await adminClient.from('user_progress').insert({
         user_id: userId,
         stage: 'nanny_lead_converted',
@@ -405,6 +417,47 @@ export async function convertLeadToAccount(
         email: finalEmail,
         password: password,
       });
+
+      // 12. Send welcome email (ACC-001, fire-and-forget)
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app-babybloom.vercel.app';
+      const firstName = capitalizeName(lead.first_name);
+      sendEmail({
+        to: finalEmail,
+        subject: `Welcome to Baby Bloom, ${firstName}!`,
+        html: `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
+    </div>
+    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
+    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
+    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
+    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
+      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
+        <li>Complete your profile with your experience and qualifications</li>
+        <li>Upload your ID and WWCC for verification</li>
+        <li>Once verified, families in Sydney can find and connect with you</li>
+      </ol>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/verification" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Start Verification</a>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms of Service</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`,
+        emailType: 'welcome',
+        recipientUserId: userId,
+      }).catch(err => console.error('[Signup] ACC-001 email error:', err));
 
       return { success: true, redirectTo: '/nanny' };
     } catch (innerError) {

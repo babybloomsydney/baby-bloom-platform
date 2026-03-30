@@ -336,6 +336,276 @@ export async function GET(request: NextRequest) {
     sent++;
   }
 
+  // ── LCY-101 to LCY-104: Verification reminder funnel ──
+  // Nudges nannies stuck at various verification stages.
+  // 4 emails at 30min, 24h, 48h, 7d — resets when updated_at changes.
+  // 3 groups: Complete ID (1), Complete WWCC (2), Fix & Retry (3).
+
+  const LCY_THRESHOLDS = [
+    { minElapsedMs: 30 * 60 * 1000,              minSent: 0, emailId: 'LCY-101' },
+    { minElapsedMs: 24 * 60 * 60 * 1000,         minSent: 1, emailId: 'LCY-102' },
+    { minElapsedMs: 48 * 60 * 60 * 1000,         minSent: 2, emailId: 'LCY-103' },
+    { minElapsedMs: 7 * 24 * 60 * 60 * 1000,     minSent: 3, emailId: 'LCY-104' },
+  ];
+
+  // Query nannies stuck in verification (level < 3, active account)
+  const { data: stuckNannies } = await supabase
+    .from('verifications')
+    .select('user_id, identity_status, wwcc_status, updated_at, created_at')
+    .or(
+      'identity_status.in.(not_started,failed,rejected),' +
+      'wwcc_status.eq.not_started,' +
+      'wwcc_status.in.(failed,rejected,ocg_not_found,expired,closed)'
+    );
+
+  for (const v of stuckNannies ?? []) {
+    // Check nanny is active and level < 3
+    const { data: nanny } = await supabase
+      .from('nannies')
+      .select('verification_level, status')
+      .eq('user_id', v.user_id)
+      .single();
+
+    if (!nanny || nanny.verification_level >= 3 || nanny.status !== 'active') {
+      continue;
+    }
+
+    // Determine group and sub-variant
+    let group: 1 | 2 | 3;
+    let subVariant: string;
+
+    if (['failed', 'rejected'].includes(v.identity_status)) {
+      group = 3; subVariant = 'identity_failed';
+    } else if (['failed', 'rejected'].includes(v.wwcc_status)) {
+      group = 3; subVariant = 'wwcc_failed';
+    } else if (v.wwcc_status === 'ocg_not_found') {
+      group = 3; subVariant = 'wwcc_ocg_not_found';
+    } else if (['expired', 'closed'].includes(v.wwcc_status)) {
+      group = 3; subVariant = 'wwcc_expired';
+    } else if (v.identity_status === 'verified' && v.wwcc_status === 'not_started') {
+      group = 2; subVariant = 'wwcc_not_started';
+    } else if (['not_started'].includes(v.identity_status)) {
+      group = 1; subVariant = 'id_not_started';
+    } else {
+      // Not in a stuck state we handle (e.g. processing, pending, review)
+      continue;
+    }
+
+    const stuckSince = new Date(v.updated_at || v.created_at).getTime();
+    const elapsed = Date.now() - stuckSince;
+
+    // Count reminders already sent since stuckSince
+    const { count: reminderCount } = await supabase
+      .from('email_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipient_user_id', v.user_id)
+      .eq('email_type', 'verification_reminder')
+      .gte('created_at', new Date(stuckSince).toISOString());
+
+    const sentCount = reminderCount ?? 0;
+
+    // Find which email to send (if any)
+    const threshold = LCY_THRESHOLDS.find(
+      t => sentCount === t.minSent && elapsed >= t.minElapsedMs
+    );
+    if (!threshold) continue;
+
+    const userInfo = await getUserEmailInfo(v.user_id);
+    if (!userInfo) continue;
+
+    // Build group-specific content
+    const { subject, heading, bodyParagraphs, ctaText } = getLcyContent(
+      threshold.emailId, group, subVariant, userInfo.firstName
+    );
+
+    const isLcy104 = threshold.emailId === 'LCY-104';
+
+    await sendEmail({
+      to: userInfo.email,
+      subject,
+      ...(isLcy104 ? { from: 'Baby Bloom <hello@babybloomsydney.com.au>' } : {}),
+      html: buildLcyHtml(heading, bodyParagraphs, ctaText, appUrl),
+      emailType: 'verification_reminder',
+      recipientUserId: v.user_id,
+    });
+    sent++;
+  }
+
   console.log(`[Delayed Emails] Sent: ${sent}, Skipped: ${skipped}`);
   return NextResponse.json({ sent, skipped });
+}
+
+// ── LCY email content by group and email ID ──
+
+function getLcyContent(
+  emailId: string,
+  group: 1 | 2 | 3,
+  subVariant: string,
+  firstName: string
+): { subject: string; heading: string; bodyParagraphs: string[]; ctaText: string } {
+
+  // Group messages
+  const groupMessages: Record<string, string> = {
+    // Group 1
+    id_not_started: 'To connect you with families, we need to verify your identity. It\u2019s a quick process \u2014 confirm your address, upload your passport, and take a selfie. Most people finish in under 3 minutes.',
+    // Group 2
+    wwcc_not_started: 'Your identity is verified \u2014 you\u2019re one step away! Upload your Working With Children Check and your profile will be visible to families in your area.',
+    // Group 3 sub-variants
+    identity_failed: 'Your identity check needs a quick fix \u2014 most people get it right on the second try. Head to your verification page to see what needs adjusting.',
+    wwcc_failed: 'Your WWCC check needs a quick fix. If one upload method didn\u2019t work, try another \u2014 the Grant Email PDF is usually the most reliable.',
+    wwcc_ocg_not_found: 'The Office of the Children\u2019s Guardian couldn\u2019t find your WWCC with the details provided. This usually means a typo in the WWCC number or a surname mismatch.',
+    wwcc_expired: 'Your WWCC needs to be renewed before we can verify you. Once you have a new clearance from the Office of the Children\u2019s Guardian, come back and resubmit.',
+  };
+
+  // Group instructions (HTML formatted)
+  const groupInstructions: Record<string, string> = {
+    id_not_started:
+      '1. Go to your Verification page<br/>' +
+      '2. Enter your residential address and click \u201cVerify Residence\u201d<br/>' +
+      '3. Upload a clear photo of your passport<br/>' +
+      '4. Take a quick selfie (good lighting, face visible)<br/>' +
+      '5. Click \u201cVerify ID\u201d',
+    wwcc_not_started:
+      '1. Go to your Verification page<br/>' +
+      '2. Choose your WWCC verification method:<br/>' +
+      '&nbsp;&nbsp;&bull; <strong>Fastest:</strong> Upload your WWCC Grant Email as a PDF<br/>' +
+      '&nbsp;&nbsp;&bull; <strong>Also fast:</strong> Upload a screenshot from the Service NSW app<br/>' +
+      '&nbsp;&nbsp;&bull; <strong>Manual:</strong> Enter your WWCC number and expiry date<br/>' +
+      '3. Click \u201cVerify WWCC\u201d',
+    identity_failed:
+      '1. Go to your Verification page<br/>' +
+      '2. Review the feedback on what went wrong<br/>' +
+      '3. Retake your passport photo or selfie as needed<br/>' +
+      '4. Click \u201cVerify ID\u201d to resubmit',
+    wwcc_failed:
+      '1. Go to your Verification page<br/>' +
+      '2. Review the feedback on what went wrong<br/>' +
+      '3. Re-upload your WWCC document or try a different method<br/>' +
+      '4. Click \u201cVerify WWCC\u201d',
+    wwcc_ocg_not_found:
+      '1. Double-check your WWCC number (format: WWC1234567E)<br/>' +
+      '2. Ensure your surname matches exactly what\u2019s on your WWCC<br/>' +
+      '3. Go to your Verification page and resubmit',
+    wwcc_expired:
+      '1. Apply for a new WWCC at ocg.nsw.gov.au<br/>' +
+      '2. Once you receive your new clearance, go to your Verification page<br/>' +
+      '3. Upload your new WWCC grant email or enter details manually',
+  };
+
+  const message = groupMessages[subVariant] || groupMessages.id_not_started;
+  const instructions = groupInstructions[subVariant] || groupInstructions.id_not_started;
+
+  switch (emailId) {
+    case 'LCY-101': {
+      const subjects: Record<number, string> = {
+        1: `${firstName}, let\u2019s get you verified so families can find you`,
+        2: `${firstName}, one more step and you\u2019re done`,
+        3: `${firstName}, quick fix needed on your verification`,
+      };
+      return {
+        subject: subjects[group],
+        heading: group === 3 ? 'Quick fix needed' : 'You\u2019re almost there',
+        bodyParagraphs: [
+          `Hi ${firstName},`,
+          message,
+          `<strong>Here\u2019s what to do:</strong><br/>${instructions}`,
+          'It only takes a few minutes, and you\u2019ll be one step closer to connecting with families who need your help.',
+        ],
+        ctaText: 'Complete Verification',
+      };
+    }
+    case 'LCY-102': {
+      const subjects: Record<number, string> = {
+        1: `We\u2019d love to help you find work, ${firstName}`,
+        2: `You\u2019re so close to being verified, ${firstName}`,
+        3: `Let\u2019s get your verification back on track, ${firstName}`,
+      };
+      return {
+        subject: subjects[group],
+        heading: 'We want to help you find work',
+        bodyParagraphs: [
+          `Hi ${firstName},`,
+          'We noticed you haven\u2019t finished your verification yet. We really want to help you find work with great families \u2014 but we can\u2019t show your profile or send any opportunities your way until verification is complete.',
+          message,
+          `<strong>Here\u2019s what to do:</strong><br/>${instructions}`,
+          'It only takes a few minutes to pick up where you left off.',
+        ],
+        ctaText: 'Complete Verification',
+      };
+    }
+    case 'LCY-103': {
+      const subjects: Record<number, string> = {
+        1: `Families in your area are looking for nannies, ${firstName}`,
+        2: `You\u2019re one step away from job opportunities, ${firstName}`,
+        3: `A quick fix is all that\u2019s standing between you and families, ${firstName}`,
+      };
+      return {
+        subject: subjects[group],
+        heading: 'Families are searching for nannies',
+        bodyParagraphs: [
+          `Hi ${firstName},`,
+          'Since you signed up, families in Sydney have been searching for nannies \u2014 but we can\u2019t connect them with you until your verification is complete.',
+          'Without verification, we\u2019re unable to:<br/>' +
+          '&nbsp;&nbsp;&bull; Show your profile to families searching in your area<br/>' +
+          '&nbsp;&nbsp;&bull; Send you interview requests from interested parents<br/>' +
+          '&nbsp;&nbsp;&bull; Match you with babysitting opportunities',
+          message,
+          `<strong>Here\u2019s your next step:</strong><br/>${instructions}`,
+          'We built Baby Bloom to help nannies like you find work \u2014 let us do that for you.',
+        ],
+        ctaText: 'Finish Verification',
+      };
+    }
+    case 'LCY-104': {
+      return {
+        subject: `Last reminder: Let\u2019s get you verified, ${firstName}`,
+        heading: 'Last reminder',
+        bodyParagraphs: [
+          `Hi ${firstName},`,
+          'This is our last reminder \u2014 your Baby Bloom verification is still incomplete, which means we can\u2019t show your profile to families or send any work opportunities your way.',
+          message,
+          'If you\u2019re having trouble or something isn\u2019t working, just reply to this email and we\u2019ll help you personally. We want to make sure nothing is standing between you and finding great families to work with.',
+        ],
+        ctaText: 'Complete Verification',
+      };
+    }
+    default:
+      return { subject: '', heading: '', bodyParagraphs: [], ctaText: '' };
+  }
+}
+
+// ── LCY HTML builder (matches existing email template structure) ──
+
+function buildLcyHtml(
+  heading: string,
+  bodyParagraphs: string[],
+  ctaText: string,
+  appUrl: string
+): string {
+  const paragraphs = bodyParagraphs
+    .map(p => `    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 12px;">${p}</p>`)
+    .join('\n');
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 16px;">${heading}</h1>
+${paragraphs}
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/verification" style="display:inline-block;background:#8b5cf6;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">${ctaText}</a>
+    </div>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`;
 }

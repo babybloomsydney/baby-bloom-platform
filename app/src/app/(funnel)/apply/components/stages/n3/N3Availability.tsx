@@ -137,11 +137,16 @@ export function N3Availability({ state, dispatch, goNext, goBack, progress, ques
               {/* Column headers */}
               <div className="grid grid-cols-[80px_repeat(4,1fr)] gap-1 mb-1">
                 <div />
-                {TIME_OPTIONS.map((time) => (
-                  <div key={time} className="text-center">
-                    <p className="text-[11px] font-semibold text-slate-600">{time}</p>
-                  </div>
-                ))}
+                {TIME_OPTIONS.map((time) => {
+                  const label = time.replace(/\s*\(.*\)/, '');
+                  const range = time.match(/\(([^)]+)\)/)?.[1] ?? '';
+                  return (
+                    <div key={time} className="text-center leading-tight">
+                      <p className="text-[10px] font-semibold text-slate-600">{label}</p>
+                      <p className="text-[8px] text-slate-400">{range}</p>
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Day rows */}
@@ -239,7 +244,7 @@ export function N3Availability({ state, dispatch, goNext, goBack, progress, ques
 
         {isComplete && (
           <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-            <div className="max-w-md mx-auto px-2">
+            <div className="max-w-md mx-auto px-4">
               <Button
                 onClick={goNext}
                 className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"

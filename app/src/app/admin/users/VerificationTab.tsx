@@ -123,7 +123,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
@@ -180,10 +180,12 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
 
       {/* Sub-tabs: ID / WWCC */}
       <Tabs defaultValue="id" className="space-y-4">
-        <TabsList>
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+        <TabsList className="w-max sm:w-auto">
           <TabsTrigger value="id" className="gap-2">
             <IdCard className="h-4 w-4" />
-            ID Verification
+            <span className="hidden sm:inline">ID Verification</span>
+            <span className="sm:hidden">ID</span>
             {identityChecks.length > 0 && (
               <span className="ml-1 rounded-full bg-yellow-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 {identityChecks.length}
@@ -192,7 +194,8 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
           </TabsTrigger>
           <TabsTrigger value="wwcc" className="gap-2">
             <FileText className="h-4 w-4" />
-            WWCC Verification
+            <span className="hidden sm:inline">WWCC Verification</span>
+            <span className="sm:hidden">WWCC</span>
             {wwccChecks.length > 0 && (
               <span className="ml-1 rounded-full bg-yellow-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 {wwccChecks.length}
@@ -200,6 +203,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
             )}
           </TabsTrigger>
         </TabsList>
+        </div>
 
         {/* ID Sub-tab */}
         <TabsContent value="id">
@@ -212,6 +216,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
             </CardHeader>
             <CardContent>
               {identityChecks.length > 0 ? (
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -264,6 +269,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
                     })}
                   </TableBody>
                 </Table>
+                </div>
               ) : (
                 <EmptyState
                   icon={IdCard}
@@ -279,7 +285,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
         <TabsContent value="wwcc">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <CardTitle>Pending WWCC Checks</CardTitle>
                   <CardDescription>
@@ -304,6 +310,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
             </CardHeader>
             <CardContent>
               {wwccChecks.length > 0 ? (
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -426,6 +433,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
                     })}
                   </TableBody>
                 </Table>
+                </div>
               ) : (
                 <EmptyState
                   icon={FileText}

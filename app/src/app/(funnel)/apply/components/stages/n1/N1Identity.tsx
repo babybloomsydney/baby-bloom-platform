@@ -70,7 +70,7 @@ export function N1Identity({ state, dispatch, goNext, goBack, subPage, progress,
 
           {showOtherInput && identity.motivation_other && identity.motivation_other.trim().length > 0 && (
             <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-              <div className="max-w-md mx-auto px-2">
+              <div className="max-w-md mx-auto px-4">
                 <Button
                   onClick={goNext}
                   className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"
@@ -105,7 +105,7 @@ export function N1Identity({ state, dispatch, goNext, goBack, subPage, progress,
           />
           {identity.personality_traits.length === 5 && (
             <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-              <div className="max-w-md mx-auto px-2">
+              <div className="max-w-md mx-auto px-4">
                 <Button
                   onClick={goNext}
                   className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"
@@ -164,7 +164,7 @@ export function N1Identity({ state, dispatch, goNext, goBack, subPage, progress,
           />
           {identity.professional_values.length === 5 && (
             <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-              <div className="max-w-md mx-auto px-2">
+              <div className="max-w-md mx-auto px-4">
                 <Button
                   onClick={goNext}
                   className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"

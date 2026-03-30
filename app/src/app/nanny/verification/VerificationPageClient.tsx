@@ -16,8 +16,15 @@ import { useRouter } from "next/navigation";
 import type { VerificationData } from "@/lib/actions/verification";
 import type { UserGuidance } from "@/lib/verification";
 
+interface ProfileData {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+}
+
 interface VerificationPageClientProps {
   initialData: VerificationData | null;
+  profileData: ProfileData | null;
 }
 
 type PollResponse = {
@@ -49,11 +56,12 @@ function stepLineColor(step: StepState): string {
   return step === "completed" ? "bg-green-300" : step === "current" ? "bg-violet-200" : "bg-slate-200";
 }
 
-function StepIndicator({ state, isFirst, isLast, topLineColor }: {
+function StepIndicator({ state, isFirst, isLast, topLineColor, bottomLineColor }: {
   state: StepState;
   isFirst?: boolean;
   isLast?: boolean;
   topLineColor?: string;
+  bottomLineColor?: string;
 }) {
   const isCompleted = state === "completed";
   const isCurrent = state === "current";
@@ -73,12 +81,12 @@ function StepIndicator({ state, isFirst, isLast, topLineColor }: {
         {isCompleted && <Check className="h-4 w-4 text-white" />}
         {isCurrent && <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />}
       </div>
-      {!isLast && <div className={`w-0.5 flex-1 ${stepLineColor(state)}`} />}
+      {!isLast && <div className={`w-0.5 flex-1 ${bottomLineColor ?? stepLineColor(state)}`} />}
     </div>
   );
 }
 
-export function VerificationPageClient({ initialData }: VerificationPageClientProps) {
+export function VerificationPageClient({ initialData, profileData }: VerificationPageClientProps) {
   const router = useRouter();
   const [verification, setVerification] = useState<VerificationData | null>(initialData);
 
@@ -88,23 +96,25 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
   const contactStatus = verification?.contact_status ?? "not_started";
   const crossCheckStatus = verification?.cross_check_status ?? "not_started";
 
+  const verificationStatus = verification?.verification_status ?? 0;
   const identityInReview = identityStatus === "review";
-  const wwccLocked = identityStatus === "not_started" || identityInReview;
-  const contactLocked = wwccStatus === "not_started";
+  const identityLocked = contactStatus !== "saved";
+  const wwccLocked = contactStatus !== "saved" || identityStatus === "not_started";
 
   // Determine which sections to open by default
   const getDefaultOpen = useCallback((): string[] => {
+    if (contactStatus === "not_started") return ["contact"];
     if (identityStatus === "not_started") return ["identity"];
     if (identityInReview) return ["identity"];
-    if (wwccStatus === "not_started" && !wwccLocked) return ["wwcc"];
-    if (contactStatus === "not_started" && !contactLocked) return ["contact"];
-    if (identityStatus === "processing") return ["wwcc"];
     if (["failed", "rejected"].includes(identityStatus)) return ["identity"];
+    if (wwccStatus === "not_started" && !wwccLocked) return ["wwcc"];
+    if (identityStatus === "processing") return ["wwcc"];
     if (["failed", "review", "rejected", "ocg_not_found", "closed", "application_pending", "barred", "expired"].includes(wwccStatus)) return ["wwcc"];
-    return ["identity"];
-  }, [identityStatus, wwccStatus, contactStatus, wwccLocked, contactLocked, identityInReview]);
+    return ["contact"];
+  }, [identityStatus, wwccStatus, contactStatus, wwccLocked, identityInReview]);
 
   const [openSections, setOpenSections] = useState<string[]>(getDefaultOpen());
+  const [pendingWwccFire, setPendingWwccFire] = useState<{ verificationId: string } | null>(null);
 
   // Poll for status updates when sections are processing or pending
   const isProcessing =
@@ -146,13 +156,40 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
             verification_status: data.status ?? prev.verification_status,
           };
         });
+
+        // Fire queued WWCC verification once identity is verified
+        if (data.identity_status === "verified" && pendingWwccFire) {
+          fetch("/api/run-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ verificationId: pendingWwccFire.verificationId, phase: "wwcc" }),
+          }).catch(() => {});
+          setPendingWwccFire(null);
+        }
       } catch {
         // Ignore polling errors
       }
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [isProcessing]);
+  }, [isProcessing, pendingWwccFire]);
+
+  // On mount: fire WWCC if it was queued before a page refresh
+  useEffect(() => {
+    if (
+      initialData?.identity_status === "verified" &&
+      initialData?.wwcc_status === "pending" &&
+      initialData?.wwcc_verification_method === "service_nsw_app" &&
+      initialData?.id
+    ) {
+      fetch("/api/run-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verificationId: initialData.id, phase: "wwcc" }),
+      }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleIdentitySaved = (verificationId: string, data: { surname: string; givenNames: string; dob: string }) => {
     setVerification((prev) => {
@@ -226,12 +263,16 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
     setOpenSections(["identity"]);
   };
 
-  const handleWWCCSaved = () => {
+  const handleWWCCSaved = (verificationId: string, wwccMethod: string) => {
     setVerification((prev) => {
       if (!prev) return prev;
-      return { ...prev, wwcc_status: "pending", wwcc_user_guidance: null };
+      return { ...prev, wwcc_status: "pending", wwcc_user_guidance: null, wwcc_verification_method: wwccMethod };
     });
-    setOpenSections(["contact"]);
+    // Queue WWCC AI fire if identity isn't verified yet
+    if (identityStatus !== "verified" && wwccMethod === "service_nsw_app") {
+      setPendingWwccFire({ verificationId });
+    }
+    setOpenSections([]);
   };
 
   const handleContactSaved = () => {
@@ -239,7 +280,7 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
       if (!prev) return prev;
       return { ...prev, contact_status: "saved" };
     });
-    setOpenSections([]);
+    setOpenSections(["identity"]);
   };
 
   const getBadgeStatus = (sectionStatus: string) => {
@@ -280,38 +321,64 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
     return () => clearInterval(interval);
   }, [allVerified, router]);
 
-  // Stepper states
-  const identityStep: StepState = identityStatus === "verified" ? "completed" : "current";
-  const wwccStep: StepState = ["verified", "doc_verified"].includes(wwccStatus) ? "completed" : wwccLocked ? "future" : "current";
-  const contactStep: StepState = contactStatus === "saved" ? "completed" : contactLocked ? "future" : "current";
+  // Stepper states (order: Residence → Identity → WWCC → Connect)
+  const contactStep: StepState = contactStatus === "saved" ? "completed" : "current";
+  const identityStep: StepState = identityLocked ? "future" : identityStatus === "verified" ? "completed" : "current";
+  const wwccStep: StepState = wwccLocked ? "future" : ["verified", "doc_verified"].includes(wwccStatus) ? "completed" : "current";
   const goalStep: StepState = allVerified ? "completed" : "future";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-800">Verification</h1>
+        <h1 className="text-2xl font-bold text-slate-800 text-center">Verification</h1>
         {allVerified ? (
-          <p className="text-sm text-green-600 mt-1 font-medium flex items-center gap-1.5">
+          <p className="text-sm text-green-600 mt-1 font-medium flex items-center justify-center gap-1.5">
             <Shield className="h-4 w-4" />
             Your account is fully verified!
           </p>
         ) : (
-          <p className="text-sm text-slate-500 mt-1">
-            For the protection of our childcare professionals and families, all users must complete the same gold-standard verification before we will connect them with each other.
+          <p className="text-sm text-slate-500 mt-1 text-center">
+            Complete each step to connect with families.
           </p>
         )}
       </div>
 
       <Accordion type="multiple" value={openSections} onValueChange={setOpenSections}>
-        {/* Step 1: Verify ID */}
-        <div className="flex gap-3">
-          <StepIndicator state={identityStep} isFirst />
-          <div className="flex-1 pb-3">
-            <AccordionItem value="identity" className="border-0">
+        {/* Step 1: Verify Residence (independent — always available) */}
+        <div className="flex gap-2 sm:gap-3">
+          <StepIndicator state={contactStep} isFirst />
+          <div className="flex-1 min-w-0 pb-3">
+            <AccordionItem value="contact" className="border-0">
               <AccordionTrigger className="hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <span className="text-base font-semibold text-slate-800">Verify ID</span>
-                  {getBadgeStatus(identityStatus) && (
+                <div className="flex items-center justify-between w-full mr-2">
+                  <span className="text-base font-semibold text-slate-800">
+                    Verify Residence
+                  </span>
+                  {getBadgeStatus(contactStatus) && (
+                    <SectionStatusBadge status={getBadgeStatus(contactStatus)!} />
+                  )}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent forceMount>
+                <ContactSection
+                  verification={verification}
+                  locked={false}
+                  onSaved={handleContactSaved}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </div>
+        </div>
+
+        {/* Step 2: Verify ID */}
+        <div className="flex gap-2 sm:gap-3">
+          <StepIndicator state={identityStep} topLineColor={stepLineColor(contactStep)} />
+          <div className="flex-1 min-w-0 overflow-hidden pb-3">
+            <AccordionItem value="identity" className="border-0" disabled={identityLocked}>
+              <AccordionTrigger className="hover:no-underline" disabled={identityLocked}>
+                <div className="flex items-center justify-between w-full mr-2">
+                  <span className={`text-base font-semibold ${identityLocked ? "text-slate-400" : "text-slate-800"}`}>Verify ID</span>
+                  {!identityLocked && getBadgeStatus(identityStatus) && (
                     <SectionStatusBadge
                       status={getBadgeStatus(identityStatus)!}
                       customLabel={identityInReview ? "Pending review" : undefined}
@@ -322,6 +389,8 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
               <AccordionContent forceMount>
                 <IdentitySection
                   verification={verification}
+                  locked={identityLocked}
+                  profileData={profileData}
                   onSaved={handleIdentitySaved}
                   onManualReview={handleManualReview}
                 />
@@ -330,17 +399,16 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
           </div>
         </div>
 
-        {/* Step 2: Verify WWCC */}
-        <div className="flex gap-3">
-          <StepIndicator state={wwccStep} topLineColor={stepLineColor(identityStep)} />
-          <div className="flex-1 pb-3">
+        {/* Step 3: Verify WWCC */}
+        <div className="flex gap-2 sm:gap-3">
+          <StepIndicator state={wwccStep} topLineColor={stepLineColor(identityStep)} bottomLineColor={stepLineColor(goalStep)} />
+          <div className="flex-1 min-w-0 overflow-hidden pb-3">
             <AccordionItem value="wwcc" className="border-0" disabled={wwccLocked}>
               <AccordionTrigger className="hover:no-underline" disabled={wwccLocked}>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between w-full mr-2">
                   <span className={`text-base font-semibold ${wwccLocked ? "text-slate-400" : "text-slate-800"}`}>
                     Verify WWCC
                   </span>
-                  {identityInReview && <span className="text-xs text-amber-600">Waiting for ID review</span>}
                   {!wwccLocked && getBadgeStatus(wwccStatus) && (
                     <SectionStatusBadge status={getBadgeStatus(wwccStatus)!} />
                   )}
@@ -349,8 +417,7 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
               <AccordionContent forceMount>
                 <WWCCSection
                   verification={verification}
-                  locked={wwccLocked}
-                  identityInReview={identityInReview}
+                  identityVerified={identityStatus === "verified"}
                   onSaved={handleWWCCSaved}
                 />
               </AccordionContent>
@@ -358,35 +425,9 @@ export function VerificationPageClient({ initialData }: VerificationPageClientPr
           </div>
         </div>
 
-        {/* Step 3: Verify Contact Information */}
-        <div className="flex gap-3">
-          <StepIndicator state={contactStep} topLineColor={stepLineColor(wwccStep)} />
-          <div className="flex-1 pb-3">
-            <AccordionItem value="contact" className="border-0" disabled={contactLocked}>
-              <AccordionTrigger className="hover:no-underline" disabled={contactLocked}>
-                <div className="flex items-center gap-3">
-                  <span className={`text-base font-semibold ${contactLocked ? "text-slate-400" : "text-slate-800"}`}>
-                    Verify Contact Information
-                  </span>
-                  {!contactLocked && getBadgeStatus(contactStatus) && (
-                    <SectionStatusBadge status={getBadgeStatus(contactStatus)!} />
-                  )}
-                </div>
-              </AccordionTrigger>
-              <AccordionContent forceMount>
-                <ContactSection
-                  verification={verification}
-                  locked={contactLocked}
-                  onSaved={handleContactSaved}
-                />
-              </AccordionContent>
-            </AccordionItem>
-          </div>
-        </div>
-
         {/* Step 4: Connect with Families (goal step — no accordion) */}
-        <div className="flex gap-3">
-          <StepIndicator state={goalStep} isLast topLineColor={stepLineColor(contactStep)} />
+        <div className="flex gap-2 sm:gap-3">
+          <StepIndicator state={goalStep} isLast topLineColor={stepLineColor(goalStep)} />
           <div className="py-4">
             <span className={`text-base font-semibold ${allVerified ? "text-green-700" : "text-slate-300"}`}>
               Connect with Families

@@ -133,9 +133,10 @@ export async function generateOnboardingAIContent(leadId: string): Promise<Gener
       .eq('id', leadId);
 
     return { success: true, bio: aiBio, aiContent };
-  } catch (err) {
-    console.error('AI content generation error:', err);
-    return { success: false, error: 'Failed to generate profile. Please try again.' };
+  } catch (err: unknown) {
+    const e = err as Error & { status?: number; code?: string };
+    console.error('[AI-gen] Error for lead', leadId, ':', e.message, 'status:', e.status, 'code:', e.code);
+    return { success: false, error: `AI generation failed: ${e.message}` };
   }
 }
 

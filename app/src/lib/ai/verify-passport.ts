@@ -190,28 +190,60 @@ export async function verifyPassport(
       reasoning.push(`Selfie analysis: ${selfieReasoning}`);
     }
 
-    // 2d. Surname comparison — STRICT (case-insensitive, trimmed)
-    if (extracted.surname && submittedData.surname?.trim()) {
-      const extractedSurname = extracted.surname.toLowerCase().trim();
-      const submittedSurname = submittedData.surname.toLowerCase().trim();
-      if (extractedSurname !== submittedSurname) {
-        issues.push(`Surname mismatch: passport shows "${extracted.surname}" but you entered "${submittedData.surname}"`);
-      }
-      reasoning.push(`Surname: extracted="${extracted.surname}" submitted="${submittedData.surname}" ${extractedSurname === submittedSurname ? 'MATCH' : 'MISMATCH'}`);
-    } else if (!extracted.surname) {
-      issues.push('Could not read surname from passport');
-    }
+    // 2d + 2e. Name comparison with swap detection
+    // Users commonly enter surname/given names in the wrong fields, especially
+    // with Asian passports where name order conventions differ. If the names are
+    // simply swapped, we correct them silently and pass.
+    if (extracted.surname && extracted.given_names && submittedData.surname?.trim() && submittedData.given_names?.trim()) {
+      const extSurname = extracted.surname.toLowerCase().trim();
+      const extGivenFirst = extracted.given_names.toLowerCase().trim().split(/\s+/)[0];
+      const subSurname = submittedData.surname.toLowerCase().trim();
+      const subGivenFirst = submittedData.given_names.toLowerCase().trim().split(/\s+/)[0];
 
-    // 2e. Given names — check first name matches (case-insensitive)
-    if (extracted.given_names && submittedData.given_names?.trim()) {
-      const extractedFirst = extracted.given_names.toLowerCase().trim().split(/\s+/)[0];
-      const submittedFirst = submittedData.given_names.toLowerCase().trim().split(/\s+/)[0];
-      if (extractedFirst !== submittedFirst) {
-        issues.push(`First name mismatch: passport shows "${extracted.given_names}" but you entered "${submittedData.given_names}"`);
+      const surnameMatch = extSurname === subSurname;
+      const givenMatch = extGivenFirst === subGivenFirst;
+
+      // Check if names are swapped: submitted surname matches extracted given name AND vice versa
+      const swapped = !surnameMatch && !givenMatch
+        && extSurname === subGivenFirst
+        && extGivenFirst === subSurname;
+
+      if (swapped) {
+        // Names are swapped — correct the extracted order to match passport and pass
+        reasoning.push(`Names SWAPPED: user entered surname="${submittedData.surname}" given="${submittedData.given_names}" but passport shows surname="${extracted.surname}" given="${extracted.given_names}" — auto-corrected`);
+      } else {
+        if (!surnameMatch) {
+          issues.push(`Surname mismatch: passport shows "${extracted.surname}" but you entered "${submittedData.surname}"`);
+        }
+        if (!givenMatch) {
+          issues.push(`First name mismatch: passport shows "${extracted.given_names}" but you entered "${submittedData.given_names}"`);
+        }
+        reasoning.push(`Surname: extracted="${extracted.surname}" submitted="${submittedData.surname}" ${surnameMatch ? 'MATCH' : 'MISMATCH'}`);
+        reasoning.push(`Given names: extracted="${extracted.given_names}" submitted="${submittedData.given_names}" first="${givenMatch ? 'MATCH' : 'MISMATCH'}"`);
       }
-      reasoning.push(`Given names: extracted="${extracted.given_names}" submitted="${submittedData.given_names}" first="${extractedFirst === submittedFirst ? 'MATCH' : 'MISMATCH'}"`);
-    } else if (!extracted.given_names) {
-      issues.push('Could not read given names from passport');
+    } else {
+      // Fallback: individual checks when one name is missing from extraction
+      if (extracted.surname && submittedData.surname?.trim()) {
+        const extractedSurname = extracted.surname.toLowerCase().trim();
+        const submittedSurname = submittedData.surname.toLowerCase().trim();
+        if (extractedSurname !== submittedSurname) {
+          issues.push(`Surname mismatch: passport shows "${extracted.surname}" but you entered "${submittedData.surname}"`);
+        }
+        reasoning.push(`Surname: extracted="${extracted.surname}" submitted="${submittedData.surname}" ${extractedSurname === submittedSurname ? 'MATCH' : 'MISMATCH'}`);
+      } else if (!extracted.surname) {
+        issues.push('Could not read surname from passport');
+      }
+
+      if (extracted.given_names && submittedData.given_names?.trim()) {
+        const extractedFirst = extracted.given_names.toLowerCase().trim().split(/\s+/)[0];
+        const submittedFirst = submittedData.given_names.toLowerCase().trim().split(/\s+/)[0];
+        if (extractedFirst !== submittedFirst) {
+          issues.push(`First name mismatch: passport shows "${extracted.given_names}" but you entered "${submittedData.given_names}"`);
+        }
+        reasoning.push(`Given names: extracted="${extracted.given_names}" submitted="${submittedData.given_names}" first="${extractedFirst === submittedFirst ? 'MATCH' : 'MISMATCH'}"`);
+      } else if (!extracted.given_names) {
+        issues.push('Could not read given names from passport');
+      }
     }
 
     // 2f. Date of birth — EXACT match required

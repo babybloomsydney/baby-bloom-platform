@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { StageProps } from '../../FunnelOrchestrator';
 import { CompoundPageShell } from '../../shared/CompoundPageShell';
 import { convertLeadToAccount } from '@/lib/actions/nanny-leads';
@@ -13,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Lock } from 'lucide-react';
 
 export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, questionNumber }: StageProps) {
+  const router = useRouter();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
@@ -52,7 +54,8 @@ export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, que
       } catch {
         // Ignore
       }
-      goNext();
+      // Route directly into verification funnel (skip N5Welcome)
+      router.push('/nanny/onboarding-verification');
     } else {
       setError(result.error || 'Failed to create account. Please try again.');
       setSubmitting(false);
@@ -139,7 +142,7 @@ export function N5CreateAccount({ state, dispatch, goNext, goBack, progress, que
         )}
 
         <div className="fixed bottom-0 left-0 right-0 z-20 pt-3 pb-[66px] bg-gradient-to-t from-white from-70% to-transparent">
-          <div className="max-w-md mx-auto px-2">
+          <div className="max-w-md mx-auto px-4">
             <Button
               onClick={handleSubmit}
               disabled={!canSubmit || submitting}

@@ -13,6 +13,7 @@ import {
   type CrossCheckStatus,
   type UserGuidance,
 } from '@/lib/verification';
+import { capitalizeName } from '@/lib/utils';
 import { verifyPassport } from './verify-passport';
 import { verifyWWCC } from './verify-wwcc';
 
@@ -92,8 +93,8 @@ export async function runIdentityPhase(verificationId: string): Promise<void> {
 
       // Write extraction results
       await supabase.from('verifications').update({
-        extracted_surname: result.extracted.surname,
-        extracted_given_names: result.extracted.given_names,
+        extracted_surname: capitalizeName(result.extracted.surname),
+        extracted_given_names: capitalizeName(result.extracted.given_names),
         extracted_dob: result.extracted.dob,
         extracted_nationality: result.extracted.nationality,
         extracted_passport_number: result.extracted.passport_number,
@@ -104,15 +105,37 @@ export async function runIdentityPhase(verificationId: string): Promise<void> {
       }).eq('id', verificationId);
 
       if (!result.pass) {
-        // AI ran and found a real problem — set failed with guidance
+        // AI ran and found a real problem — set failed with guidance.
+        // Also reset WWCC data: without a verified passport the cross-check
+        // cannot validate WWCC, so any prior WWCC pass is meaningless.
         await supabase.from('verifications').update({
           identity_status: IDENTITY_STATUS.FAILED,
           identity_status_at: new Date().toISOString(),
           identity_user_guidance: result.user_guidance ?? null,
-          verification_status: deriveOverallStatus(IDENTITY_STATUS.FAILED as IdentityStatus, claimed.wwcc_status as WwccStatus, CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus),
+          // Reset WWCC fields
+          wwcc_status: WWCC_STATUS.NOT_STARTED,
+          wwcc_verification_method: null,
+          wwcc_number: null,
+          wwcc_expiry_date: null,
+          wwcc_grant_email_url: null,
+          wwcc_service_nsw_screenshot_url: null,
+          wwcc_doc_verified: false,
+          wwcc_verified: false,
+          wwcc_rejection_reason: null,
+          wwcc_user_guidance: null,
+          wwcc_extracted_surname: null,
+          wwcc_extracted_given_names: null,
+          wwcc_extracted_number: null,
+          wwcc_extracted_expiry: null,
+          wwcc_ai_reasoning: null,
+          wwcc_ai_issues: null,
+          // Reset cross-check
+          cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
+          cross_check_reasoning: null,
+          verification_status: deriveOverallStatus(IDENTITY_STATUS.FAILED as IdentityStatus, WWCC_STATUS.NOT_STARTED as WwccStatus, CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus),
           updated_at: new Date().toISOString(),
         }).eq('id', verificationId);
-        console.log(`[Identity] FAILED — AI found issues`);
+        console.log(`[Identity] FAILED — AI found issues, WWCC reset`);
         return;
       }
 
@@ -132,6 +155,14 @@ export async function runIdentityPhase(verificationId: string): Promise<void> {
         verification_level: VERIFICATION_LEVEL.ID_VERIFIED,
         updated_at: new Date().toISOString(),
       }).eq('user_id', claimed.user_id);
+
+      // Sync verified DOB and surname back to user_profiles using passport-extracted values.
+      // We use extracted (not claimed) because the user may have swapped surname/given names.
+      // Given names are NOT updated because people often go by different names.
+      const profileUpdate: Record<string, string> = { updated_at: new Date().toISOString() };
+      if (result.extracted.dob) profileUpdate.date_of_birth = result.extracted.dob;
+      if (result.extracted.surname) profileUpdate.last_name = capitalizeName(result.extracted.surname);
+      await supabase.from('user_profiles').update(profileUpdate).eq('user_id', claimed.user_id);
 
       console.log(`[Identity] PASSED — level 2`);
 
@@ -222,9 +253,9 @@ export async function runWWCCDocPhase(verificationId: string): Promise<void> {
 
       // Write extraction results
       await supabase.from('verifications').update({
-        extracted_wwcc_surname: result.extracted.surname,
-        extracted_wwcc_first_name: result.extracted.first_name,
-        extracted_wwcc_other_names: result.extracted.other_names,
+        extracted_wwcc_surname: capitalizeName(result.extracted.surname),
+        extracted_wwcc_first_name: capitalizeName(result.extracted.first_name),
+        extracted_wwcc_other_names: capitalizeName(result.extracted.other_names),
         extracted_wwcc_number: result.extracted.wwcc_number,
         extracted_wwcc_clearance_type: result.extracted.clearance_type,
         extracted_wwcc_expiry: result.extracted.expiry,

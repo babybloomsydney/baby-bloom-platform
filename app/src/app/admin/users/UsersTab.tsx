@@ -109,7 +109,7 @@ export function UsersTab({ users, stats }: UsersTabProps) {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <Card>
           <CardContent className="p-4">
             <p className="text-2xl font-bold">{stats.total}</p>
@@ -193,6 +193,7 @@ export function UsersTab({ users, stats }: UsersTabProps) {
         </CardHeader>
         <CardContent>
           {filteredUsers.length > 0 ? (
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -283,6 +284,7 @@ export function UsersTab({ users, stats }: UsersTabProps) {
                 })}
               </TableBody>
             </Table>
+            </div>
           ) : (
             <EmptyState
               icon={Users}

@@ -48,10 +48,10 @@ const AccordionContent = React.forwardRef<
     ref={ref}
     forceMount={forceMount}
     className={cn(
-      "overflow-hidden text-sm",
+      "text-sm",
       forceMount
         ? "data-[state=closed]:hidden"
-        : "data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+        : "overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
     )}
     {...props}
   >

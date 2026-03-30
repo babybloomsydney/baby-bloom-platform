@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { UserRole } from './types';
 import { getDashboardPath } from './roles';
 import { sendEmail } from '@/lib/email/resend';
+import { capitalizeName } from '@/lib/utils';
 
 export interface ActionResult {
   error?: string;
@@ -59,8 +60,8 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     password,
     options: {
       data: {
-        first_name: firstName,
-        last_name: lastName,
+        first_name: capitalizeName(firstName),
+        last_name: capitalizeName(lastName),
       },
     },
   });
@@ -101,8 +102,8 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
       .from('user_profiles')
       .insert({
         user_id: userId,
-        first_name: firstName,
-        last_name: lastName,
+        first_name: capitalizeName(firstName),
+        last_name: capitalizeName(lastName),
         email: email,
       });
 

@@ -54,7 +54,7 @@ export function ParentVerificationTab({ stats, parentChecks }: ParentVerificatio
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -111,7 +111,7 @@ export function ParentVerificationTab({ stats, parentChecks }: ParentVerificatio
               description="All parent identity checks have been reviewed"
             />
           ) : (
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>

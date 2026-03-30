@@ -15,6 +15,7 @@ export const VERIFICATION_STATUS = {
   PENDING_ID_REVIEW: 11,
   ID_REJECTED: 12,
   PENDING_WWCC_AUTO: 20,
+  WWCC_SUBMITTED: 29,
   WWCC_PROCESSING: 25,
   PENDING_WWCC_REVIEW: 21,
   WWCC_REJECTED: 22,           // Also used for BARRED / INTERIM BAR (account suspended)
@@ -49,6 +50,7 @@ export const STATUS_LABELS: Record<number, string> = {
   26: 'WWCC OCG Not Found (26)',
   27: 'WWCC Closed (27)',
   28: 'WWCC Application Pending (28)',
+  29: 'WWCC Submitted (29)',
   30: 'Provisionally Verified (30)',
   40: 'Fully Verified (40)',
 };
@@ -324,7 +326,7 @@ export function deriveOverallStatus(
 
   if (wwccStatus === 'doc_verified') return VERIFICATION_STATUS.PENDING_WWCC_AUTO; // awaiting cross-check
   if (wwccStatus === 'processing') return VERIFICATION_STATUS.WWCC_PROCESSING;
-  if (wwccStatus === 'pending') return VERIFICATION_STATUS.PENDING_WWCC_AUTO;
+  if (wwccStatus === 'pending') return VERIFICATION_STATUS.WWCC_SUBMITTED;
   if (wwccStatus === 'review') return VERIFICATION_STATUS.PENDING_WWCC_REVIEW;
   if (wwccStatus === 'rejected') return VERIFICATION_STATUS.WWCC_REJECTED;
   if (wwccStatus === 'barred') return VERIFICATION_STATUS.WWCC_REJECTED;

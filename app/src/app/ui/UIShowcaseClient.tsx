@@ -1054,7 +1054,7 @@ export function UIShowcaseClient({
 
           {/* CMP-053 VerificationPageClient */}
           <PageClientShowcase code="CMP-053" name="VerificationPageClient" slug="nanny-verification">
-            <VerificationPageClient initialData={MOCK_VERIFICATION_DATA} />
+            <VerificationPageClient initialData={MOCK_VERIFICATION_DATA} profileData={null} />
           </PageClientShowcase>
 
           {/* CMP-054 NannyShareClient */}

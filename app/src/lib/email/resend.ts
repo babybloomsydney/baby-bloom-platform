@@ -10,6 +10,7 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   text?: string;
+  from?: string;
   replyTo?: string;
   emailType: string;
   recipientUserId?: string;
@@ -23,12 +24,12 @@ export interface SendEmailResult {
 }
 
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { to, subject, html, text, replyTo, emailType, recipientUserId, attachments } = params;
+  const { to, subject, html, text, from, replyTo, emailType, recipientUserId, attachments } = params;
   const recipientEmail = Array.isArray(to) ? to[0] : to;
 
   try {
     const { data, error } = await resend.emails.send({
-      from: DEFAULT_FROM,
+      from: from || DEFAULT_FROM,
       to: Array.isArray(to) ? to : [to],
       subject,
       html,

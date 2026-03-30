@@ -42,30 +42,35 @@ export function AdminUsersClient({
       </div>
 
       <Tabs defaultValue={defaultTab} className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="users" className="gap-2">
-            <Users className="h-4 w-4" />
-            Users
-          </TabsTrigger>
-          <TabsTrigger value="verification" className="gap-2">
-            <ShieldCheck className="h-4 w-4" />
-            Nanny Verification
-            {verificationStats.pending > 0 && (
-              <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                {verificationStats.pending}
-              </span>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="parent-verification" className="gap-2">
-            <UserCheck className="h-4 w-4" />
-            Parent Verification
-            {parentVerificationStats.pending > 0 && (
-              <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                {parentVerificationStats.pending}
-              </span>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="w-max sm:w-auto">
+            <TabsTrigger value="users" className="gap-2">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Users</span>
+              <span className="sm:hidden">Users</span>
+            </TabsTrigger>
+            <TabsTrigger value="verification" className="gap-2">
+              <ShieldCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Nanny Verification</span>
+              <span className="sm:hidden">Nanny</span>
+              {verificationStats.pending > 0 && (
+                <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  {verificationStats.pending}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="parent-verification" className="gap-2">
+              <UserCheck className="h-4 w-4" />
+              <span className="hidden sm:inline">Parent Verification</span>
+              <span className="sm:hidden">Parent</span>
+              {parentVerificationStats.pending > 0 && (
+                <span className="ml-1 rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                  {parentVerificationStats.pending}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="users">
           <UsersTab users={users} stats={userStats} />

@@ -711,10 +711,10 @@ export function NannyHubClient({
 
       {/* Tab-locked modal */}
       <Dialog open={showTabLockedModal} onOpenChange={setShowTabLockedModal}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm [&>button]:hidden">
           <div className="flex flex-col items-center gap-4 py-2 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 ring-1 ring-emerald-200">
-              <Lock className="h-6 w-6 text-emerald-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-50 ring-1 ring-green-200">
+              <ShieldCheck className="h-6 w-6 text-green-600" />
             </div>
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Verify your account</h3>
@@ -722,17 +722,12 @@ export function NannyHubClient({
                 Complete verification to access your nannying and babysitting dashboard.
               </p>
             </div>
-            <div className="flex w-full gap-2 mt-1">
-              <Button variant="outline" className="flex-1" onClick={() => setShowTabLockedModal(false)}>
-                Later
-              </Button>
-              <Button asChild className="flex-1 bg-emerald-600 hover:bg-emerald-700">
-                <Link href="/nanny/verification">
-                  <ShieldCheck className="h-4 w-4 mr-1.5" />
-                  Verify Now
-                </Link>
-              </Button>
-            </div>
+            <Button asChild className="w-full bg-violet-600 hover:bg-violet-700 mt-1">
+              <Link href="/nanny/verification">
+                <ShieldCheck className="h-4 w-4 mr-1.5" />
+                Verify Now
+              </Link>
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -780,6 +775,7 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   const contactStatus = verificationData?.contact_status ?? "not_started";
 
   function deriveIdentityStep(): VerificationStepState {
+    if (!verificationData?.address_line) return "future"; // residence not done yet
     if (identityStatus === "verified") return "completed";
     if (identityStatus === "rejected" || identityStatus === "failed") return "action_required";
     if (identityStatus === "not_started") return "current";
@@ -787,17 +783,16 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   }
 
   function deriveWwccStep(): VerificationStepState {
+    const vStatus = verificationData?.verification_status ?? 0;
+    if (vStatus < 20) return "future"; // identity not yet verified — WWCC is invalid
     if (wwccStatus === "verified" || wwccStatus === "doc_verified") return "completed";
     if (wwccStatus === "rejected" || wwccStatus === "failed" || wwccStatus === "barred") return "action_required";
-    if (wwccStatus === "not_started") return identityStatus === "verified" ? "current" : "future";
+    if (wwccStatus === "not_started") return "current";
     return "current"; // processing, pending, review, etc.
   }
 
   function deriveContactStep(): VerificationStepState {
     if (contactStatus === "saved") return "completed";
-    if (contactStatus === "not_started") {
-      return (wwccStatus !== "not_started" && identityStatus !== "not_started") ? "current" : "future";
-    }
     return "current";
   }
 
@@ -807,10 +802,10 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   const allComplete = identityStep === "completed" && wwccStep === "completed" && contactStep === "completed";
   const goalStep: VerificationStepState = allComplete ? "completed" : "future";
 
-  function stepStatusText(step: VerificationStepState, statusCode: string): string {
+  function stepStatusText(step: VerificationStepState, statusCode: string): string | null {
     if (step === "completed") return "Completed";
     if (step === "action_required") return "Action Required";
-    if (step === "future") return "Upcoming";
+    if (step === "future") return null;
     if (statusCode === "processing" || statusCode === "pending") return "Processing";
     if (statusCode === "review") return "Pending Review";
     if (statusCode === "not_started") return "Not Started";
@@ -827,9 +822,9 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   }
 
   const steps = [
+    { label: "Verify Residence", step: contactStep, status: contactStatus },
     { label: "Verify ID", step: identityStep, status: identityStatus },
     { label: "Verify WWCC", step: wwccStep, status: wwccStatus },
-    { label: "Verify Contact", step: contactStep, status: contactStatus },
     { label: "Connect with Families", step: goalStep, status: "" },
   ];
 
@@ -856,14 +851,14 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
                   {s.step === "action_required" && <div className="h-2.5 w-2.5 rounded-full bg-red-500" />}
                 </div>
                 {!isLast && (
-                  <div className={cn("w-0.5 h-6", s.step === "completed" ? "bg-green-300" : "bg-slate-200")} />
+                  <div className={cn("w-0.5 h-6", s.step === "completed" && steps[i + 1]?.step === "completed" ? "bg-green-300" : "bg-slate-200")} />
                 )}
               </div>
-              <div className="pb-4">
+              <div className="pb-4 pt-1">
                 <p className={cn("text-sm font-medium", s.step === "future" ? "text-slate-400" : "text-slate-800")}>
                   {s.label}
                 </p>
-                {!isLast && (
+                {!isLast && stepStatusText(s.step, s.status) && (
                   <p className={cn("text-xs", colors.text)}>
                     {stepStatusText(s.step, s.status)}
                   </p>

@@ -1,10 +1,8 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, Upload, Camera, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +88,7 @@ function isAllowedImageFile(file: File): boolean {
 
 function FileUploadZone({
   label,
+  hint,
   fieldName,
   accept,
   uploadState,
@@ -99,8 +98,10 @@ function FileUploadZone({
   onFileSelect,
   onFormatError,
   disabled,
+  variant = "default",
 }: {
   label: string;
+  hint?: string;
   fieldName: string;
   accept: string;
   uploadState: UploadState;
@@ -110,6 +111,7 @@ function FileUploadZone({
   onFileSelect: (file: File) => void;
   onFormatError?: (message: string) => void;
   disabled?: boolean;
+  variant?: "default" | "selfie";
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -122,50 +124,11 @@ function FileUploadZone({
     onFileSelect(file);
   }
 
+  const isSelfie = variant === "selfie";
+
   return (
-    <div className="space-y-2">
-      <Label className="text-sm font-medium text-slate-700">{label}</Label>
-      <div
-        onClick={() => !disabled && uploadState !== "uploading" && inputRef.current?.click()}
-        onDrop={(e) => {
-          e.preventDefault();
-          if (disabled || uploadState === "uploading") return;
-          const file = e.dataTransfer.files?.[0];
-          if (file) handleFile(file);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        className={`flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed px-6 py-8 text-center transition-colors ${
-          disabled || uploadState === "uploading"
-            ? "border-slate-200 bg-slate-100 cursor-not-allowed"
-            : "border-slate-300 bg-slate-50 cursor-pointer hover:border-violet-400 hover:bg-violet-50"
-        }`}
-      >
-        {uploadState === "uploading" ? (
-          <div className="flex flex-col items-center gap-2">
-            <CircularProgress percent={uploadProgress} />
-            <span className="text-xs text-slate-500">Uploading {fileName}...</span>
-          </div>
-        ) : uploadState === "done" ? (
-          <div className="flex items-center gap-2 text-green-600">
-            <CheckCircle2 className="h-5 w-5" />
-            <span className="text-sm font-medium">Image uploaded</span>
-            {!disabled && <span className="text-xs text-slate-500 ml-2">Click to replace</span>}
-          </div>
-        ) : (
-          <>
-            {uploadError && (
-              <p className="text-xs text-red-500 mb-1">{uploadError}</p>
-            )}
-            <svg className="h-8 w-8 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-            <div>
-              <p className="text-sm font-medium text-slate-700">{label}</p>
-              <p className="text-xs text-slate-500 mt-0.5">PNG, JPEG, or WebP — drag & drop or click to upload</p>
-            </div>
-          </>
-        )}
-      </div>
+    <div className="space-y-1.5">
+      <label className="text-sm font-medium text-slate-700 block">{label}</label>
       <input
         ref={inputRef}
         id={fieldName}
@@ -176,23 +139,86 @@ function FileUploadZone({
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) handleFile(file);
-          // Reset so same file can be re-selected
           e.target.value = "";
         }}
       />
+      <button
+        type="button"
+        onClick={() => !disabled && uploadState !== "uploading" && inputRef.current?.click()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (disabled || uploadState === "uploading") return;
+          const file = e.dataTransfer.files?.[0];
+          if (file) handleFile(file);
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        disabled={disabled || uploadState === "uploading"}
+        className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-all duration-300 ${
+          uploadState === "done"
+            ? "border-green-300 bg-green-50"
+            : uploadState === "uploading"
+            ? "border-violet-300 bg-violet-50/30 cursor-wait"
+            : uploadState === "error"
+            ? "border-red-300 bg-red-50 hover:border-red-400"
+            : disabled
+            ? "border-slate-200 bg-slate-100 cursor-not-allowed"
+            : isSelfie
+            ? "border-violet-300 bg-violet-50/50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-100"
+            : "border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-50"
+        }`}
+      >
+        {uploadState === "done" ? (
+          <div className="flex items-center gap-2 text-green-600">
+            <CheckCircle2 className="h-5 w-5" />
+            <span className="text-sm font-medium">{isSelfie ? "Photo uploaded" : "File uploaded"}</span>
+          </div>
+        ) : uploadState === "uploading" ? (
+          <div className="flex flex-col items-center gap-2">
+            <CircularProgress percent={uploadProgress} />
+            <span className="text-xs text-slate-500">Uploading...</span>
+          </div>
+        ) : uploadState === "error" ? (
+          <div className="flex flex-col items-center gap-2">
+            <AlertCircle className="h-7 w-7 text-red-400" />
+            <p className="text-sm font-medium text-red-600">Upload failed — tap to retry</p>
+            {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+          </div>
+        ) : (
+          <>
+            {isSelfie ? (
+              <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center">
+                <Camera className="h-5 w-5 text-violet-600" />
+              </div>
+            ) : (
+              <Upload className="h-7 w-7 text-violet-500" />
+            )}
+            <p className="text-sm font-medium text-slate-700">
+              {hint ?? (isSelfie ? "Upload your identification selfie" : "Tap to upload")}
+            </p>
+          </>
+        )}
+      </button>
     </div>
   );
 }
 
 // ── Identity Section ──
 
+interface ProfileData {
+  firstName: string;
+  lastName: string;
+  dateOfBirth: string;
+}
+
 interface IdentitySectionProps {
   verification: VerificationData | null;
+  locked: boolean;
+  profileData: ProfileData | null;
   onSaved: (verificationId: string, data: { surname: string; givenNames: string; dob: string }) => void;
   onManualReview: () => void;
 }
 
-export function IdentitySection({ verification, onSaved, onManualReview }: IdentitySectionProps) {
+export function IdentitySection({ verification, locked, profileData, onSaved, onManualReview }: IdentitySectionProps) {
   const status = verification?.identity_status ?? "not_started";
   const isProcessing = status === "processing" || status === "pending";
   const isCompleted = status === "verified";
@@ -205,10 +231,10 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
   const [showReviewConfirm, setShowReviewConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form state
-  const [surname, setSurname] = useState(verification?.surname ?? "");
-  const [givenNames, setGivenNames] = useState(verification?.given_names ?? "");
-  const [dob, setDob] = useState(verification?.date_of_birth ?? "");
+  // Form state — pre-fill from verification data, fallback to profile
+  const [surname, setSurname] = useState(verification?.surname ?? profileData?.lastName ?? "");
+  const [givenNames, setGivenNames] = useState(verification?.given_names ?? profileData?.firstName ?? "");
+  const [dob, setDob] = useState(verification?.date_of_birth ?? profileData?.dateOfBirth ?? "");
   const [passportCountry, setPassportCountry] = useState(verification?.passport_country ?? "");
   const [confirmed, setConfirmed] = useState(false);
   const [biometricConsent, setBiometricConsent] = useState(false);
@@ -239,6 +265,9 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
   );
   const [selfieUrl, setSelfieUrl] = useState<string | null>(verification?.identification_photo_url ?? null);
   const [selfieError, setSelfieError] = useState<string | null>(null);
+
+  // 18+ validation
+  const [dobError, setDobError] = useState("");
 
   const handlePassportSelect = useCallback(async (file: File) => {
     setPassportFileName(file.name);
@@ -305,6 +334,14 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
       setSelfieUploadState("done");
     }
   }, []);
+
+  if (locked) {
+    return (
+      <div className="text-sm text-slate-500 py-4">
+        Complete the Residence section first to unlock identity verification.
+      </div>
+    );
+  }
 
   const canSave =
     surname.trim() &&
@@ -433,36 +470,42 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
             guidance={verification.identity_user_guidance}
             primaryAction={{ label: "Edit & Resubmit", onClick: () => { setEditing(true); setConfirmed(false); } }}
             secondaryAction={{
-              label: isSubmittingReview ? "Submitting..." : "Submit for Manual Review",
+              label: isSubmittingReview ? "Submitting..." : "Manual Review",
               onClick: () => setShowReviewConfirm(true),
             }}
           />
         )}
 
         {needsAction && !verification?.identity_user_guidance && !isReview && (
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              onClick={() => { setEditing(true); setConfirmed(false); }}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
-              size="sm"
-            >
-              Edit & Resubmit
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowReviewConfirm(true)}
-              disabled={isSubmittingReview}
-              size="sm"
-            >
-              {isSubmittingReview ? (
-                <>
-                  <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                  Submitting...
-                </>
-              ) : "Submit for Manual Review"}
-            </Button>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 space-y-1">
+              <p className="font-semibold text-amber-800">Identity verification was not successful</p>
+              <p>Please check that your details match your passport exactly and try again, or submit for manual review.</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                onClick={() => { setEditing(true); setConfirmed(false); }}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+                size="sm"
+              >
+                Edit & Resubmit
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowReviewConfirm(true)}
+                disabled={isSubmittingReview}
+                size="sm"
+              >
+                {isSubmittingReview ? (
+                  <>
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                    Submitting...
+                  </>
+                ) : "Manual Review"}
+              </Button>
+            </div>
           </div>
         )}
 
@@ -498,67 +541,101 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
   }
 
   // Form (editing mode)
-  const today = new Date().toISOString().split("T")[0];
   const isUploading = passportUploadState === "uploading" || selfieUploadState === "uploading";
 
+  const eighteenYearsAgo = new Date();
+  eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+  const maxDob = eighteenYearsAgo.toISOString().split("T")[0];
+
+  function handleDobChange(val: string) {
+    setDob(val);
+    if (val && val > maxDob) {
+      setDobError("You must be at least 18 years old");
+    } else {
+      setDobError("");
+    }
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor="surname" className="text-sm font-medium text-slate-700">Surname</Label>
-        <Input
-          id="surname"
-          placeholder="As shown on passport"
-          value={surname}
-          onChange={(e) => setSurname(e.target.value)}
-          disabled={isSaving}
-        />
+      {/* Given Name(s) + Surname — side by side */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700">Given Name(s)</label>
+          <input
+            type="text"
+            value={givenNames}
+            onChange={(e) => setGivenNames(e.target.value)}
+            placeholder="As on passport"
+            disabled={isSaving}
+            className="w-full h-11 rounded-lg border border-slate-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:bg-slate-100"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium text-slate-700">Surname</label>
+          <input
+            type="text"
+            value={surname}
+            onChange={(e) => setSurname(e.target.value)}
+            placeholder="As on passport"
+            disabled={isSaving}
+            className="w-full h-11 rounded-lg border border-slate-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:bg-slate-100"
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="given_names" className="text-sm font-medium text-slate-700">Given Name(s)</Label>
-        <Input
-          id="given_names"
-          placeholder="As shown on passport"
-          value={givenNames}
-          onChange={(e) => setGivenNames(e.target.value)}
-          disabled={isSaving}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="date_of_birth" className="text-sm font-medium text-slate-700">Date of Birth</Label>
-        <Input
-          id="date_of_birth"
+      {/* Date of Birth */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-slate-700">Date of Birth</label>
+        <input
           type="date"
-          max={today}
           value={dob}
-          onChange={(e) => setDob(e.target.value)}
+          onChange={(e) => handleDobChange(e.target.value)}
+          max={maxDob}
           disabled={isSaving}
+          className={`w-full h-11 rounded-lg border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:bg-slate-100 ${
+            dobError ? "border-red-300" : "border-slate-200"
+          }`}
         />
+        {dobError && <p className="text-xs text-red-500 mt-1">{dobError}</p>}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="passport_country" className="text-sm font-medium text-slate-700">Passport Country of Issue</Label>
-        <select
-          id="passport_country"
-          value={passportCountry}
-          onChange={(e) => setPassportCountry(e.target.value)}
-          disabled={isSaving}
-          className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none"
-        >
-          <option value="" disabled>Select country of issue</option>
-          {PASSPORT_COUNTRIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </div>
-
+      {/* Selfie upload */}
       <FileUploadZone
-        label="Upload Passport"
+        label="Identification photo"
+        fieldName="identification_photo"
+        accept=".png,.jpg,.jpeg,.gif,.webp"
+        uploadState={selfieUploadState}
+        uploadProgress={selfieProgress}
+        fileName={selfieFileName}
+        uploadError={selfieError}
+        onFileSelect={handleSelfieSelect}
+        onFormatError={(msg) => setSelfieError(msg)}
+        disabled={isSaving}
+        variant="selfie"
+        hint="Upload your identification selfie"
+      />
+
+      {/* Selfie guidance — disappears after upload */}
+      {selfieUploadState !== "done" && (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
+          <p className="font-medium text-blue-800">This selfie should:</p>
+          <ul className="list-disc list-inside space-y-0.5">
+            <li>Be clear and front-facing</li>
+            <li>Show your full face with a neutral expression</li>
+            <li>Have no sunglasses, hats, or face coverings</li>
+          </ul>
+        </div>
+      )}
+
+      {/* Passport upload */}
+      <FileUploadZone
+        label="Passport verification"
+        hint="Upload your passport photo page"
         fieldName="passport_file"
         accept=".png,.jpg,.jpeg,.gif,.webp"
         uploadState={passportUploadState}
@@ -570,35 +647,38 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
         disabled={isSaving}
       />
 
-      <div className="space-y-2">
-        <FileUploadZone
-          label="Upload Identification Photo"
-          fieldName="identification_photo"
-          accept=".png,.jpg,.jpeg,.gif,.webp"
-          uploadState={selfieUploadState}
-          uploadProgress={selfieProgress}
-          fileName={selfieFileName}
-          uploadError={selfieError}
-          onFileSelect={handleSelfieSelect}
-          onFormatError={(msg) => setSelfieError(msg)}
-          disabled={isSaving}
-        />
+      {/* Passport guidance — disappears after upload */}
+      {passportUploadState !== "done" && (
         <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
-          <p className="font-medium text-blue-800">For the best result, your selfie should:</p>
+          <p className="font-medium text-blue-800">This photo should:</p>
           <ul className="list-disc list-inside space-y-0.5">
-            <li>Be a clear, front-facing photo — like a passport photo</li>
-            <li>Show your full face with a neutral expression</li>
-            <li>Have no sunglasses, hats, or face coverings</li>
-            <li>Be well-lit with even lighting (natural light is best)</li>
-            <li>A plain background helps but isn&apos;t required</li>
+            <li>Show the photo page of your passport</li>
+            <li>Be flat and fully visible — no fingers or glare</li>
+            <li>Have all text clearly readable</li>
           </ul>
         </div>
+      )}
+
+      {/* Passport country */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-sm font-medium text-slate-700">Passport Country of Issue</label>
+        <select
+          value={passportCountry}
+          onChange={(e) => setPassportCountry(e.target.value)}
+          disabled={isSaving}
+          className="w-full h-11 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent disabled:bg-slate-100"
+        >
+          <option value="" disabled>Select country of issue</option>
+          {PASSPORT_COUNTRIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
       </div>
 
+      {/* Checkboxes */}
       <div className="space-y-1.5">
-        <label htmlFor="passport_confirmed" className="flex items-start gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer">
           <input
-            id="passport_confirmed"
             type="checkbox"
             checked={confirmed}
             onChange={(e) => setConfirmed(e.target.checked)}
@@ -609,9 +689,8 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
             I confirm that the passport I have provided is genuine, valid, and issued to me.
           </span>
         </label>
-        <label htmlFor="biometric_consent" className="flex items-start gap-2 cursor-pointer">
+        <label className="flex items-start gap-2 cursor-pointer">
           <input
-            id="biometric_consent"
             type="checkbox"
             checked={biometricConsent}
             onChange={(e) => setBiometricConsent(e.target.checked)}
@@ -649,7 +728,7 @@ export function IdentitySection({ verification, onSaved, onManualReview }: Ident
             Uploading...
           </>
         ) : (
-          "Verify"
+          "Verify ID"
         )}
       </Button>
     </div>
