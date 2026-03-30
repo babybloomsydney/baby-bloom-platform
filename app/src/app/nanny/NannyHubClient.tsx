@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ExpandablePhoto } from "@/components/ui/expandable-photo";
 import {
   User,
   ChevronUp,
@@ -209,19 +210,23 @@ export function NannyHubClient({
           </Link>
           <div className="flex items-end gap-4 -mt-10">
             <div className="relative shrink-0">
-              <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
-                {profilePictureUrl ? (
-                  <img
-                    src={profilePictureUrl}
-                    alt={`${firstName}'s photo`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
+              {profilePictureUrl ? (
+                <ExpandablePhoto src={profilePictureUrl} alt={`${firstName}'s photo`}>
+                  <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
+                    <img
+                      src={profilePictureUrl}
+                      alt={`${firstName}'s photo`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </ExpandablePhoto>
+              ) : (
+                <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
                   <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-violet-300">
                     {firstName[0]}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               {isVerified && (
                 <div className="absolute bottom-2 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-50 border border-green-200 ring-2 ring-white">
                   <ShieldCheck className="h-4 w-4 text-green-700" />

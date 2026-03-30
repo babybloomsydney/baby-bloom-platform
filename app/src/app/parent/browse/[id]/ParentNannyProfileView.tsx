@@ -6,6 +6,7 @@ import type { PublicNannyProfile } from "@/lib/actions/nanny";
 import { Button } from "@/components/ui/button";
 import { ConnectModal } from "@/components/ConnectModal";
 import { cn } from "@/lib/utils";
+import { ExpandablePhoto } from "@/components/ui/expandable-photo";
 import { InlineQuickMatch } from "@/components/landing/InlineQuickMatch";
 import {
   User,
@@ -157,19 +158,23 @@ export function ParentNannyProfileView({
         <div className="relative px-5 pb-5">
           <div className="flex items-end gap-4 -mt-10">
             <div className="relative shrink-0">
-              <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
-                {nanny.profile_picture_url ? (
-                  <img
-                    src={nanny.profile_picture_url}
-                    alt={`${firstName}'s photo`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
+              {nanny.profile_picture_url ? (
+                <ExpandablePhoto src={nanny.profile_picture_url} alt={`${firstName}'s photo`}>
+                  <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
+                    <img
+                      src={nanny.profile_picture_url}
+                      alt={`${firstName}'s photo`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </ExpandablePhoto>
+              ) : (
+                <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
                   <div className="flex h-full w-full items-center justify-center text-3xl font-bold text-violet-300">
                     {firstName[0]}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
               {isVerified && (
                 <div className="absolute bottom-2 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-green-50 border border-green-200 ring-2 ring-white">
                   <ShieldCheck className="h-4 w-4 text-green-700" />
