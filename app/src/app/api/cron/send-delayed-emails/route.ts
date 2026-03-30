@@ -504,12 +504,13 @@ function getLcyContent(
       };
       return {
         subject: subjects[group],
-        heading: group === 3 ? 'Quick fix needed' : 'You\u2019re almost there',
+        heading: group === 3 ? 'Quick fix needed' : 'Almost there!',
         bodyParagraphs: [
           `Hi ${firstName},`,
+          'Verify your account to be considered for nanny and babysitting positions with families in Sydney.',
           message,
           `<strong>Here\u2019s what to do:</strong><br/>${instructions}`,
-          'It only takes a few minutes, and you\u2019ll be one step closer to connecting with families who need your help.',
+          'It only takes a few minutes to complete.',
         ],
         ctaText: 'Complete Verification',
       };
@@ -525,7 +526,7 @@ function getLcyContent(
         heading: 'We want to help you find work',
         bodyParagraphs: [
           `Hi ${firstName},`,
-          'We noticed you haven\u2019t finished your verification yet. We really want to help you find work with great families \u2014 but we can\u2019t show your profile or send any opportunities your way until verification is complete.',
+          'We\u2019re unable to put you forward for jobs or connect you with families without first verifying your account. Verification is quick and ensures families can trust the nannies on our platform.',
           message,
           `<strong>Here\u2019s what to do:</strong><br/>${instructions}`,
           'It only takes a few minutes to pick up where you left off.',
@@ -544,11 +545,11 @@ function getLcyContent(
         heading: 'Families are searching for nannies',
         bodyParagraphs: [
           `Hi ${firstName},`,
-          'Since you signed up, families in Sydney have been searching for nannies \u2014 but we can\u2019t connect them with you until your verification is complete.',
-          'Without verification, we\u2019re unable to:<br/>' +
-          '&nbsp;&nbsp;&bull; Show your profile to families searching in your area<br/>' +
-          '&nbsp;&nbsp;&bull; Send you interview requests from interested parents<br/>' +
-          '&nbsp;&nbsp;&bull; Match you with babysitting opportunities',
+          'Parents are unable to request you for nanny or babysitting positions because your account has not been verified yet.',
+          'Until you\u2019re verified, families can\u2019t:<br/>' +
+          '&nbsp;&nbsp;&bull; Request a meet and greet with you<br/>' +
+          '&nbsp;&nbsp;&bull; Offer you nanny positions<br/>' +
+          '&nbsp;&nbsp;&bull; Book you for babysitting jobs',
           message,
           `<strong>Here\u2019s your next step:</strong><br/>${instructions}`,
           'We built Baby Bloom to help nannies like you find work \u2014 let us do that for you.',
