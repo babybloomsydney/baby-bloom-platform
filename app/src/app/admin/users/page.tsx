@@ -197,14 +197,14 @@ async function getVerificationStats(): Promise<VerificationStats> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Pending = statuses 10, 11, 20, 21 (anything actively in review)
+  // Pending = all statuses between 10-29 (anything actively in review or awaiting action)
   // Approved = status 30 or 40 (provisionally or fully verified)
   // Rejected = status 12 or 22 (ID or WWCC rejected)
   // Total verified = status 40 (fully verified)
   const [pendingResult, approvedTodayResult, rejectedTodayResult, totalVerifiedResult] = await Promise.all([
-    supabase.from('verifications').select('*', { count: 'exact', head: true }).in('verification_status', [10, 11, 20, 21, 25]),
+    supabase.from('verifications').select('*', { count: 'exact', head: true }).in('verification_status', [10, 11, 20, 21, 24, 25, 26, 27, 28, 29]),
     supabase.from('verifications').select('*', { count: 'exact', head: true }).in('verification_status', [30, 40]).gte('updated_at', today.toISOString()),
-    supabase.from('verifications').select('*', { count: 'exact', head: true }).in('verification_status', [12, 22]).gte('updated_at', today.toISOString()),
+    supabase.from('verifications').select('*', { count: 'exact', head: true }).in('verification_status', [12, 22, 23, 24]).gte('updated_at', today.toISOString()),
     supabase.from('verifications').select('*', { count: 'exact', head: true }).eq('verification_status', 40),
   ]);
 
@@ -289,13 +289,14 @@ async function getPendingIdentityChecks(): Promise<PendingIdentityCheck[]> {
 async function getPendingWWCCChecks(): Promise<PendingWWCCCheck[]> {
   const supabase = createAdminClient();
 
-  // WWCC review queue: status 21 (pending review) or 30 (provisional — silent manual review)
-  // Status 20 (pending auto) excluded — auto-check still running, not ready for admin
+  // WWCC review queue: all WWCC-stage statuses that need admin visibility
+  // 20=pending auto, 21=pending review, 24=doc failed, 25=processing, 26=OCG not found,
+  // 27=closed, 28=application pending, 29=submitted, 30=provisionally verified
   const [verificationsResult, profilesResult] = await Promise.all([
     supabase
       .from('verifications')
       .select('id, user_id, surname, given_names, date_of_birth, wwcc_number, wwcc_verification_method, wwcc_verified, wwcc_rejection_reason, verification_status, created_at')
-      .in('verification_status', [21, 30])
+      .in('verification_status', [20, 21, 24, 25, 26, 27, 28, 29, 30])
       .order('created_at', { ascending: true })
       .limit(50),
     supabase
