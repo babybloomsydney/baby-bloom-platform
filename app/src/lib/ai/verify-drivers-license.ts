@@ -140,11 +140,11 @@ export async function verifyDriversLicense(
             },
             {
               type: 'image_url',
-              image_url: { url: licenseSignedUrl },
+              image_url: { url: licenseSignedUrl, detail: 'high' },
             },
             {
               type: 'image_url',
-              image_url: { url: selfieSignedUrl },
+              image_url: { url: selfieSignedUrl, detail: 'auto' },
             },
           ],
         },

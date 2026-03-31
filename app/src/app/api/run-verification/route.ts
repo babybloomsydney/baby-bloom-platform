@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { runIdentityPhase, runWWCCDocPhase } from '@/lib/ai/verification-pipeline';
 import { runParentIdentityPhase } from '@/lib/ai/parent-verification-pipeline';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   const supabase = createClient();

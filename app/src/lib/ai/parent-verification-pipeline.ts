@@ -28,7 +28,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-const AI_ATTEMPT_TIMEOUT = 25_000;
+const AI_ATTEMPT_TIMEOUT = 45_000; // 45s per AI attempt (GPT-4o vision needs breathing room)
 const RETRY_DELAY = 5_000;
 
 function delay(ms: number): Promise<void> {
@@ -271,49 +271,8 @@ export async function runParentIdentityPhase(verificationId: string): Promise<vo
       updated_at: new Date().toISOString(),
     }).eq('id', verificationId);
 
-    // Send PVER-002 email (delayed 20 min)
-    setTimeout(async () => {
-      const userInfo = await getUserEmailInfo(claimed.user_id);
-      if (userInfo) {
-        sendEmail({
-          to: userInfo.email,
-          subject: 'Your ID verification needs attention',
-          emailType: 'parent_verification_failed',
-          html: `
-            <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <h1 style="color: #FF6B9D; margin-bottom: 24px;">ID Verification Needs Attention</h1>
-              <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
-                Hi ${userInfo.firstName || 'there'},
-              </p>
-              <p style="color: #333; font-size: 16px; line-height: 1.6; margin-bottom: 16px;">
-                We've reviewed your ID verification submission and it needs some attention.
-              </p>
-              ${guidance ? `
-                <div style="background: #FFF4F8; border-left: 4px solid #FF6B9D; padding: 16px; margin: 24px 0;">
-                  <p style="color: #333; font-size: 14px; line-height: 1.6; margin: 0;">
-                    <strong>What to do:</strong><br>
-                    ${guidance.title || 'Please review and resubmit'}
-                  </p>
-                  ${guidance.explanation ? `
-                    <p style="color: #666; font-size: 14px; line-height: 1.6; margin: 8px 0 0;">
-                      ${guidance.explanation}
-                    </p>
-                  ` : ''}
-                </div>
-              ` : ''}
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/parent/verification"
-                 style="display: inline-block; background: #FF6B9D; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; margin-top: 16px; font-weight: 500;">
-                Update Verification
-              </a>
-              <p style="color: #666; font-size: 14px; margin-top: 24px;">
-                Thanks,<br>
-                The Baby Bloom Team
-              </p>
-            </div>
-          `,
-        }).catch(err => console.error('[ParentIdentity] PVER-002 email error:', err));
-      }
-    }, 20 * 60 * 1000);
+    // PVER-002 email is handled by the send-delayed-emails cron (10 min delay)
+    // — only fires if parent hasn't reattempted by then.
 
     // Send PVINB-002 inbox (immediate)
     await createInboxMessage({

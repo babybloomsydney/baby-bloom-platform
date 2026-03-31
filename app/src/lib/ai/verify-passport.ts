@@ -120,7 +120,7 @@ export async function verifyPassport(
             },
             {
               type: 'image_url',
-              image_url: { url: selfieSignedUrl, detail: 'high' },
+              image_url: { url: selfieSignedUrl, detail: 'auto' },
             },
           ],
         },

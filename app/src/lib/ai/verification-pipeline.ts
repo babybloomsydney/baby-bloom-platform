@@ -29,7 +29,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-const AI_ATTEMPT_TIMEOUT = 25_000; // 25s per AI attempt
+const AI_ATTEMPT_TIMEOUT = 45_000; // 45s per AI attempt (GPT-4o vision needs breathing room)
 const RETRY_DELAY = 5_000;        // 5s between attempts
 
 function delay(ms: number): Promise<void> {
