@@ -41,7 +41,7 @@ export const STATUS_LABELS: Record<number, string> = {
   10: 'Pending ID Auto (10)',
   11: 'Pending ID Review (11)',
   12: 'ID Rejected (12)',
-  20: 'Pending WWCC Auto (20)',
+  20: 'ID Verified (20)',
   25: 'WWCC Processing (25)',
   21: 'Pending WWCC Review (21)',
   22: 'WWCC Rejected (22)',
@@ -321,27 +321,35 @@ export function deriveOverallStatus(
   wwccStatus: WwccStatus,
   crossCheckStatus: CrossCheckStatus
 ): number {
+  // ── 1. Safety: BARRED is absolute priority ──
+  if (wwccStatus === 'barred') return VERIFICATION_STATUS.WWCC_REJECTED;
+
+  // ── 2. Identity not yet verified — these MUST take priority over WWCC ──
+  if (identityStatus === 'not_started') return VERIFICATION_STATUS.NOT_STARTED;
+  if (identityStatus === 'pending')    return VERIFICATION_STATUS.PENDING_ID_AUTO;
+  if (identityStatus === 'processing') return VERIFICATION_STATUS.PENDING_ID_AUTO;
+  if (identityStatus === 'review')     return VERIFICATION_STATUS.PENDING_ID_REVIEW;
+  if (identityStatus === 'rejected')   return VERIFICATION_STATUS.ID_REJECTED;
+  if (identityStatus === 'failed')     return VERIFICATION_STATUS.PENDING_ID_REVIEW;
+
+  // ── 3. Identity is verified — now cross-check results matter ──
   if (crossCheckStatus === 'passed') return VERIFICATION_STATUS.PROVISIONALLY_VERIFIED;
   if (crossCheckStatus === 'review') return VERIFICATION_STATUS.PROVISIONALLY_VERIFIED;
 
-  if (wwccStatus === 'doc_verified') return VERIFICATION_STATUS.PENDING_WWCC_AUTO; // awaiting cross-check
-  if (wwccStatus === 'processing') return VERIFICATION_STATUS.WWCC_PROCESSING;
-  if (wwccStatus === 'pending') return VERIFICATION_STATUS.WWCC_SUBMITTED;
-  if (wwccStatus === 'review') return VERIFICATION_STATUS.PENDING_WWCC_REVIEW;
-  if (wwccStatus === 'rejected') return VERIFICATION_STATUS.WWCC_REJECTED;
-  if (wwccStatus === 'barred') return VERIFICATION_STATUS.WWCC_REJECTED;
-  if (wwccStatus === 'failed') return VERIFICATION_STATUS.WWCC_DOCUMENT_FAILED;
-  if (wwccStatus === 'expired') return VERIFICATION_STATUS.WWCC_EXPIRED;
-  if (wwccStatus === 'ocg_not_found') return VERIFICATION_STATUS.WWCC_OCG_NOT_FOUND;
-  if (wwccStatus === 'closed') return VERIFICATION_STATUS.WWCC_CLOSED;
+  // ── 4. WWCC statuses (only reachable when identity = verified) ──
+  if (wwccStatus === 'doc_verified')        return VERIFICATION_STATUS.PENDING_WWCC_AUTO;
+  if (wwccStatus === 'processing')          return VERIFICATION_STATUS.WWCC_PROCESSING;
+  if (wwccStatus === 'pending')             return VERIFICATION_STATUS.WWCC_SUBMITTED;
+  if (wwccStatus === 'review')              return VERIFICATION_STATUS.PENDING_WWCC_REVIEW;
+  if (wwccStatus === 'rejected')            return VERIFICATION_STATUS.WWCC_REJECTED;
+  if (wwccStatus === 'failed')              return VERIFICATION_STATUS.WWCC_DOCUMENT_FAILED;
+  if (wwccStatus === 'expired')             return VERIFICATION_STATUS.WWCC_EXPIRED;
+  if (wwccStatus === 'ocg_not_found')       return VERIFICATION_STATUS.WWCC_OCG_NOT_FOUND;
+  if (wwccStatus === 'closed')              return VERIFICATION_STATUS.WWCC_CLOSED;
   if (wwccStatus === 'application_pending') return VERIFICATION_STATUS.WWCC_APPLICATION_PENDING;
 
+  // ── 5. Identity verified, no WWCC submitted yet ──
   if (identityStatus === 'verified') return VERIFICATION_STATUS.PENDING_WWCC_AUTO;
-  if (identityStatus === 'processing') return VERIFICATION_STATUS.PENDING_ID_AUTO;
-  if (identityStatus === 'pending') return VERIFICATION_STATUS.PENDING_ID_AUTO;
-  if (identityStatus === 'review') return VERIFICATION_STATUS.PENDING_ID_REVIEW;
-  if (identityStatus === 'rejected') return VERIFICATION_STATUS.ID_REJECTED;
-  if (identityStatus === 'failed') return VERIFICATION_STATUS.PENDING_ID_REVIEW;
 
   return VERIFICATION_STATUS.NOT_STARTED;
 }

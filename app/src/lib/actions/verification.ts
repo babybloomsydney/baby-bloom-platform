@@ -29,6 +29,82 @@ async function getAuthUser() {
   return user;
 }
 
+// ── Sync nannies table from verifications (source of truth) ──
+
+/**
+ * Sync nannies table from verifications (source of truth).
+ * Idempotent — safe to call multiple times.
+ * MUST be called after every verifications table mutation.
+ */
+export async function syncNannyVerificationState(userId: string): Promise<void> {
+  const admin = createAdminClient();
+
+  // 1. Read current verifications state
+  const { data: v } = await admin
+    .from('verifications')
+    .select('identity_status, identity_verified, wwcc_status, wwcc_verified, cross_check_status')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // 2. If no verification record, reset nannies to baseline
+  if (!v) {
+    await admin
+      .from('nannies')
+      .update({
+        identity_verified: false,
+        wwcc_verified: false,
+        verification_level: 0, // SIGNED_UP
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+    return;
+  }
+
+  // 3. Derive correct nannies fields from verifications
+  const identityVerified = v.identity_verified === true && v.identity_status === 'verified';
+  const wwccVerified = v.wwcc_verified === true;
+
+  let level: number;
+  if (wwccVerified && identityVerified) {
+    level = 4; // FULLY_VERIFIED — OCG cleared + identity verified
+  } else if (v.cross_check_status === 'passed' && identityVerified) {
+    level = 3; // PROVISIONALLY_VERIFIED
+  } else if (identityVerified) {
+    level = 2; // ID_VERIFIED
+  } else if (v.identity_status !== 'not_started') {
+    level = 1; // REGISTERED (identity submitted but not verified)
+  } else {
+    level = 0; // SIGNED_UP
+  }
+
+  // 4. Build update object
+  const update: Record<string, unknown> = {
+    identity_verified: identityVerified,
+    wwcc_verified: wwccVerified,
+    verification_level: level,
+    updated_at: new Date().toISOString(),
+  };
+
+  // 5. Handle BARRED — suspend account
+  if (v.wwcc_status === 'barred') {
+    update.verification_level = 0;
+    update.status = 'suspended';
+  }
+
+  // 6. Handle FULLY_VERIFIED — activate
+  if (level === 4) {
+    update.status = 'active';
+  }
+
+  // 7. Write to nannies
+  await admin
+    .from('nannies')
+    .update(update)
+    .eq('user_id', userId);
+}
+
 // ── Submit Identity Section ──
 
 interface SubmitIdentityData {
@@ -63,7 +139,7 @@ export async function submitIdentitySection(
   // Check for existing record
   const { data: existing, error: existingErr } = await admin
     .from('verifications')
-    .select('id')
+    .select('id, wwcc_status')
     .eq('user_id', user.id)
     .single();
   console.log('[submitIdentitySection] Existing check:', existing ? 'found' : 'not found', existingErr?.code);
@@ -105,7 +181,14 @@ export async function submitIdentitySection(
     console.log('[submitIdentitySection] Updating existing record:', existing.id);
     const { error: updateErr } = await admin
       .from('verifications')
-      .update(identityFields)
+      .update({
+        ...identityFields,
+        verification_status: deriveOverallStatus(
+          IDENTITY_STATUS.PENDING as IdentityStatus,
+          (existing.wwcc_status || WWCC_STATUS.NOT_STARTED) as WwccStatus,
+          CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
+        ),
+      })
       .eq('id', existing.id);
 
     if (updateErr) {
@@ -142,14 +225,8 @@ export async function submitIdentitySection(
     console.log('[submitIdentitySection] Inserted:', verificationId);
   }
 
-  // Update nannies table: level → 1
-  const { error: nannyErr } = await admin.from('nannies').update({
-    verification_level: VERIFICATION_LEVEL.REGISTERED,
-    updated_at: new Date().toISOString(),
-  }).eq('user_id', user.id);
-  if (nannyErr) {
-    console.error('[submitIdentitySection] Nanny update failed:', nannyErr);
-  }
+  // Sync nannies from verifications (resets identity_verified, sets level)
+  await syncNannyVerificationState(user.id);
 
   console.log('[submitIdentitySection] Done, verificationId:', verificationId);
   revalidatePath('/nanny/verification');
@@ -207,6 +284,12 @@ export async function submitIdentityForManualReview(): Promise<{ success: boolea
       cross_check_reasoning: null,
       cross_check_issues: null,
       cross_check_at: null,
+      // Derive verification_status from new section statuses
+      verification_status: deriveOverallStatus(
+        IDENTITY_STATUS.REVIEW as IdentityStatus,
+        WWCC_STATUS.NOT_STARTED as WwccStatus,
+        CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq('id', existing.id);
@@ -215,6 +298,9 @@ export async function submitIdentityForManualReview(): Promise<{ success: boolea
     console.error('[submitIdentityForManualReview] Update failed:', updateErr);
     return { success: false, error: 'Failed to submit for manual review' };
   }
+
+  // Sync nannies (resets identity_verified, wwcc_verified, demotes level)
+  await syncNannyVerificationState(user.id);
 
   // VER-004: Submitted for Manual Review email
   const userInfo = await getUserEmailInfo(user.id);
@@ -298,11 +384,19 @@ export async function submitWWCCSection(
   // Determine status based on method
   let wwccStatus: string;
   if (data.wwcc_verification_method === 'grant_email') {
-    wwccStatus = WWCC_STATUS.DOC_VERIFIED; // PDF already validated client-side
+    // Require extracted WWCC number — client validates before upload, this is defense-in-depth
+    if (!data.extracted_wwcc_number) {
+      return { success: false, error: 'We couldn\u2019t read your grant email. Try uploading it again, or you can enter your WWCC details manually instead.' };
+    }
+    wwccStatus = WWCC_STATUS.DOC_VERIFIED;
   } else if (data.wwcc_verification_method === 'service_nsw_app') {
+    // Require screenshot URL — AI will process it server-side
+    if (!data.wwcc_service_nsw_screenshot_url) {
+      return { success: false, error: 'We need your Service NSW screenshot to continue. Please upload it and try again.' };
+    }
     wwccStatus = WWCC_STATUS.PENDING; // Needs AI
   } else {
-    wwccStatus = WWCC_STATUS.REVIEW; // Manual entry → admin reviews
+    wwccStatus = WWCC_STATUS.REVIEW; // Manual entry → admin reviews (user has provided WWCC number + expiry)
   }
 
   const wwccFields = {
@@ -334,6 +428,12 @@ export async function submitWWCCSection(
     cross_check_reasoning: null,
     cross_check_issues: null,
     cross_check_at: null,
+    // Derive verification_status from new section statuses
+    verification_status: deriveOverallStatus(
+      (existing.identity_status || IDENTITY_STATUS.NOT_STARTED) as IdentityStatus,
+      wwccStatus as WwccStatus,
+      CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
+    ),
     updated_at: new Date().toISOString(),
   };
 
@@ -346,6 +446,9 @@ export async function submitWWCCSection(
     console.error('[submitWWCCSection] Update failed:', updateErr);
     return { success: false, error: 'Failed to save WWCC data' };
   }
+
+  // Sync nannies from verifications
+  await syncNannyVerificationState(user.id);
 
   // For grant_email: always attempt cross-check (fire-and-forget).
   // triggerCrossCheck re-reads DB state, so it handles the race where

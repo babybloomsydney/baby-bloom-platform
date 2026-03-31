@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { IDENTITY_STATUS, WWCC_STATUS, GUIDANCE_MESSAGES } from '@/lib/verification';
+import { IDENTITY_STATUS, WWCC_STATUS, CROSS_CHECK_STATUS, GUIDANCE_MESSAGES, deriveOverallStatus, type IdentityStatus, type WwccStatus, type CrossCheckStatus } from '@/lib/verification';
+import { syncNannyVerificationState } from '@/lib/actions/verification';
 
 // If a section has been 'processing' for this long, escalate to 'review'.
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
@@ -49,9 +50,11 @@ export async function GET() {
         identity_status_at: new Date().toISOString(),
         identity_ai_issues: JSON.stringify(['Auto-check timed out — escalated to manual review']),
         identity_user_guidance: GUIDANCE_MESSAGES.TECHNICAL_STALE,
+        verification_status: deriveOverallStatus(IDENTITY_STATUS.REVIEW as IdentityStatus, (wwcc_status || 'not_started') as WwccStatus, (data.cross_check_status || 'not_started') as CrossCheckStatus),
         updated_at: new Date().toISOString(),
       }).eq('user_id', user.id);
 
+      await syncNannyVerificationState(user.id);
       identity_status = IDENTITY_STATUS.REVIEW;
       console.log(`[verification-status] Identity stale for user ${user.id} — escalated to review`);
     }
@@ -66,9 +69,11 @@ export async function GET() {
         wwcc_status_at: new Date().toISOString(),
         wwcc_ai_issues: JSON.stringify(['Auto-check timed out — escalated to manual review']),
         wwcc_user_guidance: GUIDANCE_MESSAGES.TECHNICAL_STALE,
+        verification_status: deriveOverallStatus((identity_status || 'not_started') as IdentityStatus, WWCC_STATUS.REVIEW as WwccStatus, (data.cross_check_status || 'not_started') as CrossCheckStatus),
         updated_at: new Date().toISOString(),
       }).eq('user_id', user.id);
 
+      await syncNannyVerificationState(user.id);
       wwcc_status = WWCC_STATUS.REVIEW;
       console.log(`[verification-status] WWCC stale for user ${user.id} — escalated to review`);
     }

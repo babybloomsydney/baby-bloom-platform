@@ -12,8 +12,13 @@ import {
   PARENT_IDENTITY_STATUS,
   PARENT_VERIFICATION_STATUS,
   PARENT_VERIFICATION_LEVEL,
+  deriveOverallStatus,
+  type IdentityStatus,
+  type WwccStatus,
+  type CrossCheckStatus,
 } from '@/lib/verification';
 import { runCrossCheckPhase } from '@/lib/ai/verification-pipeline';
+import { syncNannyVerificationState } from '@/lib/actions/verification';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
 import { createInboxMessage } from '@/lib/actions/connection-helpers';
@@ -48,7 +53,7 @@ export async function adminVerifyIdentity(
   const { userId: adminId, error: authErr } = await requireAdmin();
   if (authErr) return { success: false, error: authErr };
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data: verification, error: fetchErr } = await supabase
     .from('verifications')
@@ -70,7 +75,11 @@ export async function adminVerifyIdentity(
       identity_status_at: new Date().toISOString(),
       identity_rejection_reason: null,
       identity_user_guidance: null,
-      verification_status: VERIFICATION_STATUS.PENDING_WWCC_AUTO,
+      verification_status: deriveOverallStatus(
+        IDENTITY_STATUS.VERIFIED as IdentityStatus,
+        (verification.wwcc_status || WWCC_STATUS.NOT_STARTED) as WwccStatus,
+        CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq('id', verificationId);
@@ -79,18 +88,7 @@ export async function adminVerifyIdentity(
     return { success: false, error: `Failed to update verification: ${updateVerErr.message}` };
   }
 
-  const { error: updateNannyErr } = await supabase
-    .from('nannies')
-    .update({
-      identity_verified: true,
-      verification_level: VERIFICATION_LEVEL.ID_VERIFIED,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', verification.user_id);
-
-  if (updateNannyErr) {
-    return { success: false, error: `Failed to update nanny: ${updateNannyErr.message}` };
-  }
+  await syncNannyVerificationState(verification.user_id);
 
   // Check if WWCC is ready → trigger cross-check
   if (verification.wwcc_status === WWCC_STATUS.DOC_VERIFIED) {
@@ -122,15 +120,54 @@ export async function adminRejectIdentity(
     return { success: false, error: 'Rejection reason is required' };
   }
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
+  // Fetch verification record (need user_id for nannies sync)
+  const { data: verification } = await supabase
+    .from('verifications')
+    .select('user_id')
+    .eq('id', verificationId)
+    .single();
+
+  if (!verification) return { success: false, error: 'Verification not found' };
+
+  // Update verifications: reject identity + wipe WWCC/cross-check + clear extracted data
   const { error: updateErr } = await supabase
     .from('verifications')
     .update({
-      identity_rejection_reason: reason.trim(),
       identity_status: IDENTITY_STATUS.REJECTED,
       identity_status_at: new Date().toISOString(),
+      identity_rejection_reason: reason.trim(),
+      identity_verified: false,
       verification_status: VERIFICATION_STATUS.ID_REJECTED,
+      // Clear extracted identity data (clean slate for resubmission)
+      extracted_surname: null,
+      extracted_given_names: null,
+      extracted_dob: null,
+      extracted_nationality: null,
+      extracted_passport_number: null,
+      extracted_passport_expiry: null,
+      // Wipe WWCC (identity is prerequisite)
+      wwcc_status: WWCC_STATUS.NOT_STARTED,
+      wwcc_status_at: new Date().toISOString(),
+      wwcc_verified: false,
+      wwcc_doc_verified: false,
+      wwcc_number: null,
+      wwcc_expiry_date: null,
+      wwcc_verification_method: null,
+      wwcc_user_guidance: null,
+      wwcc_ai_issues: null,
+      wwcc_ai_reasoning: null,
+      // Wipe extracted WWCC data
+      extracted_wwcc_surname: null,
+      extracted_wwcc_first_name: null,
+      extracted_wwcc_other_names: null,
+      extracted_wwcc_number: null,
+      extracted_wwcc_clearance_type: null,
+      extracted_wwcc_expiry: null,
+      // Reset cross-check
+      cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
+      cross_check_reasoning: null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', verificationId);
@@ -139,12 +176,15 @@ export async function adminRejectIdentity(
     return { success: false, error: `Failed to reject: ${updateErr.message}` };
   }
 
+  // Sync nannies (demotes level, resets identity_verified + wwcc_verified)
+  await syncNannyVerificationState(verification.user_id);
+
   revalidatePath('/admin/users');
   return { success: true, error: null };
 }
 
-// ── Admin: Confirm WWCC (manual OCG portal check passed) ──
-// State transition: wwcc_status → doc_verified, then trigger cross-check
+// ── Admin: Confirm WWCC (tracking-only — records that admin submitted to OCG portal) ──
+// Does NOT change verification state. OCG webhook handles actual status changes.
 
 export async function adminConfirmWWCC(
   verificationId: string
@@ -152,49 +192,19 @@ export async function adminConfirmWWCC(
   const { userId: adminId, error: authErr } = await requireAdmin();
   if (authErr) return { success: false, error: authErr };
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
-  const { data: verification, error: fetchErr } = await supabase
-    .from('verifications')
-    .select('user_id, verification_status, identity_status')
-    .eq('id', verificationId)
-    .single();
-
-  if (fetchErr || !verification) {
-    return { success: false, error: 'Verification record not found' };
-  }
-
-  const { error: updateVerErr } = await supabase
+  const { error: updateErr } = await supabase
     .from('verifications')
     .update({
-      wwcc_verified: true,
-      wwcc_verified_at: new Date().toISOString(),
+      wwcc_ocg_submitted_at: new Date().toISOString(),
       wwcc_verified_by: adminId,
-      wwcc_status: WWCC_STATUS.DOC_VERIFIED,
-      wwcc_status_at: new Date().toISOString(),
-      wwcc_doc_verified: true,
-      wwcc_doc_verified_at: new Date().toISOString(),
-      wwcc_rejection_reason: null,
-      wwcc_user_guidance: null,
-      verification_status: VERIFICATION_STATUS.FULLY_VERIFIED,
       updated_at: new Date().toISOString(),
     })
     .eq('id', verificationId);
 
-  if (updateVerErr) {
-    return { success: false, error: `Failed to update verification: ${updateVerErr.message}` };
-  }
-
-  // If identity is verified → trigger cross-check
-  if (verification.identity_status === IDENTITY_STATUS.VERIFIED) {
-    await supabase.from('verifications').update({
-      cross_check_status: CROSS_CHECK_STATUS.PENDING,
-      updated_at: new Date().toISOString(),
-    }).eq('id', verificationId);
-
-    runCrossCheckPhase(verificationId).catch(err => {
-      console.error('[adminConfirmWWCC] Cross-check error:', err);
-    });
+  if (updateErr) {
+    return { success: false, error: `Failed to update verification: ${updateErr.message}` };
   }
 
   revalidatePath('/admin/users');
@@ -215,7 +225,7 @@ export async function adminRejectWWCC(
     return { success: false, error: 'Rejection reason is required' };
   }
 
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data: verification, error: fetchErr } = await supabase
     .from('verifications')
@@ -234,6 +244,12 @@ export async function adminRejectWWCC(
       wwcc_status: WWCC_STATUS.REJECTED,
       wwcc_status_at: new Date().toISOString(),
       verification_status: VERIFICATION_STATUS.WWCC_REJECTED,
+      // Reset cross-check (WWCC rejection invalidates it)
+      cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
+      cross_check_reasoning: null,
+      // Ensure wwcc_verified is false in verifications (not just nannies)
+      wwcc_verified: false,
+      wwcc_doc_verified: false,
       updated_at: new Date().toISOString(),
     })
     .eq('id', verificationId);
@@ -242,18 +258,7 @@ export async function adminRejectWWCC(
     return { success: false, error: `Failed to reject: ${updateVerErr.message}` };
   }
 
-  const { error: updateNannyErr } = await supabase
-    .from('nannies')
-    .update({
-      wwcc_verified: false,
-      verification_level: VERIFICATION_LEVEL.ID_VERIFIED,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', verification.user_id);
-
-  if (updateNannyErr) {
-    return { success: false, error: `Failed to update nanny: ${updateNannyErr.message}` };
-  }
+  await syncNannyVerificationState(verification.user_id);
 
   revalidatePath('/admin/users');
   return { success: true, error: null };
@@ -693,5 +698,75 @@ export async function adminRegenerateNannyBio(
 
   revalidatePath('/admin/users');
   revalidatePath('/nannies');
+  return { success: true, error: null };
+}
+
+// ── Admin: Send Email to User ──
+
+const ALLOWED_FROM_ADDRESSES = [
+  'no-reply@babybloomsydney.com.au',
+  'verification@babybloomsydney.com.au',
+  'nannies@babybloomsydney.com.au',
+  'support@babybloomsydney.com.au',
+  'contact@babybloomsydney.com.au',
+  'parents@babybloomsydney.com.au',
+];
+
+export async function adminSendEmail(params: {
+  toEmail: string;
+  toUserId: string;
+  fromAddress: string;
+  subject: string;
+  body: string;
+}): Promise<{ success: boolean; error: string | null }> {
+  const { error: authErr } = await requireAdmin();
+  if (authErr) return { success: false, error: authErr };
+
+  const { toEmail, toUserId, fromAddress, subject, body } = params;
+
+  if (!toEmail || !subject.trim() || !body.trim()) {
+    return { success: false, error: 'Email, subject, and body are required' };
+  }
+
+  if (!ALLOWED_FROM_ADDRESSES.includes(fromAddress)) {
+    return { success: false, error: 'Invalid from address' };
+  }
+
+  const bodyHtml = body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="margin-bottom:24px;">
+      <span style="font-size:20px;font-weight:700;"><span style="color:#0f172a;">Baby</span><span style="color:#8b5cf6;">Bloom</span></span>
+    </div>
+    <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${bodyHtml}</p>
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;margin:0;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+  const result = await sendEmail({
+    to: toEmail,
+    subject: subject.trim(),
+    html,
+    text: body,
+    from: `Baby Bloom <${fromAddress}>`,
+    replyTo: fromAddress,
+    emailType: 'admin_contact',
+    recipientUserId: toUserId,
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error || 'Failed to send email' };
+  }
+
   return { success: true, error: null };
 }

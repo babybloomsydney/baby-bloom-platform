@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { VERIFICATION_STATUS, VERIFICATION_LEVEL, WWCC_STATUS, CROSS_CHECK_STATUS, GUIDANCE_MESSAGES } from '@/lib/verification';
+import { syncNannyVerificationState } from '@/lib/actions/verification';
 import { parseOCGEmail } from '@/lib/verification/parse-ocg-email';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
@@ -373,41 +374,8 @@ async function updateVerificationFromOCG(
     return { action: 'error', error: updateVerErr.message };
   }
 
-  // Update nanny record
-  let nannyUpdate: Record<string, unknown>;
-  if (isCleared) {
-    nannyUpdate = {
-      wwcc_verified: true,
-      identity_verified: true,
-      verification_level: VERIFICATION_LEVEL.FULLY_VERIFIED,
-      status: 'active',
-      updated_at: now,
-    };
-  } else if (isBarred) {
-    nannyUpdate = {
-      wwcc_verified: false,
-      verification_level: VERIFICATION_LEVEL.SIGNED_UP,
-      status: 'suspended',
-      updated_at: now,
-    };
-  } else {
-    nannyUpdate = {
-      wwcc_verified: false,
-      verification_level: VERIFICATION_LEVEL.ID_VERIFIED,
-      updated_at: now,
-    };
-  }
-
-  const { error: nannyErr, count: nannyCount } = await supabase
-    .from('nannies')
-    .update(nannyUpdate)
-    .eq('user_id', userId);
-
-  if (nannyErr) {
-    console.error(`[OCG Webhook] Failed to update nanny for user ${userId}:`, nannyErr);
-  } else {
-    console.log(`[OCG Webhook] Nanny updated for user ${userId}: verification_level=${nannyUpdate.verification_level}, matched=${nannyCount ?? 'unknown'}`);
-  }
+  // Sync nannies from verifications (handles all OCG outcomes correctly)
+  await syncNannyVerificationState(userId);
 
   const actionName = isCleared ? 'cleared'
     : isBarred ? 'barred'
