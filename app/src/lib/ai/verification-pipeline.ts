@@ -108,42 +108,23 @@ export async function runIdentityPhase(verificationId: string): Promise<void> {
 
       if (!result.pass) {
         // AI ran and found a real problem — set failed with guidance.
-        // Also reset WWCC data: without a verified passport the cross-check
-        // cannot validate WWCC, so any prior WWCC pass is meaningless.
+        // WWCC data is preserved so user doesn't have to re-upload.
+        // Cross-check is reset (can't run without verified identity).
         await supabase.from('verifications').update({
           identity_status: IDENTITY_STATUS.FAILED,
           identity_status_at: new Date().toISOString(),
           identity_user_guidance: result.user_guidance ?? null,
-          // Reset WWCC fields
-          wwcc_status: WWCC_STATUS.NOT_STARTED,
-          wwcc_verification_method: null,
-          wwcc_number: null,
-          wwcc_expiry_date: null,
-          wwcc_grant_email_url: null,
-          wwcc_service_nsw_screenshot_url: null,
-          wwcc_doc_verified: false,
-          wwcc_verified: false,
-          wwcc_rejection_reason: null,
-          wwcc_user_guidance: null,
-          extracted_wwcc_surname: null,
-          extracted_wwcc_first_name: null,
-          extracted_wwcc_other_names: null,
-          extracted_wwcc_number: null,
-          extracted_wwcc_clearance_type: null,
-          extracted_wwcc_expiry: null,
-          wwcc_ai_reasoning: null,
-          wwcc_ai_issues: null,
-          // Reset cross-check
+          // Reset cross-check (identity is prerequisite)
           cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
           cross_check_reasoning: null,
-          verification_status: deriveOverallStatus(IDENTITY_STATUS.FAILED as IdentityStatus, WWCC_STATUS.NOT_STARTED as WwccStatus, CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus),
+          verification_status: deriveOverallStatus(IDENTITY_STATUS.FAILED as IdentityStatus, (claimed.wwcc_status || WWCC_STATUS.NOT_STARTED) as WwccStatus, CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus),
           updated_at: new Date().toISOString(),
         }).eq('id', verificationId);
 
         // Sync nannies (resets identity_verified if previously true)
         await syncNannyVerificationState(claimed.user_id);
 
-        console.log(`[Identity] FAILED — AI found issues, WWCC reset`);
+        console.log(`[Identity] FAILED — AI found issues, WWCC data preserved`);
         return;
       }
 
@@ -173,6 +154,13 @@ export async function runIdentityPhase(verificationId: string): Promise<void> {
       // Always attempt cross-check — triggerCrossCheck re-reads current DB state,
       // so it handles the race where WWCC was submitted during identity processing
       await triggerCrossCheck(verificationId);
+
+      // Auto-fire WWCC AI if Service NSW screenshot is waiting (PENDING = not yet processed)
+      if (claimed.wwcc_status === WWCC_STATUS.PENDING) {
+        runWWCCDocPhase(verificationId).catch(err => {
+          console.error('[Identity] Auto WWCC doc phase error:', err);
+        });
+      }
       return;
 
     } catch (error) {

@@ -17,7 +17,7 @@ import {
   type WwccStatus,
   type CrossCheckStatus,
 } from '@/lib/verification';
-import { runCrossCheckPhase } from '@/lib/ai/verification-pipeline';
+import { runCrossCheckPhase, runWWCCDocPhase } from '@/lib/ai/verification-pipeline';
 import { syncNannyVerificationState } from '@/lib/actions/verification';
 import { sendEmail } from '@/lib/email/resend';
 import { getUserEmailInfo } from '@/lib/email/helpers';
@@ -100,6 +100,11 @@ export async function adminVerifyIdentity(
     runCrossCheckPhase(verificationId).catch(err => {
       console.error('[adminVerifyIdentity] Cross-check error:', err);
     });
+  } else if (verification.wwcc_status === WWCC_STATUS.PENDING) {
+    // Auto-fire WWCC AI if Service NSW screenshot is waiting
+    runWWCCDocPhase(verificationId).catch(err => {
+      console.error('[adminVerifyIdentity] Auto WWCC doc phase error:', err);
+    });
   }
 
   revalidatePath('/admin/users');
@@ -122,16 +127,18 @@ export async function adminRejectIdentity(
 
   const supabase = createAdminClient();
 
-  // Fetch verification record (need user_id for nannies sync)
+  // Fetch verification record (need user_id for nannies sync + wwcc_status for deriveOverallStatus)
   const { data: verification } = await supabase
     .from('verifications')
-    .select('user_id')
+    .select('user_id, wwcc_status')
     .eq('id', verificationId)
     .single();
 
   if (!verification) return { success: false, error: 'Verification not found' };
 
-  // Update verifications: reject identity + wipe WWCC/cross-check + clear extracted data
+  // Reject identity + clear extracted identity data (clean slate for resubmission).
+  // WWCC data is preserved so user doesn't have to re-upload.
+  // Cross-check is reset (can't run without verified identity).
   const { error: updateErr } = await supabase
     .from('verifications')
     .update({
@@ -139,7 +146,6 @@ export async function adminRejectIdentity(
       identity_status_at: new Date().toISOString(),
       identity_rejection_reason: reason.trim(),
       identity_verified: false,
-      verification_status: VERIFICATION_STATUS.ID_REJECTED,
       // Clear extracted identity data (clean slate for resubmission)
       extracted_surname: null,
       extracted_given_names: null,
@@ -147,27 +153,15 @@ export async function adminRejectIdentity(
       extracted_nationality: null,
       extracted_passport_number: null,
       extracted_passport_expiry: null,
-      // Wipe WWCC (identity is prerequisite)
-      wwcc_status: WWCC_STATUS.NOT_STARTED,
-      wwcc_status_at: new Date().toISOString(),
-      wwcc_verified: false,
-      wwcc_doc_verified: false,
-      wwcc_number: null,
-      wwcc_expiry_date: null,
-      wwcc_verification_method: null,
-      wwcc_user_guidance: null,
-      wwcc_ai_issues: null,
-      wwcc_ai_reasoning: null,
-      // Wipe extracted WWCC data
-      extracted_wwcc_surname: null,
-      extracted_wwcc_first_name: null,
-      extracted_wwcc_other_names: null,
-      extracted_wwcc_number: null,
-      extracted_wwcc_clearance_type: null,
-      extracted_wwcc_expiry: null,
-      // Reset cross-check
+      // Reset cross-check (identity is prerequisite)
       cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
       cross_check_reasoning: null,
+      // Derive status preserving existing WWCC status
+      verification_status: deriveOverallStatus(
+        IDENTITY_STATUS.REJECTED as IdentityStatus,
+        (verification.wwcc_status || WWCC_STATUS.NOT_STARTED) as WwccStatus,
+        CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
+      ),
       updated_at: new Date().toISOString(),
     })
     .eq('id', verificationId);

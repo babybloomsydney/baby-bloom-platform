@@ -243,7 +243,7 @@ export async function submitIdentityForManualReview(): Promise<{ success: boolea
 
   const { data: existing } = await admin
     .from('verifications')
-    .select('id')
+    .select('id, wwcc_status')
     .eq('user_id', user.id)
     .single();
 
@@ -251,43 +251,23 @@ export async function submitIdentityForManualReview(): Promise<{ success: boolea
     return { success: false, error: 'No verification record found' };
   }
 
-  // Set identity to review + wipe all WWCC data so user must re-submit after approval
+  // Set identity to review. WWCC data is preserved so user doesn't have to re-upload.
+  // Cross-check is reset (can't run without verified identity).
   const { error: updateErr } = await admin
     .from('verifications')
     .update({
       identity_status: IDENTITY_STATUS.REVIEW,
       identity_status_at: new Date().toISOString(),
       identity_user_guidance: null,
-      // Wipe WWCC data — user must re-submit after manual ID approval
-      wwcc_status: WWCC_STATUS.NOT_STARTED,
-      wwcc_status_at: null,
-      wwcc_verification_method: null,
-      wwcc_number: null,
-      wwcc_expiry_date: null,
-      wwcc_grant_email_url: null,
-      wwcc_service_nsw_screenshot_url: null,
-      wwcc_doc_verified: false,
-      wwcc_doc_verified_at: null,
-      wwcc_verified: false,
-      wwcc_ai_reasoning: null,
-      wwcc_ai_issues: null,
-      wwcc_rejection_reason: null,
-      wwcc_user_guidance: null,
-      extracted_wwcc_surname: null,
-      extracted_wwcc_first_name: null,
-      extracted_wwcc_other_names: null,
-      extracted_wwcc_number: null,
-      extracted_wwcc_clearance_type: null,
-      extracted_wwcc_expiry: null,
-      // Reset cross-check
+      // Reset cross-check (identity is prerequisite)
       cross_check_status: CROSS_CHECK_STATUS.NOT_STARTED,
       cross_check_reasoning: null,
       cross_check_issues: null,
       cross_check_at: null,
-      // Derive verification_status from new section statuses
+      // Derive verification_status preserving existing WWCC status
       verification_status: deriveOverallStatus(
         IDENTITY_STATUS.REVIEW as IdentityStatus,
-        WWCC_STATUS.NOT_STARTED as WwccStatus,
+        (existing.wwcc_status || WWCC_STATUS.NOT_STARTED) as WwccStatus,
         CROSS_CHECK_STATUS.NOT_STARTED as CrossCheckStatus
       ),
       updated_at: new Date().toISOString(),
