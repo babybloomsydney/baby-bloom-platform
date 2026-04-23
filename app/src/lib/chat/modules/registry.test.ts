@@ -16,6 +16,7 @@ describe("module registry", () => {
       expect(ids).toContain("progress");
       expect(ids).toContain("diary");
       expect(ids).toContain("observations");
+      expect(ids).toContain("activities");
     });
 
     it("returns modules for nanny role", () => {
@@ -46,6 +47,7 @@ describe("module registry", () => {
       expect(names).toContain("log_food");
       expect(names).toContain("log_sleep");
       expect(names).toContain("log_observation");
+      expect(names).toContain("plan_activity");
     });
 
     it("tool names are globally unique", () => {
