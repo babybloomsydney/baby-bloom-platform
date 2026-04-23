@@ -8,6 +8,7 @@ import { ObservationTile } from "./tiles/ObservationTile";
 import { ProgressTile } from "./tiles/ProgressTile";
 import { DiaryTile } from "./tiles/DiaryTile";
 import { ReportTile } from "./tiles/ReportTile";
+import { CustomTile } from "./tiles/CustomTile";
 
 interface BAppLibraryViewProps {
   childId: string;
@@ -32,7 +33,13 @@ async function downloadImage(url: string) {
   URL.revokeObjectURL(blobUrl);
 }
 
-function DownloadButton({ url, className }: { url: string; className?: string }) {
+function DownloadButton({
+  url,
+  className,
+}: {
+  url: string;
+  className?: string;
+}) {
   return (
     <button
       type="button"
@@ -79,7 +86,7 @@ export function BAppLibraryView({
           loadMore();
         }
       },
-      { rootMargin: "200px" }
+      { rootMargin: "200px" },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -91,7 +98,9 @@ export function BAppLibraryView({
     } else {
       document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [selected]);
 
   if (images.length === 0) {
@@ -180,7 +189,15 @@ function TileRenderer({
     case "diary":
       return <DiaryTile item={item} />;
     case "report":
-      return <ReportTile item={item} allItems={allItems} milestoneMap={milestoneMap} />;
+      return (
+        <ReportTile
+          item={item}
+          allItems={allItems}
+          milestoneMap={milestoneMap}
+        />
+      );
+    case "custom":
+      return <CustomTile item={item} />;
     default:
       return <ObservationTile item={item} />;
   }

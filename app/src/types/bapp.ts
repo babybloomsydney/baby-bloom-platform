@@ -69,7 +69,8 @@ export type BAppLogType =
   | "progress"
   | "observation"
   | "diary"
-  | "insight";
+  | "insight"
+  | "custom";
 
 export type BAppLogStatus = "pending" | "ready" | "completed";
 

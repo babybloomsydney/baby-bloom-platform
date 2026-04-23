@@ -19,6 +19,7 @@ import { progressModule } from "./progress";
 import { diaryModule } from "./diary";
 import { observationsModule } from "./observations";
 import { activitiesModule } from "./activities";
+import { feedWriterModule } from "./feed-writer";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -29,8 +30,9 @@ const ALL_MODULES: BloomBotModule[] = [
   diaryModule,
   observationsModule,
   activitiesModule,
+  feedWriterModule,
   // Future:
-  //   agentMemoryModule, feedWriterModule, insightsModule, katieSchedulingModule,
+  //   agentMemoryModule, insightsModule, katieSchedulingModule,
   //   katieAdminModule (admin-only), jobSearchModule, bsrModule,
   //   verificationModule, profileModule, connectionsModule
 ];

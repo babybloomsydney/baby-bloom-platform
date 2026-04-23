@@ -10,6 +10,7 @@ import { DiaryTile } from "./tiles/DiaryTile";
 import { ActivityTile } from "./tiles/ActivityTile";
 import { ReportTile } from "./tiles/ReportTile";
 import { InsightTile } from "./tiles/InsightTile";
+import { CustomTile } from "./tiles/CustomTile";
 import { ActivityDetailSheet } from "./sheets/ActivityDetailSheet";
 import type { FeedItem, Milestone } from "@/types/bapp";
 
@@ -38,9 +39,8 @@ export function BAppFeedView({
 
   // Check if any pending activities exist
   const hasPending = useMemo(
-    () =>
-      feed.some((i) => i.type === "activity" && i.status === "pending"),
-    [feed]
+    () => feed.some((i) => i.type === "activity" && i.status === "pending"),
+    [feed],
   );
 
   // Smart polling — only when pending items exist
@@ -65,7 +65,7 @@ export function BAppFeedView({
   // Show all adhoc items in the feed
   const visibleFeed = useMemo(
     () => feed.filter((i) => i.context === "adhoc"),
-    [feed]
+    [feed],
   );
 
   return (
@@ -73,7 +73,9 @@ export function BAppFeedView({
       {/* Activity Detail Sheet */}
       <ActivityDetailSheet
         open={!!detailItem}
-        onOpenChange={(open) => { if (!open) setDetailItem(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDetailItem(null);
+        }}
         item={detailItem}
         milestones={milestones}
       />
@@ -84,9 +86,7 @@ export function BAppFeedView({
             <Plus className="h-5 w-5 text-slate-400" />
           </div>
           <p className="text-sm text-slate-500">No entries yet.</p>
-          <p className="text-xs text-slate-400">
-            Tap + to get started.
-          </p>
+          <p className="text-xs text-slate-400">Tap + to get started.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -136,6 +136,8 @@ function FeedTile({
       );
     case "insight":
       return <InsightTile item={item} />;
+    case "custom":
+      return <CustomTile item={item} />;
     default:
       return null;
   }
