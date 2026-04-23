@@ -2,6 +2,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { progressModule } from "./progress";
 import type { ChildSummary, ModuleContext } from "./types";
 
+vi.mock("@/lib/actions/bapp/progress", () => ({
+  recalculateProgress: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { recalculateProgress } from "@/lib/actions/bapp/progress";
+
 const oliver: ChildSummary = {
   id: "c1",
   firstName: "Oliver",
@@ -152,5 +158,65 @@ describe("progress module — read_milestones", () => {
     const result = await progressModule.execute("nope", {}, ctx);
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/Unknown tool/);
+  });
+});
+
+describe("progress module — update_progress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("validates updates array — rejects empty", async () => {
+    const { ctx } = makeCtx();
+    const r = await progressModule.execute(
+      "update_progress",
+      { updates: [] },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/at least one/i);
+  });
+
+  it("validates score range 1-4 and rejects out-of-range", async () => {
+    const { ctx } = makeCtx();
+    const r = await progressModule.execute(
+      "update_progress",
+      { updates: [{ milestone_id: "CL_12_18_1", score: 7 }] },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/score/i);
+  });
+
+  it("delegates to recalculateProgress with child id + updates", async () => {
+    const { ctx } = makeCtx();
+    const r = await progressModule.execute(
+      "update_progress",
+      {
+        updates: [
+          { milestone_id: "CL_12_18_1", score: 4 },
+          { milestone_id: "PD_12_18_1", score: 2 },
+        ],
+      },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(recalculateProgress).toHaveBeenCalledWith("c1", [
+      { id: "CL_12_18_1", score: 4 },
+      { id: "PD_12_18_1", score: 2 },
+    ]);
+  });
+
+  it("returns user-facing confirmation summary", async () => {
+    const { ctx } = makeCtx();
+    const r = await progressModule.execute(
+      "update_progress",
+      { updates: [{ milestone_id: "CL_12_18_1", score: 4 }] },
+      ctx,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.updated_count).toBe(1);
+    expect(data.child_name).toBe("Oliver");
   });
 });

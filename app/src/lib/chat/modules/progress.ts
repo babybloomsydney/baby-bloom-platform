@@ -14,6 +14,7 @@
 
 import type { BloomBotModule, ToolResult } from "./types";
 import { resolveChild } from "./utils";
+import { recalculateProgress } from "@/lib/actions/bapp/progress";
 
 interface MilestoneRow {
   id: string;
@@ -116,11 +117,65 @@ async function readMilestones(
   };
 }
 
+interface MilestoneUpdateInput {
+  milestone_id: unknown;
+  score: unknown;
+}
+
+async function updateProgress(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = resolveChild(args.child_name, ctx.children);
+  if (r.error) return r.error;
+  const child = r.child;
+
+  const raw = args.updates;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return {
+      success: false,
+      error: "Pass at least one milestone update in the `updates` array.",
+    };
+  }
+
+  const cleaned: Array<{ id: string; score: number }> = [];
+  for (const u of raw as MilestoneUpdateInput[]) {
+    const id = typeof u?.milestone_id === "string" ? u.milestone_id : null;
+    const score = typeof u?.score === "number" ? Math.round(u.score) : NaN;
+    if (!id || !Number.isFinite(score) || score < 1 || score > 4) {
+      return {
+        success: false,
+        error: `Invalid update ${JSON.stringify(u)} — each update needs a milestone_id and a score between 1 and 4.`,
+      };
+    }
+    cleaned.push({ id, score });
+  }
+
+  try {
+    await recalculateProgress(child.id, cleaned);
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to update progress: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  return {
+    success: true,
+    feedEntry: false,
+    data: {
+      child_name: child.firstName,
+      updated_count: cleaned.length,
+      updates: cleaned,
+    },
+  };
+}
+
 export const progressModule: BloomBotModule = {
   id: "progress",
   name: "Child Progress",
   description:
-    "Reads EYLF milestones for a child's age bracket along with their observed scores and per-domain completion percent.",
+    "Reads EYLF milestones for a child's age bracket along with their observed scores and per-domain completion percent, and applies direct progress updates.",
 
   tools: [
     {
@@ -152,13 +207,51 @@ export const progressModule: BloomBotModule = {
         required: [],
       },
     },
+    {
+      name: "update_progress",
+      description:
+        "Directly set a child's observed scores against specific milestones. Scores go up only (recalculateProgress takes max with existing). Use this for bulk corrections or quick updates; for single observations prefer log_observation via the observations module so the evidence is captured.",
+      parameters: {
+        type: "object",
+        properties: {
+          child_name: {
+            type: "string",
+            description:
+              "Which child (required if the user has multiple children; can omit if only one).",
+          },
+          updates: {
+            type: "array",
+            description:
+              "Milestone updates to apply. Each item is { milestone_id, score } where score is 1–4.",
+            items: {
+              type: "object",
+              properties: {
+                milestone_id: {
+                  type: "string",
+                  description:
+                    "Milestone id from bapp_milestones (e.g. `CL_12_18_1`).",
+                },
+                score: {
+                  type: "number",
+                  description: "Observed score, integer 1-4.",
+                },
+              },
+              required: ["milestone_id", "score"],
+            },
+            minItems: 1,
+          },
+        },
+        required: ["updates"],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
     if (toolName === "read_milestones") return readMilestones(args, ctx);
+    if (toolName === "update_progress") return updateProgress(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Use `read_milestones` to see which EYLF milestones are on-plan for a child's age bracket and which have already been observed (observed_score > 0). Pair with `read_recent_feed` for the observation evidence.",
+    "Use `read_milestones` to see which EYLF milestones are on-plan for a child's age bracket and which have already been observed (observed_score > 0). Pair with `read_recent_feed` for the observation evidence. Use `update_progress` only for bulk or direct corrections — logging an observation via the observations module is preferred when the user is describing something they saw.",
 };

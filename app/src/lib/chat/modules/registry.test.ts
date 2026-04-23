@@ -40,6 +40,7 @@ describe("module registry", () => {
       expect(names).toContain("read_child_profile");
       expect(names).toContain("read_recent_feed");
       expect(names).toContain("read_milestones");
+      expect(names).toContain("update_progress");
     });
 
     it("tool names are globally unique", () => {
