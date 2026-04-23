@@ -18,6 +18,7 @@ describe("module registry", () => {
       expect(ids).toContain("observations");
       expect(ids).toContain("activities");
       expect(ids).toContain("feed-writer");
+      expect(ids).toContain("agent-memory");
     });
 
     it("returns modules for nanny role", () => {
@@ -52,6 +53,10 @@ describe("module registry", () => {
       expect(names).toContain("plan_activity");
       expect(names).toContain("create_tile");
       expect(names).toContain("delete_tile");
+      expect(names).toContain("write_memory");
+      expect(names).toContain("read_memory");
+      expect(names).toContain("update_memory");
+      expect(names).toContain("delete_memory");
     });
 
     it("tool names are globally unique", () => {

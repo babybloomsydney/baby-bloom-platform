@@ -39,6 +39,7 @@ import {
   type GeminiTurn,
 } from "@/lib/ai/gemini-client";
 import { buildSystemPrompt, type CurrentSurface } from "@/lib/chat/context";
+import { buildMemoryTable } from "@/lib/chat/memory/context-builder";
 import {
   updateDailyCost,
   checkDailyLimit,
@@ -180,7 +181,14 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  // 8. Build system prompt
+  // 8. Build memory section (pre-rendered for inclusion in system prompt)
+  const memoryTable = await buildMemoryTable({
+    botId: bot.id,
+    childIds: children.map((c) => c.id),
+    supabase: admin,
+  });
+
+  // 9. Build system prompt
   const systemPrompt = await buildSystemPrompt({
     botId: bot.id,
     userId: user.id,
@@ -190,6 +198,7 @@ export async function POST(req: NextRequest) {
       (user.user_metadata as { first_name?: string })?.first_name ?? "there",
     children,
     currentSurface: body.currentSurface ?? null,
+    memoryTable,
   });
 
   // 9. Load recent history (last 20 user+assistant messages)
