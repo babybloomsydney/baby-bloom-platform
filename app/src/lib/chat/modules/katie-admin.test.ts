@@ -809,3 +809,63 @@ describe("katie-admin — update_proposal_status", () => {
     expect(r.success).toBe(false);
   });
 });
+
+// ── System inventory ──────────────────────────────────────────────────────
+
+describe("katie-admin — read_system_inventory", () => {
+  it("returns summary + available sections when called with no args", async () => {
+    const ctx = makeCtx();
+    const r = await katieAdminModule.execute("read_system_inventory", {}, ctx);
+    // The manifest was generated in this commit; file is present on disk.
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.summary).toBeDefined();
+    expect(data.summary.route_count).toBeGreaterThan(0);
+    expect(data.available_sections).toContain("crons");
+  });
+
+  it("returns crons slice when section='crons'", async () => {
+    const ctx = makeCtx();
+    const r = await katieAdminModule.execute(
+      "read_system_inventory",
+      { section: "crons" },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(Array.isArray(data.rows)).toBe(true);
+    const proactive = data.rows.find(
+      (c: { path: string }) => c.path === "/api/cron/proactive",
+    );
+    expect(proactive).toBeDefined();
+  });
+
+  it("filters by match substring", async () => {
+    const ctx = makeCtx();
+    const r = await katieAdminModule.execute(
+      "read_system_inventory",
+      { section: "routes", match: "/api/chat" },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    for (const row of data.rows) {
+      const j = JSON.stringify(row).toLowerCase();
+      expect(j).toContain("/api/chat");
+    }
+  });
+
+  it("rejects unknown section", async () => {
+    const ctx = makeCtx();
+    const r = await katieAdminModule.execute(
+      "read_system_inventory",
+      { section: "nonexistent" },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/unknown section/i);
+  });
+});

@@ -8,6 +8,8 @@
  * about to change.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { BloomBotModule, ToolResult } from "./types";
 import { lineDiff } from "@/lib/chat/admin/diff";
 
@@ -517,6 +519,116 @@ async function rollbackPromptEdit(
   };
 }
 
+// ── System inventory (3B) ─────────────────────────────────────────────────
+
+interface Manifest {
+  generated_at: string;
+  summary: Record<string, number>;
+  routes: Array<{ path: string; methods: string[]; file: string }>;
+  pages: Array<{ path: string; file: string }>;
+  crons: Array<{ path: string; schedule: string }>;
+  migrations: Array<{ filename: string; bytes: number; modified_at: string }>;
+  server_actions: Array<{ file: string; functions: string[] }>;
+}
+
+let manifestCache: { loadedAt: number; value: Manifest } | null = null;
+const MANIFEST_TTL_MS = 60 * 1000; // 60s — fresh enough; cheap to reload
+
+async function loadManifest(): Promise<Manifest | null> {
+  if (manifestCache && Date.now() - manifestCache.loadedAt < MANIFEST_TTL_MS) {
+    return manifestCache.value;
+  }
+  try {
+    const path = join(process.cwd(), "public/katie-manifest.json");
+    const raw = await readFile(path, "utf8");
+    const parsed = JSON.parse(raw) as Manifest;
+    manifestCache = { loadedAt: Date.now(), value: parsed };
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+const INVENTORY_SECTIONS = [
+  "summary",
+  "routes",
+  "pages",
+  "crons",
+  "migrations",
+  "server_actions",
+] as const;
+
+async function readSystemInventory(
+  args: Record<string, unknown>,
+  _ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const manifest = await loadManifest();
+  if (!manifest) {
+    return {
+      success: false,
+      error:
+        "katie-manifest.json not found. Run `npm run generate:manifest` (also auto-runs on prebuild).",
+    };
+  }
+
+  const sectionArg =
+    typeof args.section === "string" && args.section.trim().length > 0
+      ? args.section.trim()
+      : null;
+
+  if (!sectionArg) {
+    return {
+      success: true,
+      data: {
+        generated_at: manifest.generated_at,
+        summary: manifest.summary,
+        available_sections: INVENTORY_SECTIONS,
+        next_step:
+          "Pass `section` to drill into a specific area (e.g. 'crons', 'routes').",
+      },
+    };
+  }
+
+  if (!(INVENTORY_SECTIONS as readonly string[]).includes(sectionArg)) {
+    return {
+      success: false,
+      error: `Unknown section '${sectionArg}'. Valid: ${INVENTORY_SECTIONS.join(", ")}.`,
+    };
+  }
+
+  const match =
+    typeof args.match === "string" && args.match.trim().length > 0
+      ? args.match.trim().toLowerCase()
+      : null;
+  const limit = Math.min(
+    500,
+    Math.max(1, typeof args.limit === "number" ? Math.round(args.limit) : 200),
+  );
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let data = (manifest as any)[sectionArg] as unknown;
+  if (Array.isArray(data) && match) {
+    data = data.filter((row) => {
+      const j = JSON.stringify(row).toLowerCase();
+      return j.includes(match);
+    });
+  }
+  if (Array.isArray(data)) {
+    data = (data as unknown[]).slice(0, limit);
+  }
+
+  return {
+    success: true,
+    data: {
+      generated_at: manifest.generated_at,
+      section: sectionArg,
+      match,
+      count: Array.isArray(data) ? data.length : 1,
+      rows: data,
+    },
+  };
+}
+
 // ── Proposals (3E) ─────────────────────────────────────────────────────────
 
 const PROPOSAL_KINDS = [
@@ -1005,6 +1117,38 @@ export const katieAdminModule: BloomBotModule = {
         required: ["id", "status"],
       },
     },
+    {
+      name: "read_system_inventory",
+      description:
+        "Read the generated system manifest — routes, pages, crons, migrations, server-action files. Call once with no `section` to see summary + the list of sections; then drill in. Use before proposing changes so you know what exists and what's named what.",
+      parameters: {
+        type: "object",
+        properties: {
+          section: {
+            type: "string",
+            enum: [
+              "summary",
+              "routes",
+              "pages",
+              "crons",
+              "migrations",
+              "server_actions",
+            ],
+            description: "Which manifest section to return. Omit for overview.",
+          },
+          match: {
+            type: "string",
+            description:
+              "Optional substring filter (case-insensitive) applied to every row.",
+          },
+          limit: {
+            type: "number",
+            description: "Max rows (default 200, max 500).",
+          },
+        },
+        required: [],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
@@ -1027,9 +1171,11 @@ export const katieAdminModule: BloomBotModule = {
     if (toolName === "read_proposals") return readProposals(args, ctx);
     if (toolName === "update_proposal_status")
       return updateProposalStatus(args, ctx);
+    if (toolName === "read_system_inventory")
+      return readSystemInventory(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "You're in admin mode. When the operator asks about your own behaviour, inspect before guessing: `read_all_prompt_sections` for the index, `read_prompt_section` for a specific section, `read_module_registry` / `read_module_definition` / `read_tool_surface` for modules and tools. For prompt edits: always `propose_prompt_edit` first and show the operator the diff; only `apply_prompt_edit` once they confirm. Protected sections require `confirm_protected=true` in apply — ask explicitly. For mistakes, `rollback_prompt_edit` by edit id. For bigger changes (module code / schema / new table) use `propose_module_change` or `propose_schema_change` — those go to the dev queue rather than shipping directly. Quote exact versions and literal content back — precision matters when the operator is about to change something.",
+    "You're in admin mode. When the operator asks about your own behaviour, inspect before guessing: `read_all_prompt_sections` for the index, `read_prompt_section` for a specific section, `read_module_registry` / `read_module_definition` / `read_tool_surface` for modules and tools, `read_system_inventory` for routes/pages/crons/migrations/server actions. For prompt edits: always `propose_prompt_edit` first and show the operator the diff; only `apply_prompt_edit` once they confirm. Protected sections require `confirm_protected=true` in apply — ask explicitly. For mistakes, `rollback_prompt_edit` by edit id. For bigger changes (module code / schema / new table) use `propose_module_change` or `propose_schema_change` — those go to the dev queue rather than shipping directly. Quote exact versions and literal content back — precision matters when the operator is about to change something.",
 };

@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild": "node scripts/generate-katie-manifest.mjs",
+    "generate:manifest": "node scripts/generate-katie-manifest.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

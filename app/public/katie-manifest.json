@@ -1,0 +1,995 @@
+{
+  "generated_at": "2026-04-23T07:52:02.054Z",
+  "summary": {
+    "route_count": 45,
+    "page_count": 96,
+    "cron_count": 6,
+    "migration_count": 10,
+    "server_action_file_count": 31
+  },
+  "routes": [
+    {
+      "path": "/api/address-search",
+      "methods": ["GET"],
+      "file": "src/app/api/address-search/route.ts"
+    },
+    {
+      "path": "/api/admin/analytics",
+      "methods": ["GET"],
+      "file": "src/app/api/admin/analytics/route.ts"
+    },
+    {
+      "path": "/api/admin/debug",
+      "methods": ["GET"],
+      "file": "src/app/api/admin/debug/route.ts"
+    },
+    {
+      "path": "/api/admin/pipeline-snapshots",
+      "methods": ["GET"],
+      "file": "src/app/api/admin/pipeline-snapshots/route.ts"
+    },
+    {
+      "path": "/api/admin/reconcile-nannies",
+      "methods": ["POST"],
+      "file": "src/app/api/admin/reconcile-nannies/route.ts"
+    },
+    {
+      "path": "/api/admin",
+      "methods": ["GET"],
+      "file": "src/app/api/admin/route.ts"
+    },
+    {
+      "path": "/api/ai",
+      "methods": ["GET"],
+      "file": "src/app/api/ai/route.ts"
+    },
+    {
+      "path": "/api/analytics/visit",
+      "methods": ["POST"],
+      "file": "src/app/api/analytics/visit/route.ts"
+    },
+    {
+      "path": "/api/auth/callback",
+      "methods": ["GET"],
+      "file": "src/app/api/auth/callback/route.ts"
+    },
+    {
+      "path": "/api/auth",
+      "methods": ["GET"],
+      "file": "src/app/api/auth/route.ts"
+    },
+    {
+      "path": "/api/auth/signout",
+      "methods": ["POST"],
+      "file": "src/app/api/auth/signout/route.ts"
+    },
+    {
+      "path": "/api/babysitting",
+      "methods": ["GET"],
+      "file": "src/app/api/babysitting/route.ts"
+    },
+    {
+      "path": "/api/bookings",
+      "methods": ["GET"],
+      "file": "src/app/api/bookings/route.ts"
+    },
+    {
+      "path": "/api/chat/bot-info",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/bot-info/route.ts"
+    },
+    {
+      "path": "/api/chat/mark-read",
+      "methods": ["POST"],
+      "file": "src/app/api/chat/mark-read/route.ts"
+    },
+    {
+      "path": "/api/chat/messages",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/messages/route.ts"
+    },
+    {
+      "path": "/api/chat",
+      "methods": ["POST"],
+      "file": "src/app/api/chat/route.ts"
+    },
+    {
+      "path": "/api/check-share-screenshot",
+      "methods": ["POST"],
+      "file": "src/app/api/check-share-screenshot/route.ts"
+    },
+    {
+      "path": "/api/cron/compact-daily",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/compact-daily/route.ts"
+    },
+    {
+      "path": "/api/cron/dfy-waves",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/dfy-waves/route.ts"
+    },
+    {
+      "path": "/api/cron/expire-connections",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/expire-connections/route.ts"
+    },
+    {
+      "path": "/api/cron/proactive",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/proactive/route.ts"
+    },
+    {
+      "path": "/api/cron/send-delayed-emails",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/send-delayed-emails/route.ts"
+    },
+    {
+      "path": "/api/cron/snapshot-pipeline",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/snapshot-pipeline/route.ts"
+    },
+    {
+      "path": "/api/interviews",
+      "methods": ["GET"],
+      "file": "src/app/api/interviews/route.ts"
+    },
+    {
+      "path": "/api/legal/cookie-consent",
+      "methods": ["POST"],
+      "file": "src/app/api/legal/cookie-consent/route.ts"
+    },
+    {
+      "path": "/api/nannies",
+      "methods": ["GET"],
+      "file": "src/app/api/nannies/route.ts"
+    },
+    {
+      "path": "/api/og/babysitting/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/og/babysitting/[id]/route.tsx"
+    },
+    {
+      "path": "/api/og/nanny/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/og/nanny/[id]/route.tsx"
+    },
+    {
+      "path": "/api/og/nanny-v2/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/og/nanny-v2/[id]/route.tsx"
+    },
+    {
+      "path": "/api/og/position/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/og/position/[id]/route.tsx"
+    },
+    {
+      "path": "/api/parent-verification-status",
+      "methods": ["GET"],
+      "file": "src/app/api/parent-verification-status/route.ts"
+    },
+    {
+      "path": "/api/parents",
+      "methods": ["GET"],
+      "file": "src/app/api/parents/route.ts"
+    },
+    {
+      "path": "/api/positions/[id]",
+      "methods": ["GET", "PATCH", "DELETE"],
+      "file": "src/app/api/positions/[id]/route.ts"
+    },
+    {
+      "path": "/api/positions",
+      "methods": ["GET", "POST"],
+      "file": "src/app/api/positions/route.ts"
+    },
+    {
+      "path": "/api/public/quick-match",
+      "methods": ["POST"],
+      "file": "src/app/api/public/quick-match/route.ts"
+    },
+    {
+      "path": "/api/run-verification",
+      "methods": ["POST"],
+      "file": "src/app/api/run-verification/route.ts"
+    },
+    {
+      "path": "/api/sydney-postcodes",
+      "methods": ["GET"],
+      "file": "src/app/api/sydney-postcodes/route.ts"
+    },
+    {
+      "path": "/api/test-email",
+      "methods": ["GET"],
+      "file": "src/app/api/test-email/route.ts"
+    },
+    {
+      "path": "/api/upload/development-image",
+      "methods": ["POST"],
+      "file": "src/app/api/upload/development-image/route.ts"
+    },
+    {
+      "path": "/api/upload/nanny-photo",
+      "methods": ["POST"],
+      "file": "src/app/api/upload/nanny-photo/route.ts"
+    },
+    {
+      "path": "/api/validate-wwcc-pdf",
+      "methods": ["POST"],
+      "file": "src/app/api/validate-wwcc-pdf/route.ts"
+    },
+    {
+      "path": "/api/verification-status",
+      "methods": ["GET"],
+      "file": "src/app/api/verification-status/route.ts"
+    },
+    {
+      "path": "/api/webhooks/ocg-verification",
+      "methods": ["POST"],
+      "file": "src/app/api/webhooks/ocg-verification/route.ts"
+    },
+    {
+      "path": "/api/webhooks",
+      "methods": ["POST"],
+      "file": "src/app/api/webhooks/route.ts"
+    }
+  ],
+  "pages": [
+    {
+      "path": "/forgot-password",
+      "file": "src/app/(auth)/forgot-password/page.tsx"
+    },
+    {
+      "path": "/login",
+      "file": "src/app/(auth)/login/page.tsx"
+    },
+    {
+      "path": "/reset-password",
+      "file": "src/app/(auth)/reset-password/page.tsx"
+    },
+    {
+      "path": "/signup/nanny",
+      "file": "src/app/(auth)/signup/nanny/page.tsx"
+    },
+    {
+      "path": "/signup",
+      "file": "src/app/(auth)/signup/page.tsx"
+    },
+    {
+      "path": "/signup/parent",
+      "file": "src/app/(auth)/signup/parent/page.tsx"
+    },
+    {
+      "path": "/apply",
+      "file": "src/app/(funnel)/apply/page.tsx"
+    },
+    {
+      "path": "/matchmaking/results",
+      "file": "src/app/(funnel)/matchmaking/results/page.tsx"
+    },
+    {
+      "path": "/matchmaking/signup",
+      "file": "src/app/(funnel)/matchmaking/signup/page.tsx"
+    },
+    {
+      "path": "/results",
+      "file": "src/app/(funnel)/results/page.tsx"
+    },
+    {
+      "path": "/about",
+      "file": "src/app/(public)/about/page.tsx"
+    },
+    {
+      "path": "/babysitting/[id]",
+      "file": "src/app/(public)/babysitting/[id]/page.tsx"
+    },
+    {
+      "path": "/childcare-professionals",
+      "file": "src/app/(public)/childcare-professionals/page.tsx"
+    },
+    {
+      "path": "/contact",
+      "file": "src/app/(public)/contact/page.tsx"
+    },
+    {
+      "path": "/how-it-works",
+      "file": "src/app/(public)/how-it-works/page.tsx"
+    },
+    {
+      "path": "/legal/biometric-notice",
+      "file": "src/app/(public)/legal/biometric-notice/page.tsx"
+    },
+    {
+      "path": "/legal/biometric-notice-client",
+      "file": "src/app/(public)/legal/biometric-notice-client/page.tsx"
+    },
+    {
+      "path": "/legal/client-terms",
+      "file": "src/app/(public)/legal/client-terms/page.tsx"
+    },
+    {
+      "path": "/legal/code-of-conduct",
+      "file": "src/app/(public)/legal/code-of-conduct/page.tsx"
+    },
+    {
+      "path": "/legal/cookies",
+      "file": "src/app/(public)/legal/cookies/page.tsx"
+    },
+    {
+      "path": "/legal/disclaimer",
+      "file": "src/app/(public)/legal/disclaimer/page.tsx"
+    },
+    {
+      "path": "/legal/privacy-policy",
+      "file": "src/app/(public)/legal/privacy-policy/page.tsx"
+    },
+    {
+      "path": "/legal/professional-terms",
+      "file": "src/app/(public)/legal/professional-terms/page.tsx"
+    },
+    {
+      "path": "/matchmaking/onboarding",
+      "file": "src/app/(public)/matchmaking/onboarding/page.tsx"
+    },
+    {
+      "path": "/nannies/[id]",
+      "file": "src/app/(public)/nannies/[id]/page.tsx"
+    },
+    {
+      "path": "/nannies",
+      "file": "src/app/(public)/nannies/page.tsx"
+    },
+    {
+      "path": "/nanny/apply",
+      "file": "src/app/(public)/nanny/apply/page.tsx"
+    },
+    {
+      "path": "/",
+      "file": "src/app/(public)/page.tsx"
+    },
+    {
+      "path": "/position/[id]",
+      "file": "src/app/(public)/position/[id]/page.tsx"
+    },
+    {
+      "path": "/pricing",
+      "file": "src/app/(public)/pricing/page.tsx"
+    },
+    {
+      "path": "/admin/analytics",
+      "file": "src/app/admin/analytics/page.tsx"
+    },
+    {
+      "path": "/admin/dashboard",
+      "file": "src/app/admin/dashboard/page.tsx"
+    },
+    {
+      "path": "/admin/katie-proposals",
+      "file": "src/app/admin/katie-proposals/page.tsx"
+    },
+    {
+      "path": "/admin/pipeline",
+      "file": "src/app/admin/pipeline/page.tsx"
+    },
+    {
+      "path": "/admin/positions",
+      "file": "src/app/admin/positions/page.tsx"
+    },
+    {
+      "path": "/admin/settings",
+      "file": "src/app/admin/settings/page.tsx"
+    },
+    {
+      "path": "/admin/users",
+      "file": "src/app/admin/users/page.tsx"
+    },
+    {
+      "path": "/admin/verification-reference",
+      "file": "src/app/admin/verification-reference/page.tsx"
+    },
+    {
+      "path": "/admin/verifications",
+      "file": "src/app/admin/verifications/page.tsx"
+    },
+    {
+      "path": "/admin/viewer/[id]/inbox",
+      "file": "src/app/admin/viewer/[id]/inbox/page.tsx"
+    },
+    {
+      "path": "/admin/viewer/[id]",
+      "file": "src/app/admin/viewer/[id]/page.tsx"
+    },
+    {
+      "path": "/admin/viewer/[id]/profile",
+      "file": "src/app/admin/viewer/[id]/profile/page.tsx"
+    },
+    {
+      "path": "/admin/viewer/[id]/verification",
+      "file": "src/app/admin/viewer/[id]/verification/page.tsx"
+    },
+    {
+      "path": "/bb/test/onboarding-verification",
+      "file": "src/app/bb/test/onboarding-verification/page.tsx"
+    },
+    {
+      "path": "/bb/test/position-apply",
+      "file": "src/app/bb/test/position-apply/page.tsx"
+    },
+    {
+      "path": "/brandkit1",
+      "file": "src/app/brandkit1/page.tsx"
+    },
+    {
+      "path": "/nanny/babysitting",
+      "file": "src/app/nanny/babysitting/page.tsx"
+    },
+    {
+      "path": "/nanny/dashboard",
+      "file": "src/app/nanny/dashboard/page.tsx"
+    },
+    {
+      "path": "/nanny/development/[childId]/activities",
+      "file": "src/app/nanny/development/[childId]/activities/page.tsx"
+    },
+    {
+      "path": "/nanny/development/[childId]/library",
+      "file": "src/app/nanny/development/[childId]/library/page.tsx"
+    },
+    {
+      "path": "/nanny/development/[childId]",
+      "file": "src/app/nanny/development/[childId]/page.tsx"
+    },
+    {
+      "path": "/nanny/development/[childId]/progress",
+      "file": "src/app/nanny/development/[childId]/progress/page.tsx"
+    },
+    {
+      "path": "/nanny/inbox",
+      "file": "src/app/nanny/inbox/page.tsx"
+    },
+    {
+      "path": "/nanny/interviews",
+      "file": "src/app/nanny/interviews/page.tsx"
+    },
+    {
+      "path": "/nanny/onboarding-verification",
+      "file": "src/app/nanny/onboarding-verification/page.tsx"
+    },
+    {
+      "path": "/nanny",
+      "file": "src/app/nanny/page.tsx"
+    },
+    {
+      "path": "/nanny/positions",
+      "file": "src/app/nanny/positions/page.tsx"
+    },
+    {
+      "path": "/nanny/profile",
+      "file": "src/app/nanny/profile/page.tsx"
+    },
+    {
+      "path": "/nanny/profiletest",
+      "file": "src/app/nanny/profiletest/page.tsx"
+    },
+    {
+      "path": "/nanny/register",
+      "file": "src/app/nanny/register/page.tsx"
+    },
+    {
+      "path": "/nanny/settings",
+      "file": "src/app/nanny/settings/page.tsx"
+    },
+    {
+      "path": "/nanny/share",
+      "file": "src/app/nanny/share/page.tsx"
+    },
+    {
+      "path": "/nanny/team",
+      "file": "src/app/nanny/team/page.tsx"
+    },
+    {
+      "path": "/nanny/verification",
+      "file": "src/app/nanny/verification/page.tsx"
+    },
+    {
+      "path": "/nanny/verify",
+      "file": "src/app/nanny/verify/page.tsx"
+    },
+    {
+      "path": "/parent/babysitting/[id]/payment",
+      "file": "src/app/parent/babysitting/[id]/payment/page.tsx"
+    },
+    {
+      "path": "/parent/babysitting/[id]/share",
+      "file": "src/app/parent/babysitting/[id]/share/page.tsx"
+    },
+    {
+      "path": "/parent/babysitting",
+      "file": "src/app/parent/babysitting/page.tsx"
+    },
+    {
+      "path": "/parent/browse/[id]",
+      "file": "src/app/parent/browse/[id]/page.tsx"
+    },
+    {
+      "path": "/parent/browse",
+      "file": "src/app/parent/browse/page.tsx"
+    },
+    {
+      "path": "/parent/connections",
+      "file": "src/app/parent/connections/page.tsx"
+    },
+    {
+      "path": "/parent/dashboard",
+      "file": "src/app/parent/dashboard/page.tsx"
+    },
+    {
+      "path": "/parent/development/[childId]/activities",
+      "file": "src/app/parent/development/[childId]/activities/page.tsx"
+    },
+    {
+      "path": "/parent/development/[childId]/library",
+      "file": "src/app/parent/development/[childId]/library/page.tsx"
+    },
+    {
+      "path": "/parent/development/[childId]",
+      "file": "src/app/parent/development/[childId]/page.tsx"
+    },
+    {
+      "path": "/parent/development/[childId]/progress",
+      "file": "src/app/parent/development/[childId]/progress/page.tsx"
+    },
+    {
+      "path": "/parent/inbox",
+      "file": "src/app/parent/inbox/page.tsx"
+    },
+    {
+      "path": "/parent/interviews",
+      "file": "src/app/parent/interviews/page.tsx"
+    },
+    {
+      "path": "/parent/matches/checkout",
+      "file": "src/app/parent/matches/checkout/page.tsx"
+    },
+    {
+      "path": "/parent/matches/matchmaker",
+      "file": "src/app/parent/matches/matchmaker/page.tsx"
+    },
+    {
+      "path": "/parent/matches",
+      "file": "src/app/parent/matches/page.tsx"
+    },
+    {
+      "path": "/parent/matches/share",
+      "file": "src/app/parent/matches/share/page.tsx"
+    },
+    {
+      "path": "/parent/matchmaking",
+      "file": "src/app/parent/matchmaking/page.tsx"
+    },
+    {
+      "path": "/parent",
+      "file": "src/app/parent/page.tsx"
+    },
+    {
+      "path": "/parent/position/matchmaking/nanny/[id]",
+      "file": "src/app/parent/position/matchmaking/nanny/[id]/page.tsx"
+    },
+    {
+      "path": "/parent/position",
+      "file": "src/app/parent/position/page.tsx"
+    },
+    {
+      "path": "/parent/request",
+      "file": "src/app/parent/request/page.tsx"
+    },
+    {
+      "path": "/parent/settings",
+      "file": "src/app/parent/settings/page.tsx"
+    },
+    {
+      "path": "/parent/verification",
+      "file": "src/app/parent/verification/page.tsx"
+    },
+    {
+      "path": "/parent/verify",
+      "file": "src/app/parent/verify/page.tsx"
+    },
+    {
+      "path": "/test/ProfileOGTAGS",
+      "file": "src/app/test/ProfileOGTAGS/page.tsx"
+    },
+    {
+      "path": "/test",
+      "file": "src/app/test/page.tsx"
+    },
+    {
+      "path": "/test/shareprofile",
+      "file": "src/app/test/shareprofile/page.tsx"
+    },
+    {
+      "path": "/ui/embed/[component]",
+      "file": "src/app/ui/embed/[component]/page.tsx"
+    },
+    {
+      "path": "/ui",
+      "file": "src/app/ui/page.tsx"
+    },
+    {
+      "path": "/ui2",
+      "file": "src/app/ui2/page.tsx"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/send-delayed-emails",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/expire-connections",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/proactive",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/compact-daily",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/dfy-waves",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/snapshot-pipeline",
+      "schedule": "0 14 * * *"
+    }
+  ],
+  "migrations": [
+    {
+      "filename": "education-app.sql",
+      "bytes": 13414,
+      "modified_at": "2026-04-10T01:39:50.418Z"
+    },
+    {
+      "filename": "expand-milestones-210.sql",
+      "bytes": 20941,
+      "modified_at": "2026-04-14T00:40:27.786Z"
+    },
+    {
+      "filename": "katie-admin-edits-rollback.sql",
+      "bytes": 94,
+      "modified_at": "2026-04-23T07:38:43.968Z"
+    },
+    {
+      "filename": "katie-admin-edits.sql",
+      "bytes": 2505,
+      "modified_at": "2026-04-23T07:38:39.387Z"
+    },
+    {
+      "filename": "katie-foundation-rollback.sql",
+      "bytes": 4660,
+      "modified_at": "2026-04-23T05:27:38.688Z"
+    },
+    {
+      "filename": "katie-foundation.sql",
+      "bytes": 23806,
+      "modified_at": "2026-04-23T05:27:15.997Z"
+    },
+    {
+      "filename": "katie-proposals-rollback.sql",
+      "bytes": 89,
+      "modified_at": "2026-04-23T07:46:20.324Z"
+    },
+    {
+      "filename": "katie-proposals.sql",
+      "bytes": 3103,
+      "modified_at": "2026-04-23T07:46:14.534Z"
+    },
+    {
+      "filename": "nanny-leads-v2.sql",
+      "bytes": 3424,
+      "modified_at": "2026-03-20T02:09:28.782Z"
+    },
+    {
+      "filename": "reset-test-user.sql",
+      "bytes": 1289,
+      "modified_at": "2026-03-20T02:09:28.783Z"
+    }
+  ],
+  "server_actions": [
+    {
+      "file": "src/lib/actions/admin.ts",
+      "functions": [
+        "adminVerifyIdentity",
+        "adminRejectIdentity",
+        "adminConfirmWWCC",
+        "adminRejectWWCC",
+        "adminDeleteUser",
+        "adminChangeRole",
+        "adminResetVerification",
+        "adminVerifyParentIdentity",
+        "adminRejectParentIdentity",
+        "adminRegenerateNannyBio",
+        "adminSendEmail"
+      ]
+    },
+    {
+      "file": "src/lib/actions/babysitting.ts",
+      "functions": [
+        "getPublicBsrProfile",
+        "createBabysittingRequest",
+        "activateBsr",
+        "requestBabysittingJob",
+        "applyToBsrPublic",
+        "parentAcceptNanny",
+        "parentDeclineNanny",
+        "declineBabysittingRequest",
+        "cancelBabysittingRequest",
+        "nannyCancelBabysittingRequest",
+        "getParentBabysittingRequests",
+        "getNannyBabysittingJobs",
+        "getSydneySuburbs"
+      ]
+    },
+    {
+      "file": "src/lib/actions/bapp/activities-feed.ts",
+      "functions": ["getActivities"]
+    },
+    {
+      "file": "src/lib/actions/bapp/activities.ts",
+      "functions": ["generateActivity", "getActivity"]
+    },
+    {
+      "file": "src/lib/actions/bapp/child-clients.ts",
+      "functions": [
+        "getChildrenForUser",
+        "getChildDetail",
+        "createChild",
+        "onboardChild"
+      ]
+    },
+    {
+      "file": "src/lib/actions/bapp/diary.ts",
+      "functions": ["logDiaryEntry"]
+    },
+    {
+      "file": "src/lib/actions/bapp/feed.ts",
+      "functions": ["getFeed"]
+    },
+    {
+      "file": "src/lib/actions/bapp/insights.ts",
+      "functions": ["generateTileInsight", "getChildContext"]
+    },
+    {
+      "file": "src/lib/actions/bapp/library.ts",
+      "functions": ["getLibraryImages"]
+    },
+    {
+      "file": "src/lib/actions/bapp/milestones.ts",
+      "functions": ["getMilestones"]
+    },
+    {
+      "file": "src/lib/actions/bapp/observations.ts",
+      "functions": ["logObservation", "logBulkProgress"]
+    },
+    {
+      "file": "src/lib/actions/bapp/progress.ts",
+      "functions": [
+        "recalculateProgress",
+        "writeHistorySnapshot",
+        "getProgressScores",
+        "getProgressMatrix",
+        "getDashboardData"
+      ]
+    },
+    {
+      "file": "src/lib/actions/bapp/reports.ts",
+      "functions": ["submitReport"]
+    },
+    {
+      "file": "src/lib/actions/bapp/upload-image.ts",
+      "functions": ["uploadImage"]
+    },
+    {
+      "file": "src/lib/actions/browse.ts",
+      "functions": ["fetchBrowseNannies"]
+    },
+    {
+      "file": "src/lib/actions/connection-helpers.ts",
+      "functions": [
+        "getNannyPhone",
+        "getParentPhone",
+        "getPositionSummary",
+        "createInboxMessage",
+        "logConnectionEvent"
+      ]
+    },
+    {
+      "file": "src/lib/actions/connection.ts",
+      "functions": [
+        "getNannyId",
+        "createConnectionRequest",
+        "acceptConnectionRequest",
+        "scheduleConnectionTime",
+        "declineConnectionRequest",
+        "cancelConnectionRequest",
+        "getParentConnectionRequests",
+        "getNannyConnectionRequests"
+      ]
+    },
+    {
+      "file": "src/lib/actions/inbox.ts",
+      "functions": [
+        "getInboxMessages",
+        "getUnreadCount",
+        "markAsRead",
+        "markAllAsRead"
+      ]
+    },
+    {
+      "file": "src/lib/actions/interview.ts",
+      "functions": [
+        "createInterviewRequest",
+        "getParentInterviewRequests",
+        "getNannyInterviewRequests",
+        "acceptInterviewRequest",
+        "declineInterviewRequest",
+        "cancelInterviewRequest"
+      ]
+    },
+    {
+      "file": "src/lib/actions/jobs.ts",
+      "functions": ["applyToPosition"]
+    },
+    {
+      "file": "src/lib/actions/lead-conversion.ts",
+      "functions": ["signUpAndConvertLead"]
+    },
+    {
+      "file": "src/lib/actions/matching.ts",
+      "functions": [
+        "getMatchesForPosition",
+        "triggerDfyMatchmaking",
+        "getDfyNotificationsForNanny",
+        "respondToDfyMatch",
+        "markDfyNotificationViewed",
+        "getDfyConnections",
+        "declineDfyConnection",
+        "processDfyWaves",
+        "getDfyStatus",
+        "confirmMatchmaking",
+        "activateDfyPosition",
+        "getPublicPositionProfile"
+      ]
+    },
+    {
+      "file": "src/lib/actions/nanny-leads.ts",
+      "functions": [
+        "createNannyLead",
+        "updateNannyLead",
+        "convertLeadToAccount"
+      ]
+    },
+    {
+      "file": "src/lib/actions/nanny-onboarding-ai.ts",
+      "functions": ["generateOnboardingAIContent"]
+    },
+    {
+      "file": "src/lib/actions/nanny.ts",
+      "functions": [
+        "getPublicNannyProfile",
+        "getNannyProfile",
+        "updateNannyProfile",
+        "isProfileComplete",
+        "createNannyProfile",
+        "updateNannyAccountSettings",
+        "updateAccountEmail",
+        "deactivateNannyAccount",
+        "updateNannyAIContent",
+        "regenerateNannyAIContent",
+        "generateNannyBio"
+      ]
+    },
+    {
+      "file": "src/lib/actions/parent-leads.ts",
+      "functions": ["saveParentLead"]
+    },
+    {
+      "file": "src/lib/actions/parent-verification.ts",
+      "functions": [
+        "submitParentIdentitySection",
+        "submitParentIdentityForManualReview",
+        "submitParentContactSection",
+        "getParentVerificationData"
+      ]
+    },
+    {
+      "file": "src/lib/actions/parent.ts",
+      "functions": [
+        "getParentId",
+        "getPosition",
+        "createPosition",
+        "updatePosition",
+        "saveTypeformPosition",
+        "closePosition",
+        "updateParentAccountSettings",
+        "deactivateParentAccount"
+      ]
+    },
+    {
+      "file": "src/lib/actions/position-funnel.ts",
+      "functions": [
+        "checkPostIntroOutcomes",
+        "checkPostTrialOutcomes",
+        "reportIntroOutcome",
+        "confirmTrialArrangement",
+        "declineTrialArrangement",
+        "reportTrialOutcome",
+        "confirmPlacement",
+        "parentInitiateFill",
+        "nannyConfirmPosition",
+        "endPosition",
+        "getParentPlacement",
+        "updateParentPlacementRate",
+        "updateParentPlacementHours",
+        "removeNannyPlacement",
+        "getNannyPlacements",
+        "getPositionForNanny",
+        "savePositionAsNanny",
+        "updateNannyPlacementRate",
+        "updateNannyPlacementHours",
+        "updatePositionRosterNotes",
+        "updatePositionNannyNotes",
+        "nannyEndPlacement",
+        "nannyDismissPlacement",
+        "getConfirmedConnections",
+        "getNannyUpcomingIntros",
+        "getParentUpcomingIntros",
+        "reportParentOutcome",
+        "rejectHiredClaim",
+        "revertToAwaiting",
+        "closePositionWithReason",
+        "scheduleIntroTime",
+        "nannyDismissConnection",
+        "updateConnectionStartWeek"
+      ]
+    },
+    {
+      "file": "src/lib/actions/verification.ts",
+      "functions": [
+        "syncNannyVerificationState",
+        "submitIdentitySection",
+        "submitIdentityForManualReview",
+        "submitWWCCSection",
+        "submitContactSection",
+        "getVerificationData"
+      ]
+    },
+    {
+      "file": "src/lib/actions/viral-loop.ts",
+      "functions": [
+        "getShareForUser",
+        "getSharesForUser",
+        "isViralAccessGranted",
+        "createShareRecord",
+        "markShareCompleted",
+        "submitShareScreenshot",
+        "beginScreenshotCheck",
+        "recordCheckResult",
+        "processScreenshotCheck",
+        "adminBypassShare",
+        "createNannyProfileShare",
+        "createParentPositionShare",
+        "createParentBsrShare",
+        "getNannySharePageData",
+        "getBsrSharePageData",
+        "isNannyViralCompliant",
+        "isPositionViralCompliant",
+        "isBsrViralCompliant",
+        "getPositionSharePageData"
+      ]
+    }
+  ]
+}
