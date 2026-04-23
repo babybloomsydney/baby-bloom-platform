@@ -30,13 +30,10 @@ export function KatieShell({ children }: { children: ReactNode }) {
   const { user, role } = useAuth();
 
   // Bail out for logged-out pages and when the flag is off — render children
-  // full-width as before. Also bail for admin+super_admin temporarily (they
-  // get Katie in Phase 3 via the admin module).
+  // full-width as before. Admin + super_admin now see the Katie deck too
+  // (Phase 3 admin module enables inspection/edit of Katie herself via
+  // Gemini Pro).
   if (!KATIE_UI_ENABLED || !user || !role) {
-    return <>{children}</>;
-  }
-  if (role === "admin" || role === "super_admin") {
-    // Admin Katie lands in Phase 3. For now pass through.
     return <>{children}</>;
   }
 
