@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+# Husky pre-commit hook for Baby Bloom
+# Runs lint-staged from the app directory (where package.json lives).
+# Only the app/ subtree has lint-staged config.
+
+# Short-circuit if nothing staged under app/
+STAGED_APP=$(git diff --cached --name-only | grep '^app/' || true)
+if [ -z "$STAGED_APP" ]; then
+  exit 0
+fi
+
+# Run lint-staged from the app directory
+cd app && npx lint-staged
