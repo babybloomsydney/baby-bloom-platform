@@ -34,7 +34,6 @@ import {
 } from "@/lib/ai/model-selector";
 import {
   generate,
-  generateStream,
   echoModelParts,
   type GeminiTool,
   type GeminiTurn,
@@ -47,7 +46,12 @@ import {
 } from "@/lib/chat/cost-tracker";
 import { collectTools, findToolHandler } from "@/lib/chat/modules/registry";
 import type { ToolResult } from "@/lib/chat/modules/types";
-import { getOrCreateBot, getUserChildren, getUserRole } from "@/lib/chat/bot";
+import {
+  getOrCreateBot,
+  getUserChildren,
+  getUserRole,
+  type BotRecord,
+} from "@/lib/chat/bot";
 
 // Use Node runtime for streaming + access to private Supabase key
 export const runtime = "nodejs";
@@ -133,7 +137,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "user has no role" }, { status: 403 });
   }
 
-  let bot;
+  let bot: BotRecord;
   try {
     bot = await getOrCreateBot(user.id, role);
   } catch (err) {
@@ -225,8 +229,10 @@ export async function POST(req: NextRequest) {
         ]
       : undefined;
 
-  // 11. Stream response
-  const encoder = new TextEncoder();
+  // 11. Stream response — agentic loop, streams the FINAL text response
+  const MAX_TOOL_ROUNDS = 5;
+  // Narrow non-null references once before the async closure.
+  const userId = user.id;
   const stream = new ReadableStream({
     async start(controller) {
       const startedAt = Date.now();
@@ -242,36 +248,92 @@ export async function POST(req: NextRequest) {
         cachedTokens: 0,
       };
 
-      try {
-        // Round 1 — non-streaming to detect tool calls efficiently
-        const round1 = await generate({
-          model,
-          systemPrompt,
-          contents: conversationTurns,
-          tools,
-        });
+      /** Accumulates usage from a single Gemini response's usageMetadata. */
+      function accrueUsage(
+        usage:
+          | {
+              promptTokenCount?: number;
+              candidatesTokenCount?: number;
+              cachedContentTokenCount?: number;
+            }
+          | undefined,
+      ) {
+        if (!usage) return;
+        totalUsage = {
+          inputTokens: totalUsage.inputTokens + (usage.promptTokenCount ?? 0),
+          outputTokens:
+            totalUsage.outputTokens + (usage.candidatesTokenCount ?? 0),
+          cachedTokens:
+            totalUsage.cachedTokens + (usage.cachedContentTokenCount ?? 0),
+        };
+      }
 
-        const round1Usage = round1.usageMetadata;
-        if (round1Usage) {
-          totalUsage = {
-            inputTokens: round1Usage.promptTokenCount ?? 0,
-            outputTokens: round1Usage.candidatesTokenCount ?? 0,
-            cachedTokens: round1Usage.cachedContentTokenCount ?? 0,
+      /** Executes a single function call via module registry. */
+      async function runTool(call: {
+        name?: string;
+        args?: unknown;
+      }): Promise<ToolResult> {
+        const handlerModule = findToolHandler(call.name!, effectiveRole);
+        if (!handlerModule) {
+          return { success: false, error: `Unknown tool: ${call.name}` };
+        }
+        try {
+          return await handlerModule.execute(
+            call.name!,
+            (call.args ?? {}) as Record<string, unknown>,
+            {
+              botId: bot.id,
+              userId,
+              userRole: bot.role,
+              effectiveRole,
+              children,
+              currentSurface: body.currentSurface ?? null,
+              supabase: admin,
+            },
+          );
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : "tool execution failed",
           };
         }
+      }
 
-        const calls = round1.functionCalls ?? [];
+      try {
+        // Agentic loop: keep calling Gemini while it wants to call tools.
+        // On the FINAL round (no more tool calls), stream the text response.
+        const runningTurns: GeminiTurn[] = [...conversationTurns];
 
-        if (calls.length === 0) {
-          // No tool calls — emit the text as a single SSE chunk
-          const text = round1.text ?? "";
-          fullText = text;
-          if (text) {
-            controller.enqueue(encodeSSE({ type: "text", content: text }));
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          const resp = await generate({
+            model,
+            systemPrompt,
+            contents: runningTurns,
+            tools,
+          });
+          accrueUsage(resp.usageMetadata);
+
+          const roundCalls = resp.functionCalls ?? [];
+          const roundText = resp.text ?? "";
+
+          // Always stream whatever text this round produced — even if the
+          // model is about to call another tool, there may be narration.
+          if (roundText) {
+            fullText += roundText;
+            controller.enqueue(encodeSSE({ type: "text", content: roundText }));
           }
-        } else {
-          // Execute each tool call
-          for (const call of calls) {
+
+          if (roundCalls.length === 0) {
+            // Done — no more tool calls requested.
+            break;
+          }
+
+          // Execute tool calls, emit events, build the continuation turn.
+          const modelParts = resp.candidates?.[0]?.content?.parts;
+          if (!modelParts) break; // defensive — shouldn't happen with tool calls
+
+          const roundResults: ToolResult[] = [];
+          for (const call of roundCalls) {
             controller.enqueue(
               encodeSSE({
                 type: "tool_call",
@@ -279,96 +341,44 @@ export async function POST(req: NextRequest) {
                 args: call.args,
               }),
             );
-
-            const handlerModule = findToolHandler(call.name!, effectiveRole);
-            let result: ToolResult;
-            if (!handlerModule) {
-              result = {
-                success: false,
-                error: `Unknown tool: ${call.name}`,
-              };
-            } else {
-              try {
-                result = await handlerModule.execute(
-                  call.name!,
-                  (call.args ?? {}) as Record<string, unknown>,
-                  {
-                    botId: bot.id,
-                    userId: user.id,
-                    userRole: bot.role,
-                    effectiveRole,
-                    children,
-                    currentSurface: body.currentSurface ?? null,
-                    supabase: admin,
-                  },
-                );
-              } catch (err) {
-                result = {
-                  success: false,
-                  error:
-                    err instanceof Error
-                      ? err.message
-                      : "tool execution failed",
-                };
-              }
-            }
-
+            const result = await runTool(call);
+            roundResults.push(result);
             toolCalls.push({ name: call.name!, args: call.args, result });
             controller.enqueue(
               encodeSSE({ type: "tool_result", name: call.name, result }),
             );
           }
 
-          // Round 2 — streaming continuation with tool results.
-          // Echo model parts verbatim (preserves thoughtSignature — spike WU 0.6).
-          const modelParts = round1.candidates?.[0]?.content?.parts;
-          if (modelParts) {
-            const continuationTurns: GeminiTurn[] = [
-              ...conversationTurns,
-              echoModelParts(modelParts),
-              {
-                role: "user",
-                parts: calls.map((call, i) => ({
-                  functionResponse: {
-                    name: call.name!,
-                    response: toolCalls[i]?.result as unknown as Record<
-                      string,
-                      unknown
-                    >,
-                  },
-                })),
+          // Append model turn (echo parts verbatim to preserve thoughtSignature)
+          // + user turn with functionResponses to runningTurns.
+          runningTurns.push(echoModelParts(modelParts));
+          runningTurns.push({
+            role: "user",
+            parts: roundCalls.map((call, i) => ({
+              functionResponse: {
+                name: call.name!,
+                response: roundResults[i] as unknown as Record<string, unknown>,
               },
-            ];
+            })),
+          });
 
-            const streamResp = await generateStream({
-              model,
-              systemPrompt,
-              contents: continuationTurns,
-              tools,
-            });
+          // Continue loop → call Gemini again with tool results.
+        }
 
-            for await (const chunk of streamResp) {
-              if (chunk.text) {
-                fullText += chunk.text;
-                controller.enqueue(
-                  encodeSSE({ type: "text", content: chunk.text }),
-                );
-              }
-              const chunkUsage = chunk.usageMetadata;
-              if (chunkUsage) {
-                // Keep the latest usage totals — Gemini reports cumulative
-                totalUsage = {
-                  inputTokens:
-                    chunkUsage.promptTokenCount ?? totalUsage.inputTokens,
-                  outputTokens:
-                    chunkUsage.candidatesTokenCount ?? totalUsage.outputTokens,
-                  cachedTokens:
-                    chunkUsage.cachedContentTokenCount ??
-                    totalUsage.cachedTokens,
-                };
-              }
-            }
-          }
+        // Fallback: if the loop produced zero text (shouldn't normally happen
+        // but Gemini sometimes falls silent mid-loop), synthesize a minimal
+        // acknowledgement from the last tool result.
+        if (!fullText.trim()) {
+          const last = toolCalls[toolCalls.length - 1];
+          const fallbackText = last?.result.error
+            ? last.result.error
+            : last
+              ? `I ran \`${last.name}\` — results are above.`
+              : "Sorry — I didn't have anything to say there. Try rephrasing?";
+          fullText = fallbackText;
+          controller.enqueue(
+            encodeSSE({ type: "text", content: fallbackText }),
+          );
         }
 
         // Persist assistant message
@@ -407,7 +417,7 @@ export async function POST(req: NextRequest) {
             ts: new Date().toISOString(),
             event: "katie.turn",
             bot_id: bot.id,
-            user_id: user.id,
+            user_id: userId,
             model,
             tokens_in: totalUsage.inputTokens,
             tokens_out: totalUsage.outputTokens,
@@ -435,6 +445,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
+  // savedUser reserved for future error-path bookkeeping; suppress unused warning
+  void savedUser;
+
   return new Response(stream, {
     status: 200,
     headers: {
@@ -444,8 +457,4 @@ export async function POST(req: NextRequest) {
       Connection: "keep-alive",
     },
   });
-
-  // unused but retained to satisfy TS stream setup if the branch above returns
-  void encoder;
-  void savedUser;
 }
