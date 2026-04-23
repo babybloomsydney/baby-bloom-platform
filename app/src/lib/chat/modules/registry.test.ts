@@ -8,11 +8,12 @@ import {
 
 describe("module registry", () => {
   describe("getActiveModules", () => {
-    it("returns all Phase 1 modules when no role given", () => {
+    it("returns all currently registered modules when no role given", () => {
       const mods = getActiveModules();
       const ids = mods.map((m) => m.id);
       expect(ids).toContain("child-profile");
       expect(ids).toContain("feed");
+      expect(ids).toContain("progress");
     });
 
     it("returns modules for nanny role", () => {
@@ -38,6 +39,7 @@ describe("module registry", () => {
       const names = tools.map((t) => t.name);
       expect(names).toContain("read_child_profile");
       expect(names).toContain("read_recent_feed");
+      expect(names).toContain("read_milestones");
     });
 
     it("tool names are globally unique", () => {
@@ -51,6 +53,7 @@ describe("module registry", () => {
     it("finds the right module for a known tool", () => {
       expect(findToolHandler("read_child_profile")?.id).toBe("child-profile");
       expect(findToolHandler("read_recent_feed")?.id).toBe("feed");
+      expect(findToolHandler("read_milestones")?.id).toBe("progress");
     });
 
     it("returns null for an unknown tool", () => {
