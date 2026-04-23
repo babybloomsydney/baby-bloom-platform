@@ -5,13 +5,14 @@ import { SessionProvider } from "@/components/providers/SessionProvider";
 import { VisitorTracker } from "@/components/providers/VisitorTracker";
 import { DevToolbar } from "@/components/dev/DevToolbar";
 import { DevSidebar } from "@/components/dev/DevSidebar";
+import { KatieShell } from "@/components/katie/KatieShell";
 import { Analytics } from "@vercel/analytics/next";
 import { CookieConsentBanner } from "@/components/legal/CookieConsentBanner";
 import { MiniFooter } from "@/components/layout/MiniFooter";
 import Script from "next/script";
 
-const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
-const isProd = process.env.NODE_ENV === 'production';
+const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true";
+const isProd = process.env.NODE_ENV === "production";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -25,16 +26,17 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://babybloomsydney.com.au'),
+  metadataBase: new URL("https://babybloomsydney.com.au"),
   title: {
-    template: '%s | Baby Bloom Sydney',
-    default: 'Baby Bloom Sydney — Verified Nannies for Sydney Families',
+    template: "%s | Baby Bloom Sydney",
+    default: "Baby Bloom Sydney — Verified Nannies for Sydney Families",
   },
-  description: 'Find trusted, WWCC-verified nannies in Sydney. Baby Bloom matches families with background-checked, education-focused childcare professionals.',
+  description:
+    "Find trusted, WWCC-verified nannies in Sydney. Baby Bloom matches families with background-checked, education-focused childcare professionals.",
   openGraph: {
-    siteName: 'Baby Bloom Sydney',
-    locale: 'en_AU',
-    type: 'website',
+    siteName: "Baby Bloom Sydney",
+    locale: "en_AU",
+    type: "website",
   },
 };
 
@@ -44,19 +46,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   const organizationJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Organization',
-    name: 'Baby Bloom Sydney',
-    alternateName: 'Baby Bloom',
-    url: 'https://babybloomsydney.com.au',
-    logo: 'https://babybloomsydney.com.au/logo.png',
-    description: "Sydney's trusted platform for connecting families with verified, WWCC-checked nannies and babysitters.",
-    foundingDate: '2020',
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: "Baby Bloom Sydney",
+    alternateName: "Baby Bloom",
+    url: "https://babybloomsydney.com.au",
+    logo: "https://babybloomsydney.com.au/logo.png",
+    description:
+      "Sydney's trusted platform for connecting families with verified, WWCC-checked nannies and babysitters.",
+    foundingDate: "2020",
     areaServed: {
-      '@type': 'City',
-      name: 'Sydney',
-      addressRegion: 'NSW',
-      addressCountry: 'AU',
+      "@type": "City",
+      name: "Sydney",
+      addressRegion: "NSW",
+      addressCountry: "AU",
     },
     sameAs: [],
   };
@@ -69,14 +72,16 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(organizationJsonLd).replace(/</g, '\\u003c'),
+            __html: JSON.stringify(organizationJsonLd).replace(/</g, "\\u003c"),
           }}
         />
         <SessionProvider>
           <VisitorTracker />
           {isDevMode && <DevSidebar />}
-          {children}
-          <MiniFooter />
+          <KatieShell>
+            {children}
+            <MiniFooter />
+          </KatieShell>
           <Analytics />
           <CookieConsentBanner />
           {isDevMode && <DevToolbar />}

@@ -1,0 +1,125 @@
+"use client";
+
+/**
+ * Client-side hook to POST /api/chat and consume the SSE stream.
+ * Appends deltas to a growing assistant message; resolves when `done` received.
+ */
+
+import { useCallback, useState } from "react";
+import type { KatieMessage } from "./messages/types";
+import type { CurrentSurface } from "@/contexts/KatieContext";
+
+export interface SendResult {
+  ok: boolean;
+  error?: string;
+}
+
+export function useChatStream() {
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingText, setStreamingText] = useState("");
+
+  const send = useCallback(
+    async (
+      message: string,
+      currentSurface: CurrentSurface,
+      onAppend: (msg: KatieMessage) => void,
+    ): Promise<SendResult> => {
+      setIsStreaming(true);
+      setStreamingText("");
+
+      // Optimistic user message
+      const userMsg: KatieMessage = {
+        id: `optimistic-user-${Date.now()}`,
+        role: "user",
+        content: message,
+        trigger_source: "user",
+        is_read: true,
+        created_at: new Date().toISOString(),
+      };
+      onAppend(userMsg);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, currentSurface }),
+        });
+
+        if (!res.ok) {
+          return { ok: false, error: `HTTP ${res.status}` };
+        }
+        if (!res.body) {
+          return { ok: false, error: "No response body" };
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let fullText = "";
+        let done = false;
+
+        while (!done) {
+          const { value, done: streamDone } = await reader.read();
+          done = streamDone;
+          if (value) {
+            buffer += decoder.decode(value, { stream: true });
+
+            // SSE frames are separated by \n\n
+            let idx: number;
+            while ((idx = buffer.indexOf("\n\n")) !== -1) {
+              const rawFrame = buffer.slice(0, idx);
+              buffer = buffer.slice(idx + 2);
+              if (!rawFrame.startsWith("data:")) continue;
+
+              const json = rawFrame.slice(5).trim();
+              if (!json) continue;
+
+              try {
+                const evt = JSON.parse(json) as
+                  | { type: "text"; content: string }
+                  | { type: "tool_call"; name: string; args: unknown }
+                  | { type: "tool_result"; name: string; result: unknown }
+                  | { type: "error"; message: string }
+                  | { type: "done" };
+
+                if (evt.type === "text") {
+                  fullText += evt.content;
+                  setStreamingText(fullText);
+                } else if (evt.type === "error") {
+                  return { ok: false, error: evt.message };
+                }
+                // tool_call / tool_result — could render inline tile events;
+                // deferred to future iteration. Text completion follows.
+              } catch {
+                // Malformed frame — skip
+              }
+            }
+          }
+        }
+
+        // Commit the assistant message
+        onAppend({
+          id: `streamed-assistant-${Date.now()}`,
+          role: "assistant",
+          content: fullText,
+          trigger_source: "assistant_reply",
+          is_read: true,
+          created_at: new Date().toISOString(),
+        });
+
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          error: err instanceof Error ? err.message : "send failed",
+        };
+      } finally {
+        setIsStreaming(false);
+        setStreamingText("");
+      }
+    },
+    [],
+  );
+
+  return { send, isStreaming, streamingText };
+}

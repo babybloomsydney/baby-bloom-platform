@@ -22,8 +22,16 @@ function parseNumber(value: string | undefined, defaultValue: number): number {
 /**
  * Master switch — when false, `/api/chat` returns 404 and Katie UI is hidden.
  * Default: false (safe in production).
+ *
+ * Server-side: reads KATIE_ENABLED directly (never sent to the browser).
+ * Client-side: reads NEXT_PUBLIC_KATIE_ENABLED so the UI can gate itself.
+ * Both should typically be set together; server is the authoritative guard
+ * for the API route.
  */
-export const KATIE_ENABLED = parseBool(process.env.KATIE_ENABLED, false);
+export const KATIE_ENABLED = parseBool(
+  process.env.KATIE_ENABLED ?? process.env.NEXT_PUBLIC_KATIE_ENABLED,
+  false,
+);
 
 /**
  * Gate for proactive messages (scheduler + action-triggered dispatches).
