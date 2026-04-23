@@ -20,6 +20,7 @@ describe("module registry", () => {
       expect(ids).toContain("feed-writer");
       expect(ids).toContain("agent-memory");
       expect(ids).toContain("history");
+      expect(ids).toContain("katie-scheduling");
     });
 
     it("returns modules for nanny role", () => {
@@ -59,6 +60,11 @@ describe("module registry", () => {
       expect(names).toContain("update_memory");
       expect(names).toContain("delete_memory");
       expect(names).toContain("search_history");
+      expect(names).toContain("create_schedule");
+      expect(names).toContain("read_schedules");
+      expect(names).toContain("update_schedule");
+      expect(names).toContain("cancel_schedule");
+      expect(names).toContain("set_waking_hours");
     });
 
     it("tool names are globally unique", () => {
