@@ -122,6 +122,114 @@ interface MilestoneUpdateInput {
   score: unknown;
 }
 
+const DOMAIN_CODES = ["CL", "PSE", "PD", "LIT", "NUM", "UW", "EAD"] as const;
+type DomainCode = (typeof DOMAIN_CODES)[number];
+
+interface HistoryRow {
+  id: string;
+  created_at: string;
+  cl_total: number | null;
+  pse_total: number | null;
+  pd_total: number | null;
+  lit_total: number | null;
+  num_total: number | null;
+  uw_total: number | null;
+  ead_total: number | null;
+  ref_log_id: string | null;
+}
+
+function rowToTotals(row: HistoryRow): Record<DomainCode, number> {
+  return {
+    CL: row.cl_total ?? 0,
+    PSE: row.pse_total ?? 0,
+    PD: row.pd_total ?? 0,
+    LIT: row.lit_total ?? 0,
+    NUM: row.num_total ?? 0,
+    UW: row.uw_total ?? 0,
+    EAD: row.ead_total ?? 0,
+  };
+}
+
+async function readProgressHistory(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = resolveChild(args.child_name, ctx.children);
+  if (r.error) return r.error;
+  const child = r.child;
+
+  const from =
+    typeof args.from === "string" && args.from.trim() ? args.from : null;
+  const to = typeof args.to === "string" && args.to.trim() ? args.to : null;
+  const limit = Math.min(
+    200,
+    Math.max(1, typeof args.limit === "number" ? Math.round(args.limit) : 50),
+  );
+
+  let query = ctx.supabase
+    .from("bapp_progress_history")
+    .select(
+      "id, created_at, cl_total, pse_total, pd_total, lit_total, num_total, uw_total, ead_total, ref_log_id",
+    )
+    .eq("child_client_id", child.id);
+  if (from) query = query.gte("created_at", from);
+  if (to) query = query.lte("created_at", to);
+  query = query.order("created_at", { ascending: true }).limit(limit);
+
+  const { data, error } = await query;
+  if (error) {
+    return {
+      success: false,
+      error: `Failed to read progress history: ${error.message}`,
+    };
+  }
+
+  const rows = (data ?? []) as HistoryRow[];
+  const empty: Record<DomainCode, number> = {
+    CL: 0,
+    PSE: 0,
+    PD: 0,
+    LIT: 0,
+    NUM: 0,
+    UW: 0,
+    EAD: 0,
+  };
+
+  const snapshots = rows.map((row) => ({
+    id: row.id,
+    snapshot_at: row.created_at,
+    ref_log_id: row.ref_log_id,
+    totals: rowToTotals(row),
+  }));
+
+  let delta: Record<DomainCode, number> = { ...empty };
+  if (rows.length >= 2) {
+    const first = rowToTotals(rows[0]);
+    const last = rowToTotals(rows[rows.length - 1]);
+    delta = {
+      CL: last.CL - first.CL,
+      PSE: last.PSE - first.PSE,
+      PD: last.PD - first.PD,
+      LIT: last.LIT - first.LIT,
+      NUM: last.NUM - first.NUM,
+      UW: last.UW - first.UW,
+      EAD: last.EAD - first.EAD,
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      child_name: child.firstName,
+      window: { from, to, limit },
+      count: snapshots.length,
+      snapshots,
+      delta,
+      latest: snapshots.length > 0 ? snapshots[snapshots.length - 1] : null,
+    },
+  };
+}
+
 async function updateProgress(
   args: Record<string, unknown>,
   ctx: Parameters<BloomBotModule["execute"]>[2],
@@ -208,6 +316,36 @@ export const progressModule: BloomBotModule = {
       },
     },
     {
+      name: "read_progress_history",
+      description:
+        "Read a child's EYLF progress snapshots over time (bapp_progress_history). Each snapshot is a point-in-time sum of scored milestone points per domain — written whenever an observation is logged with a milestone + score. Use for trend questions ('how has progress changed this month?', 'which domain improved most?'). Returns snapshots + a computed delta (latest minus earliest in the window).",
+      parameters: {
+        type: "object",
+        properties: {
+          child_name: {
+            type: "string",
+            description:
+              "Which child (required if the user has multiple children; can omit if only one).",
+          },
+          from: {
+            type: "string",
+            description:
+              "Optional ISO 8601 datetime. Only return snapshots at or after this instant.",
+          },
+          to: {
+            type: "string",
+            description:
+              "Optional ISO 8601 datetime. Only return snapshots at or before this instant.",
+          },
+          limit: {
+            type: "number",
+            description: "Max snapshots to return (default 50, capped at 200).",
+          },
+        },
+        required: [],
+      },
+    },
+    {
       name: "update_progress",
       description:
         "Directly set a child's observed scores against specific milestones. Scores go up only (recalculateProgress takes max with existing). Use this for bulk corrections or quick updates; for single observations prefer log_observation via the observations module so the evidence is captured.",
@@ -248,10 +386,12 @@ export const progressModule: BloomBotModule = {
 
   async execute(toolName, args, ctx) {
     if (toolName === "read_milestones") return readMilestones(args, ctx);
+    if (toolName === "read_progress_history")
+      return readProgressHistory(args, ctx);
     if (toolName === "update_progress") return updateProgress(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Use `read_milestones` to see which EYLF milestones are on-plan for a child's age bracket and which have already been observed (observed_score > 0). Pair with `read_recent_feed` for the observation evidence. Use `update_progress` only for bulk or direct corrections — logging an observation via the observations module is preferred when the user is describing something they saw.",
+    "Use `read_milestones` to see which EYLF milestones are on-plan for a child's age bracket and which have already been observed (observed_score > 0). Pair with `read_recent_feed` for the observation evidence. Use `read_progress_history` when the user asks about trends (last week, last month, 'how has X changed?') — it returns point-in-time domain-total snapshots plus a delta across the window. Use `update_progress` only for bulk or direct corrections — logging an observation via the observations module is preferred when the user is describing something they saw.",
 };

@@ -44,6 +44,7 @@ describe("module registry", () => {
       expect(names).toContain("read_child_profile");
       expect(names).toContain("read_recent_feed");
       expect(names).toContain("read_milestones");
+      expect(names).toContain("read_progress_history");
       expect(names).toContain("update_progress");
       expect(names).toContain("log_food");
       expect(names).toContain("log_sleep");

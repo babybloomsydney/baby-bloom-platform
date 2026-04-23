@@ -220,3 +220,147 @@ describe("progress module — update_progress", () => {
     expect(data.child_name).toBe("Oliver");
   });
 });
+
+describe("progress module — read_progress_history", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  function makeHistoryCtx(
+    rows: Array<{
+      id: string;
+      created_at: string;
+      cl_total: number;
+      pse_total: number;
+      pd_total: number;
+      lit_total: number;
+      num_total: number;
+      uw_total: number;
+      ead_total: number;
+      ref_log_id: string | null;
+    }>,
+  ) {
+    const selectFn = vi.fn().mockResolvedValue({ data: rows, error: null });
+    const chain = () => ({
+      select: () => ({
+        eq: () => ({
+          gte: () => ({
+            lte: () => ({
+              order: () => ({
+                limit: () => selectFn(),
+              }),
+            }),
+            order: () => ({
+              limit: () => selectFn(),
+            }),
+          }),
+          order: () => ({
+            limit: () => selectFn(),
+          }),
+        }),
+      }),
+    });
+    const supabase = { from: vi.fn(() => chain()) };
+    const ctx: ModuleContext = {
+      botId: "b",
+      userId: "u",
+      userRole: "parent",
+      effectiveRole: "parent",
+      children: [oliver],
+      currentSurface: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase: supabase as any,
+    };
+    return { ctx, selectFn };
+  }
+
+  it("returns chronological snapshots with per-domain totals", async () => {
+    const { ctx } = makeHistoryCtx([
+      {
+        id: "h1",
+        created_at: "2026-02-01T00:00:00Z",
+        cl_total: 4,
+        pse_total: 0,
+        pd_total: 2,
+        lit_total: 0,
+        num_total: 0,
+        uw_total: 0,
+        ead_total: 0,
+        ref_log_id: "log-a",
+      },
+      {
+        id: "h2",
+        created_at: "2026-03-01T00:00:00Z",
+        cl_total: 8,
+        pse_total: 2,
+        pd_total: 4,
+        lit_total: 1,
+        num_total: 0,
+        uw_total: 0,
+        ead_total: 0,
+        ref_log_id: "log-b",
+      },
+    ]);
+    const r = await progressModule.execute("read_progress_history", {}, ctx);
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.child_name).toBe("Oliver");
+    expect(data.snapshots).toHaveLength(2);
+    expect(data.snapshots[0].totals.CL).toBe(4);
+    expect(data.snapshots[1].totals.CL).toBe(8);
+    expect(data.snapshots[0].ref_log_id).toBe("log-a");
+  });
+
+  it("computes latest - earliest deltas across the window", async () => {
+    const { ctx } = makeHistoryCtx([
+      {
+        id: "h1",
+        created_at: "2026-02-01T00:00:00Z",
+        cl_total: 4,
+        pse_total: 0,
+        pd_total: 2,
+        lit_total: 0,
+        num_total: 0,
+        uw_total: 0,
+        ead_total: 0,
+        ref_log_id: null,
+      },
+      {
+        id: "h2",
+        created_at: "2026-03-01T00:00:00Z",
+        cl_total: 10,
+        pse_total: 3,
+        pd_total: 4,
+        lit_total: 2,
+        num_total: 1,
+        uw_total: 0,
+        ead_total: 0,
+        ref_log_id: null,
+      },
+    ]);
+    const r = await progressModule.execute("read_progress_history", {}, ctx);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.delta.CL).toBe(6);
+    expect(data.delta.PSE).toBe(3);
+    expect(data.delta.PD).toBe(2);
+    expect(data.delta.EAD).toBe(0);
+  });
+
+  it("returns empty-state message when child has no history yet", async () => {
+    const { ctx } = makeHistoryCtx([]);
+    const r = await progressModule.execute("read_progress_history", {}, ctx);
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.snapshots).toHaveLength(0);
+    expect(data.delta).toEqual({
+      CL: 0,
+      PSE: 0,
+      PD: 0,
+      LIT: 0,
+      NUM: 0,
+      UW: 0,
+      EAD: 0,
+    });
+  });
+});
