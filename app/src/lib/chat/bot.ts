@@ -134,7 +134,15 @@ function ageBracket(months: number): string {
 
 /**
  * Fetches children the user has access to. Mirrors user_has_child_access():
- * direct nanny ownership OR placement-based access for both nannies and parents.
+ * direct nanny ownership OR placement-based access for both nannies and
+ * parents. Scoped to under_three children (Katie is the under-three UI).
+ *
+ * `child_client.status` is not filtered: the canonical PG function
+ * doesn't filter it either, and real values are multi-state
+ * ('created_auto', 'created_manual', 'setup', 'active_nanny', …) with
+ * no single literal meaning "live". A prior version filtered on
+ * status='active' which never matched any real row. See PROGRESS.md
+ * B-03 diagnosis (2026-04-23) for the incident.
  *
  * Returns ChildSummary[] ready for ModuleContext.children.
  */
@@ -146,16 +154,16 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
     .from("child_client")
     .select("id, first_name, gender, date_of_birth")
     .eq("nanny_user_id", userId)
-    .eq("under_three", true)
-    .eq("status", "active");
+    .eq("under_three", true);
 
   // Step 2: placement-based access — children linked to placements where
   // the user is either the nanny (via nannies.user_id) or the parent
-  // (via parents.user_id).
+  // (via parents.user_id). nanny_placements.status = 'active' is a real
+  // literal value (see user_has_child_access() PG function).
   const { data: placements } = await admin
     .from("nanny_placements")
     .select(
-      "id, child_client:child_client!inner(id, first_name, gender, date_of_birth, under_three, status), nannies:nannies!inner(user_id), parents:parents!inner(user_id)",
+      "id, child_client:child_client!inner(id, first_name, gender, date_of_birth, under_three), nannies:nannies!inner(user_id), parents:parents!inner(user_id)",
     )
     .eq("status", "active");
 
@@ -183,7 +191,7 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
   for (const p of viaPlacement) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const cc = p.child_client as any;
-    if (cc && cc.under_three && cc.status === "active") {
+    if (cc && cc.under_three) {
       all.set(cc.id as string, cc);
     }
   }
