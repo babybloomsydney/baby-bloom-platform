@@ -602,3 +602,210 @@ describe("katie-admin — rollback_prompt_edit", () => {
     expect(r.success).toBe(false);
   });
 });
+
+// ── Proposals ─────────────────────────────────────────────────────────────
+
+function makeProposalsCtx(): {
+  ctx: ModuleContext;
+  proposals: Record<string, unknown>[];
+} {
+  const proposals: Record<string, unknown>[] = [];
+
+  function builder() {
+    const filters: Array<(r: Record<string, unknown>) => boolean> = [];
+    const api: Record<string, unknown> = {
+      select: () => api,
+      eq: (col: string, val: unknown) => {
+        filters.push((r) => r[col] === val);
+        return api;
+      },
+      order: () => api,
+      limit: async () => ({
+        data: proposals.filter((r) => filters.every((f) => f(r))),
+        error: null,
+      }),
+      insert: (row: Record<string, unknown>) => ({
+        select: () => ({
+          single: async () => {
+            const inserted = {
+              id: `p-${proposals.length + 1}`,
+              ...row,
+              created_at: new Date().toISOString(),
+            };
+            proposals.push(inserted);
+            return { data: inserted, error: null };
+          },
+        }),
+      }),
+      update: (patch: Record<string, unknown>) => {
+        const uapi: Record<string, unknown> = {
+          eq: (col: string, val: unknown) => {
+            filters.push((r) => r[col] === val);
+            return uapi;
+          },
+          select: () => ({
+            single: async () => {
+              const match = proposals.find((r) => filters.every((f) => f(r)));
+              if (!match)
+                return { data: null, error: { message: "not found" } };
+              Object.assign(match, patch);
+              return { data: match, error: null };
+            },
+          }),
+        };
+        return uapi;
+      },
+    };
+    return api;
+  }
+
+  const ctx: ModuleContext = {
+    botId: "bot-admin",
+    userId: "u-admin",
+    userRole: "admin",
+    effectiveRole: "admin",
+    children: [],
+    currentSurface: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: { from: vi.fn(() => builder()) } as any,
+  };
+  return { ctx, proposals };
+}
+
+describe("katie-admin — propose_module_change", () => {
+  it("files a module_change proposal for a known module", async () => {
+    const { ctx, proposals } = makeProposalsCtx();
+    const r = await katieAdminModule.execute(
+      "propose_module_change",
+      {
+        module_id: "progress",
+        summary: "Add `read_progress_window` tool for date-range queries",
+        details: "Current read_progress_history doesn't support…",
+      },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(proposals).toHaveLength(1);
+    expect(proposals[0].kind).toBe("module_change");
+    expect(proposals[0].target).toBe("module:progress");
+    expect(proposals[0].status).toBe("open");
+  });
+
+  it("refuses for unknown module_id", async () => {
+    const { ctx } = makeProposalsCtx();
+    const r = await katieAdminModule.execute(
+      "propose_module_change",
+      { module_id: "not-a-module", summary: "x" },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/unknown/i);
+  });
+
+  it("requires summary", async () => {
+    const { ctx } = makeProposalsCtx();
+    const r = await katieAdminModule.execute(
+      "propose_module_change",
+      { module_id: "progress", summary: "" },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("katie-admin — propose_schema_change", () => {
+  it("files a schema_change proposal", async () => {
+    const { ctx, proposals } = makeProposalsCtx();
+    const r = await katieAdminModule.execute(
+      "propose_schema_change",
+      {
+        table: "bapp_logs",
+        summary: "Add indexed deleted_at column",
+        suggested_diff:
+          "ALTER TABLE bapp_logs ADD COLUMN deleted_at TIMESTAMPTZ;",
+      },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(proposals[0].target).toBe("table:bapp_logs");
+    expect(proposals[0].kind).toBe("schema_change");
+  });
+});
+
+describe("katie-admin — read_proposals", () => {
+  it("returns filtered list with condensed payload", async () => {
+    const { ctx, proposals } = makeProposalsCtx();
+    proposals.push(
+      {
+        id: "p-1",
+        kind: "module_change",
+        target: "module:progress",
+        summary: "A",
+        details: "xx",
+        suggested_diff: null,
+        status: "open",
+        reviewer_notes: null,
+        reviewed_by: null,
+        reviewed_at: null,
+        created_at: "2026-04-23T00:00:00Z",
+      },
+      {
+        id: "p-2",
+        kind: "schema_change",
+        target: "table:bapp_logs",
+        summary: "B",
+        details: null,
+        suggested_diff: null,
+        status: "accepted",
+        reviewer_notes: "lgtm",
+        reviewed_by: "u-admin",
+        reviewed_at: "2026-04-24T00:00:00Z",
+        created_at: "2026-04-22T00:00:00Z",
+      },
+    );
+    const r = await katieAdminModule.execute(
+      "read_proposals",
+      { status: "open" },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.count).toBe(1);
+    expect(data.proposals[0].id).toBe("p-1");
+    expect(data.proposals[0].has_details).toBe(true);
+    // details + suggested_diff omitted from list view
+    expect(data.proposals[0].details).toBeUndefined();
+  });
+});
+
+describe("katie-admin — update_proposal_status", () => {
+  it("marks a proposal accepted", async () => {
+    const { ctx, proposals } = makeProposalsCtx();
+    proposals.push({
+      id: "p-1",
+      kind: "module_change",
+      target: "module:progress",
+      summary: "A",
+      status: "open",
+    });
+    const r = await katieAdminModule.execute(
+      "update_proposal_status",
+      { id: "p-1", status: "accepted", reviewer_notes: "ship it" },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(proposals[0].status).toBe("accepted");
+    expect(proposals[0].reviewer_notes).toBe("ship it");
+  });
+
+  it("refuses invalid status", async () => {
+    const { ctx } = makeProposalsCtx();
+    const r = await katieAdminModule.execute(
+      "update_proposal_status",
+      { id: "p-1", status: "half-done" },
+      ctx,
+    );
+    expect(r.success).toBe(false);
+  });
+});

@@ -517,6 +517,266 @@ async function rollbackPromptEdit(
   };
 }
 
+// ── Proposals (3E) ─────────────────────────────────────────────────────────
+
+const PROPOSAL_KINDS = [
+  "module_change",
+  "schema_change",
+  "prompt_change",
+  "other",
+] as const;
+type ProposalKind = (typeof PROPOSAL_KINDS)[number];
+
+const PROPOSAL_STATUSES = [
+  "open",
+  "accepted",
+  "rejected",
+  "implemented",
+] as const;
+type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
+
+interface ProposalInsert {
+  kind: ProposalKind;
+  target: string;
+  summary: string;
+  details: string | null;
+  suggested_diff: string | null;
+}
+
+async function insertProposal(
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+  input: ProposalInsert,
+): Promise<ToolResult> {
+  if (!input.target.trim()) {
+    return { success: false, error: "proposal `target` is required." };
+  }
+  if (!input.summary.trim()) {
+    return { success: false, error: "proposal `summary` is required." };
+  }
+
+  const { data, error } = await ctx.supabase
+    .from("katie_proposals")
+    .insert({
+      bloombot_id: ctx.botId,
+      proposed_by: ctx.userId,
+      kind: input.kind,
+      target: input.target.trim(),
+      summary: input.summary.trim(),
+      details: input.details?.trim() || null,
+      suggested_diff: input.suggested_diff?.trim() || null,
+      status: "open",
+    })
+    .select("id, status, kind, target, summary")
+    .single();
+
+  if (error || !data) {
+    return {
+      success: false,
+      error: `Failed to file proposal: ${error?.message ?? "unknown"}`,
+    };
+  }
+
+  const row = data as {
+    id: string;
+    status: string;
+    kind: string;
+    target: string;
+    summary: string;
+  };
+  return {
+    success: true,
+    data: {
+      proposal_id: row.id,
+      status: row.status,
+      kind: row.kind,
+      target: row.target,
+      summary: row.summary,
+      next_step:
+        "Visible in the admin proposals queue. A dev will mark it accepted/rejected before any code lands.",
+    },
+  };
+}
+
+async function proposeModuleChange(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const moduleId =
+    typeof args.module_id === "string" && args.module_id.trim().length > 0
+      ? args.module_id.trim()
+      : null;
+  if (!moduleId) {
+    return {
+      success: false,
+      error: "propose_module_change needs `module_id` (e.g. 'progress').",
+    };
+  }
+
+  // Validate the module exists so proposals aren't filed against typos.
+  const modules = await getActiveModulesLazy();
+  if (!modules.find((m) => m.id === moduleId)) {
+    return {
+      success: false,
+      error: `Unknown module_id: ${moduleId}. Use read_module_registry for the full list.`,
+    };
+  }
+
+  return insertProposal(ctx, {
+    kind: "module_change",
+    target: `module:${moduleId}`,
+    summary: typeof args.summary === "string" ? args.summary : "",
+    details: typeof args.details === "string" ? args.details : null,
+    suggested_diff:
+      typeof args.suggested_diff === "string" ? args.suggested_diff : null,
+  });
+}
+
+async function proposeSchemaChange(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const table =
+    typeof args.table === "string" && args.table.trim().length > 0
+      ? args.table.trim()
+      : null;
+  if (!table) {
+    return {
+      success: false,
+      error: "propose_schema_change needs `table` (e.g. 'bapp_logs').",
+    };
+  }
+
+  return insertProposal(ctx, {
+    kind: "schema_change",
+    target: `table:${table}`,
+    summary: typeof args.summary === "string" ? args.summary : "",
+    details: typeof args.details === "string" ? args.details : null,
+    suggested_diff:
+      typeof args.suggested_diff === "string" ? args.suggested_diff : null,
+  });
+}
+
+async function readProposals(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const statusArg = typeof args.status === "string" ? args.status : null;
+  const kindArg = typeof args.kind === "string" ? args.kind : null;
+  const target = typeof args.target === "string" ? args.target.trim() : null;
+  const limit = Math.min(
+    100,
+    Math.max(1, typeof args.limit === "number" ? Math.round(args.limit) : 30),
+  );
+
+  let query = ctx.supabase.from("katie_proposals").select();
+  if (
+    statusArg &&
+    (PROPOSAL_STATUSES as readonly string[]).includes(statusArg)
+  ) {
+    query = query.eq("status", statusArg);
+  }
+  if (kindArg && (PROPOSAL_KINDS as readonly string[]).includes(kindArg)) {
+    query = query.eq("kind", kindArg);
+  }
+  if (target) {
+    query = query.eq("target", target);
+  }
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    return {
+      success: false,
+      error: `Failed to read proposals: ${error.message}`,
+    };
+  }
+
+  const rows = (data ?? []) as Array<{
+    id: string;
+    kind: string;
+    target: string;
+    summary: string;
+    details: string | null;
+    suggested_diff: string | null;
+    status: string;
+    reviewer_notes: string | null;
+    reviewed_by: string | null;
+    reviewed_at: string | null;
+    created_at: string;
+  }>;
+
+  return {
+    success: true,
+    data: {
+      count: rows.length,
+      proposals: rows.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        target: r.target,
+        summary: r.summary,
+        status: r.status,
+        created_at: r.created_at,
+        reviewed_at: r.reviewed_at,
+        reviewer_notes: r.reviewer_notes,
+        has_details: Boolean(r.details),
+        has_suggested_diff: Boolean(r.suggested_diff),
+      })),
+    },
+  };
+}
+
+async function updateProposalStatus(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const id =
+    typeof args.id === "string" && args.id.trim().length > 0
+      ? args.id.trim()
+      : null;
+  if (!id) {
+    return { success: false, error: "update_proposal_status needs `id`." };
+  }
+  const status = typeof args.status === "string" ? args.status : null;
+  if (!status || !(PROPOSAL_STATUSES as readonly string[]).includes(status)) {
+    return {
+      success: false,
+      error: `status must be one of ${PROPOSAL_STATUSES.join(", ")}.`,
+    };
+  }
+  const reviewerNotes =
+    typeof args.reviewer_notes === "string" &&
+    args.reviewer_notes.trim().length > 0
+      ? args.reviewer_notes.trim()
+      : null;
+
+  const patch: Record<string, unknown> = {
+    status,
+    reviewer_notes: reviewerNotes,
+    reviewed_by: ctx.userId,
+    reviewed_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await ctx.supabase
+    .from("katie_proposals")
+    .update(patch)
+    .eq("id", id)
+    .select("id, status")
+    .single();
+
+  if (error || !data) {
+    return {
+      success: false,
+      error: `Failed to update proposal: ${error?.message ?? "not found"}`,
+    };
+  }
+
+  return {
+    success: true,
+    data: { id, status: (data as { status: string }).status },
+  };
+}
+
 async function readToolSurface(
   _args: Record<string, unknown>,
   _ctx: Parameters<BloomBotModule["execute"]>[2],
@@ -660,6 +920,91 @@ export const katieAdminModule: BloomBotModule = {
         required: ["edit_id", "reason"],
       },
     },
+    {
+      name: "propose_module_change",
+      description:
+        "File a proposal for a module code change — add/rename/remove a tool, change validation, add a proactive trigger, etc. Lands in the admin proposals queue for dev review; code doesn't ship until a human accepts. Use when prompt-only changes won't cut it.",
+      parameters: {
+        type: "object",
+        properties: {
+          module_id: {
+            type: "string",
+            description:
+              "Module the change concerns (e.g. 'progress', 'diary').",
+          },
+          summary: {
+            type: "string",
+            description: "One-line change description.",
+          },
+          details: {
+            type: "string",
+            description:
+              "Longer explanation — motivation, behaviour change, edge cases.",
+          },
+          suggested_diff: {
+            type: "string",
+            description: "Optional code snippet. Plain text ok.",
+          },
+        },
+        required: ["module_id", "summary"],
+      },
+    },
+    {
+      name: "propose_schema_change",
+      description:
+        "File a proposal for a database schema change (new table/column/index/constraint, RLS tweak). Schema changes ship via a migration file; this just queues the request for dev review.",
+      parameters: {
+        type: "object",
+        properties: {
+          table: { type: "string", description: "Table name concerned." },
+          summary: { type: "string" },
+          details: { type: "string" },
+          suggested_diff: {
+            type: "string",
+            description: "Optional SQL DDL snippet.",
+          },
+        },
+        required: ["table", "summary"],
+      },
+    },
+    {
+      name: "read_proposals",
+      description:
+        "List proposals in the queue. Filter by status / kind / target. Default returns all, newest first.",
+      parameters: {
+        type: "object",
+        properties: {
+          status: {
+            type: "string",
+            enum: ["open", "accepted", "rejected", "implemented"],
+          },
+          kind: {
+            type: "string",
+            enum: ["module_change", "schema_change", "prompt_change", "other"],
+          },
+          target: { type: "string" },
+          limit: { type: "number" },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "update_proposal_status",
+      description:
+        "Mark a proposal accepted / rejected / implemented. Used during review of the admin queue. Stamps reviewer_notes + reviewed_by.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          status: {
+            type: "string",
+            enum: ["open", "accepted", "rejected", "implemented"],
+          },
+          reviewer_notes: { type: "string" },
+        },
+        required: ["id", "status"],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
@@ -675,9 +1020,16 @@ export const katieAdminModule: BloomBotModule = {
     if (toolName === "apply_prompt_edit") return applyPromptEdit(args, ctx);
     if (toolName === "rollback_prompt_edit")
       return rollbackPromptEdit(args, ctx);
+    if (toolName === "propose_module_change")
+      return proposeModuleChange(args, ctx);
+    if (toolName === "propose_schema_change")
+      return proposeSchemaChange(args, ctx);
+    if (toolName === "read_proposals") return readProposals(args, ctx);
+    if (toolName === "update_proposal_status")
+      return updateProposalStatus(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "You're in admin mode. When the operator asks about your own behaviour, inspect before guessing: `read_all_prompt_sections` for the index, `read_prompt_section` for a specific section, `read_module_registry` / `read_module_definition` / `read_tool_surface` for modules and tools. For edits: always `propose_prompt_edit` first and show the operator the diff; only `apply_prompt_edit` once they confirm. Protected sections require `confirm_protected=true` in apply — ask explicitly. For mistakes, `rollback_prompt_edit` by edit id. Quote exact versions and literal content back — precision matters when the operator is about to change something.",
+    "You're in admin mode. When the operator asks about your own behaviour, inspect before guessing: `read_all_prompt_sections` for the index, `read_prompt_section` for a specific section, `read_module_registry` / `read_module_definition` / `read_tool_surface` for modules and tools. For prompt edits: always `propose_prompt_edit` first and show the operator the diff; only `apply_prompt_edit` once they confirm. Protected sections require `confirm_protected=true` in apply — ask explicitly. For mistakes, `rollback_prompt_edit` by edit id. For bigger changes (module code / schema / new table) use `propose_module_change` or `propose_schema_change` — those go to the dev queue rather than shipping directly. Quote exact versions and literal content back — precision matters when the operator is about to change something.",
 };
