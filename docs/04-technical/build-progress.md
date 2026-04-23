@@ -496,3 +496,61 @@
 **Live Testing Confirmed:**
 - NOT FOUND: verification updated to status 26, surname-based lookup works
 - CLEARED: verification updated to status 40, nanny updated to level 4 and active
+
+### 2026-03-31 — Education App: Activities Tab, Layout Redesign, AI Prompt Improvements
+
+**Activities Tab (new):**
+- Added Activities as a dedicated tab in the education app bottom nav
+- Server action `getActivities()` with cursor-based pagination (activity-type logs only)
+- `BAppActivitiesView` component with infinite scroll + ActivityDetailSheet wired up
+- Route pages for both nanny and parent at `/development/[childId]/activities`
+
+**ActivityTile Redesign:**
+- Removed description paragraph and recommendation line clutter
+- Now shows: title (creativeName), recommendation line (blue), selected objectives as domain badge + milestone description rows (like report tile, without mastery levels)
+- Badge always says "Activity" (not "Completed" after completion)
+- "View Activity →" button opens ActivityDetailSheet from both feed and activities tab
+
+**Activity Detail — Unlimited Completions:**
+- "Complete & Report" button (now labeled "Log Activity") always shows regardless of activity status
+- Activities can be completed and reported on unlimited times
+
+**Activity AI Prompt Overhaul:**
+- Rewrote system prompt to ban defaulting to peek-a-boo games
+- Added rules: read milestone descriptions carefully, match activity to specific skill described
+- Provided concrete milestone-to-activity mapping examples
+- Listed diverse activity types (messy play, water play, music, sorting, construction, etc.)
+- Reinforced specificity in user prompt
+
+**Layout Redesign — Hub-Style Hero Card:**
+- Removed fixed header bar and fixed bottom nav from BAppLayout
+- Added hero card matching nanny/parent hub pattern: `rounded-2xl border bg-white shadow-sm` with emerald gradient strip, child initial avatar overlapping with `border-4 border-white shadow-md`, child name in `text-2xl font-bold`
+- Tab bar moved inside hero card, styled as icon-only pills: `gap-0.5 rounded-lg bg-slate-100 p-0.5`, active `bg-white text-slate-900 shadow-sm`
+- Tab icons: Home (Feed), Volleyball (Activities), BarChart3 (Progress), ImageIcon (Library)
+- Tab order: Feed, Activities, Progress, Library
+- FAB repositioned to `bottom-6` (no bottom nav bar)
+- Content centered with `max-w-lg`
+- Back button removed from hero card
+
+**Feed View — Filter Tabs Removed:**
+- Removed filter bar (All/Activities/Obs/Growth/Insights tabs) from feed
+- Feed now shows all `context='adhoc'` items unfiltered
+
+**Library View — Card Tile Wrapper:**
+- Photo grid wrapped in `rounded-2xl border border-slate-200 bg-white shadow-sm` card
+- Individual thumbnails now have `rounded-lg` corners
+- Matches site-wide card aesthetic
+
+**Files Created:**
+- `src/app/nanny/development/[childId]/activities/page.tsx` — Activities route (nanny)
+- `src/app/parent/development/[childId]/activities/page.tsx` — Activities route (parent)
+- `src/lib/actions/bapp/activities-feed.ts` — Server action for activity-only feed
+
+**Files Modified:**
+- `src/components/bapp/BAppLayout.tsx` — Complete rewrite: hero card + icon-only tab bar replacing header + bottom nav
+- `src/components/bapp/BAppFeedView.tsx` — Removed filter tabs and filterFeed logic
+- `src/components/bapp/BAppActivitiesView.tsx` — Added ActivityDetailSheet, milestones prop, removed onViewActivity prop
+- `src/components/bapp/BAppLibraryView.tsx` — Wrapped grid in card tile, added rounded-lg thumbnails
+- `src/components/bapp/tiles/ActivityTile.tsx` — Replaced description with objectives list (DomainBadge + desc), kept recommendedLine, badge always "Activity"
+- `src/components/bapp/sheets/ActivityDetailSheet.tsx` — "Log Activity" button always visible (unlimited completions)
+- `src/lib/ai/prompts/bapp-activity-generation.ts` — Overhauled system + user prompts for activity variety and specificity

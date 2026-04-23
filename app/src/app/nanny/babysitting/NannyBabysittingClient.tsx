@@ -74,11 +74,9 @@ interface NannyBabysittingClientProps {
   banUntil: string | null;
   hideHeader?: boolean;
   shareUnlocked?: boolean;
-  cardsLocked?: boolean;
-  onLockedCardClick?: () => void;
 }
 
-export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, shareUnlocked = false, cardsLocked = false, onLockedCardClick }: NannyBabysittingClientProps) {
+export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, shareUnlocked = false }: NannyBabysittingClientProps) {
   const router = useRouter();
   const [selectedJob, setSelectedJob] = useState<NannyBabysittingJob | null>(null);
   const [showPast, setShowPast] = useState(false);
@@ -207,8 +205,8 @@ export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, sha
                       key={job.id}
                       job={job}
                       type="available"
-                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
-                      locked={cardsLocked}
+                      onClick={() => setSelectedJob(job)}
+                      locked={false}
                     />
                   ))}
                 </div>
@@ -227,8 +225,8 @@ export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, sha
                       key={job.id}
                       job={job}
                       type="requested"
-                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
-                      locked={cardsLocked}
+                      onClick={() => setSelectedJob(job)}
+                      locked={false}
                     />
                   ))}
                 </div>
@@ -247,8 +245,8 @@ export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, sha
                       key={job.id}
                       job={job}
                       type="accepted"
-                      onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
-                      locked={cardsLocked}
+                      onClick={() => setSelectedJob(job)}
+                      locked={false}
                     />
                   ))}
                 </div>
@@ -272,8 +270,8 @@ export function NannyBabysittingClient({ jobs, banned, banUntil, hideHeader, sha
                         key={job.id}
                         job={job}
                         type="past"
-                        onClick={cardsLocked && onLockedCardClick ? onLockedCardClick : () => setSelectedJob(job)}
-                        locked={cardsLocked}
+                        onClick={() => setSelectedJob(job)}
+                        locked={false}
                       />
                     ))}
                   </div>

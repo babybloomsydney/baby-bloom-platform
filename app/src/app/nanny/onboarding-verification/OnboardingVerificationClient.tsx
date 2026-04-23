@@ -851,6 +851,7 @@ function WWCCStepContent({
   screenshotPath,
   surname,
   givenNames,
+  onSwitchToManual,
 }: {
   userId: string;
   onNoWwccChange: (noWwcc: boolean) => void;
@@ -869,6 +870,7 @@ function WWCCStepContent({
   screenshotPath: string | null;
   surname: string;
   givenNames: string;
+  onSwitchToManual: () => void;
 }) {
   const [noWwcc, setNoWwcc] = useState(false);
   const [pdfValidating, setPdfValidating] = useState(false);
@@ -896,20 +898,6 @@ function WWCCStepContent({
     onNoWwccChange(next);
     if (next) setWwccMethod(null);
   }
-
-  // Handle grant email PDF upload + validation
-  const handleGrantPdfUpload = useCallback(async (path: string) => {
-    onGrantPdfPath(path);
-
-    // Now validate the PDF client-side
-    // We need to re-fetch the file for validation - but the path is already uploaded
-    // The validate-wwcc-pdf route needs the file, not the path
-    // In the production flow, we validate BEFORE uploading — but since we already
-    // have the file in the upload zone, we'll need the file reference.
-    // For now, we store the path and skip validation (the server action handles status)
-    // TODO: Consider restructuring to validate before upload
-    setPdfValidation({ pass: true }); // Mark as passed for UI flow
-  }, [onGrantPdfPath]);
 
   return (
     <div className="space-y-5">
@@ -980,17 +968,8 @@ function WWCCStepContent({
                 onPdfExtracted(result.extracted as Record<string, string>);
               }
             }}
+            onSwitchToManual={onSwitchToManual}
           />
-          {pdfValidation && !pdfValidation.pass && pdfValidation.issues && (
-            <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 space-y-1">
-              <p className="font-medium text-red-800">PDF validation failed:</p>
-              <ul className="list-disc list-inside space-y-0.5">
-                {pdfValidation.issues.map((issue, i) => (
-                  <li key={i}>{issue}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 
@@ -1089,16 +1068,19 @@ function GrantEmailUploadZone({
   givenNames,
   onUploaded,
   onValidation,
+  onSwitchToManual,
 }: {
   userId: string;
   surname: string;
   givenNames: string;
   onUploaded: (path: string) => void;
   onValidation: (result: { pass: boolean; extracted?: Record<string, string>; issues?: string[] }) => void;
+  onSwitchToManual: () => void;
 }) {
   const [state, setState] = useState<'idle' | 'uploading' | 'validating' | 'done' | 'error'>('idle');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [failedIssues, setFailedIssues] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -1106,6 +1088,7 @@ function GrantEmailUploadZone({
     // Step 1: Validate PDF first
     setState('validating');
     setError(null);
+    setFailedIssues([]);
 
     try {
       const formData = new FormData();
@@ -1120,14 +1103,16 @@ function GrantEmailUploadZone({
 
       const validation = await validateRes.json();
 
-      if (!validation.pass && !validation.needsAIFallback) {
+      // Stop on ANY failure — no AI fallback for Grant Email
+      if (!validation.pass) {
         setState('error');
         setError('PDF validation failed');
+        setFailedIssues(validation.issues || ['Could not validate this file']);
         onValidation({ pass: false, issues: validation.issues });
         return;
       }
 
-      // Step 2: Upload the file
+      // Step 2: Upload the file only if validation passed
       setState('uploading');
       setProgress(0);
       abortRef.current = new AbortController();
@@ -1150,14 +1135,14 @@ function GrantEmailUploadZone({
         setState('done');
         onUploaded(result.url);
         onValidation({
-          pass: validation.pass || validation.needsAIFallback,
+          pass: validation.pass,
           extracted: validation.extracted,
           issues: validation.issues,
         });
       }
     } catch {
       setState('error');
-      setError('Failed to process PDF');
+      setError('Something went wrong. Please try again.');
     }
   }, [userId, surname, givenNames, onUploaded, onValidation]);
 
@@ -1175,48 +1160,85 @@ function GrantEmailUploadZone({
           e.target.value = '';
         }}
       />
-      <button
-        type="button"
-        onClick={() => (state === 'idle' || state === 'error') && fileInputRef.current?.click()}
-        disabled={state === 'uploading' || state === 'validating'}
-        className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-all duration-300 ${
-          state === 'done'
-            ? 'border-green-300 bg-green-50'
-            : state === 'uploading' || state === 'validating'
-            ? 'border-violet-300 bg-violet-50/30 cursor-wait'
-            : state === 'error'
-            ? 'border-red-300 bg-red-50 hover:border-red-400'
-            : 'border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-50'
-        }`}
-      >
-        {state === 'done' ? (
-          <div className="flex items-center gap-2 text-green-600">
-            <CheckCircle2 className="h-5 w-5" />
-            <span className="text-sm font-medium">PDF uploaded & validated</span>
+      {state === 'error' && failedIssues.length > 0 ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-red-800">We couldn&apos;t verify this file</p>
+              <ul className="list-disc list-inside text-xs text-red-600 space-y-0.5">
+                {failedIssues.map((issue, i) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+            </div>
           </div>
-        ) : state === 'validating' ? (
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="h-8 w-8 text-violet-500 animate-spin" />
-            <span className="text-xs text-slate-500">Validating PDF...</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setState('idle');
+                setFailedIssues([]);
+                setError(null);
+                fileInputRef.current?.click();
+              }}
+              className="flex-1 h-9 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            >
+              Try a different file
+            </button>
+            <button
+              type="button"
+              onClick={onSwitchToManual}
+              className="flex-1 h-9 rounded-lg border border-violet-200 bg-violet-50 text-sm font-medium text-violet-700 hover:bg-violet-100 transition-colors"
+            >
+              Enter details manually
+            </button>
           </div>
-        ) : state === 'uploading' ? (
-          <div className="flex flex-col items-center gap-2">
-            <CircularProgress percent={progress} />
-            <span className="text-xs text-slate-500">Uploading...</span>
-          </div>
-        ) : state === 'error' ? (
-          <div className="flex flex-col items-center gap-2">
-            <AlertCircle className="h-7 w-7 text-red-400" />
-            <p className="text-sm font-medium text-red-600">Failed — tap to retry</p>
-            {error && <p className="text-xs text-red-500">{error}</p>}
-          </div>
-        ) : (
-          <>
-            <Upload className="h-7 w-7 text-violet-500" />
-            <p className="text-sm font-medium text-slate-700">Upload WWCC Grant Email PDF</p>
-          </>
-        )}
-      </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => (state === 'idle' || state === 'error') && fileInputRef.current?.click()}
+          disabled={state === 'uploading' || state === 'validating'}
+          className={`w-full flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-5 text-center transition-all duration-300 ${
+            state === 'done'
+              ? 'border-green-300 bg-green-50'
+              : state === 'uploading' || state === 'validating'
+              ? 'border-violet-300 bg-violet-50/30 cursor-wait'
+              : state === 'error'
+              ? 'border-red-300 bg-red-50 hover:border-red-400'
+              : 'border-slate-300 bg-slate-50 hover:border-violet-400 hover:bg-violet-50 active:bg-violet-50'
+          }`}
+        >
+          {state === 'done' ? (
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="text-sm font-medium">PDF uploaded & validated</span>
+            </div>
+          ) : state === 'validating' ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="h-8 w-8 text-violet-500 animate-spin" />
+              <span className="text-xs text-slate-500">Validating PDF...</span>
+            </div>
+          ) : state === 'uploading' ? (
+            <div className="flex flex-col items-center gap-2">
+              <CircularProgress percent={progress} />
+              <span className="text-xs text-slate-500">Uploading...</span>
+            </div>
+          ) : state === 'error' ? (
+            <div className="flex flex-col items-center gap-2">
+              <AlertCircle className="h-7 w-7 text-red-400" />
+              <p className="text-sm font-medium text-red-600">Failed — tap to retry</p>
+              {error && <p className="text-xs text-red-500">{error}</p>}
+            </div>
+          ) : (
+            <>
+              <Upload className="h-7 w-7 text-violet-500" />
+              <p className="text-sm font-medium text-slate-700">Upload WWCC Grant Email PDF</p>
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }
@@ -1950,6 +1972,12 @@ export function OnboardingVerificationClient({ initialStep, verification, profil
                   screenshotPath={screenshotPath}
                   surname={surname}
                   givenNames={givenNames}
+                  onSwitchToManual={() => {
+                    setWwccMethod('manual_entry');
+                    setGrantPdfPath(null);
+                    setPdfExtracted(null);
+                    setWwccConfirmed(false);
+                  }}
                 />
               </div>
 

@@ -280,7 +280,7 @@ export function ConnectionDetailPopup({
 
   // Stage conditions
   const isRequest = stage === CONNECTION_STAGE.REQUEST_SENT;
-  const isAccepted = stage === CONNECTION_STAGE.ACCEPTED;
+  const isAccepted = stage === CONNECTION_STAGE.ACCEPTED || stage === CONNECTION_STAGE.ACCEPTED_PENDING;
   const isScheduled = stage === CONNECTION_STAGE.INTRO_SCHEDULED;
   const isPostIntro = stage === CONNECTION_STAGE.INTRO_COMPLETE || stage === CONNECTION_STAGE.AWAITING_RESPONSE;
   const isTrial = stage === CONNECTION_STAGE.TRIAL_ARRANGED || stage === CONNECTION_STAGE.TRIAL_COMPLETE;
@@ -298,7 +298,7 @@ export function ConnectionDetailPopup({
               <img src={intro.otherPartyPhoto} alt="" className="h-12 w-12 rounded-full object-cover" />
             ) : (
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">
-                <span className="text-lg font-semibold text-violet-600">{intro.otherPartyName.charAt(0)}</span>
+                <span className="text-lg font-semibold text-violet-600">{(intro.otherPartyName.replace(/^The\s+/i, '').charAt(0))}</span>
               </div>
             )}
             <div className="flex-1 min-w-0">
@@ -307,6 +307,15 @@ export function ConnectionDetailPopup({
                   <DialogTitle>
                     <Link
                       href={`/nannies/${intro.nannyId || matchData?.nannyId}`}
+                      className="hover:text-violet-600 transition-colors"
+                    >
+                      {intro.otherPartyName}
+                    </Link>
+                  </DialogTitle>
+                ) : (stage === CONNECTION_STAGE.NANNY_APPLIED || stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING) && intro.positionId ? (
+                  <DialogTitle>
+                    <Link
+                      href={`/position/${intro.positionId}`}
                       className="hover:text-violet-600 transition-colors"
                     >
                       {intro.otherPartyName}
@@ -533,7 +542,7 @@ export function ConnectionDetailPopup({
         {/* ── Main Details View ── */}
         {view === "details" && (
           <>
-            {/* Position details (nanny only — shown above stepper for context) */}
+            {/* Position details (nanny only) */}
             {role === "nanny" && intro.position && (
               <PositionAccordion position={intro.position} />
             )}
@@ -566,6 +575,7 @@ export function ConnectionDetailPopup({
                 fillInitiatedBy={intro.fillInitiatedBy}
                 trialDate={intro.trialDate}
                 confirmedTime={intro.confirmedTime}
+                hideMatchmaking={stage === CONNECTION_STAGE.NANNY_APPLIED || stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING}
               />
             </div>
 

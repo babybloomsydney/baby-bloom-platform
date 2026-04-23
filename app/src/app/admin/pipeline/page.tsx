@@ -384,7 +384,7 @@ async function fetchCohort(admin: any, range: DateRange) {
       wd(admin.from("nannies").select("id, user_id, verification_level, visible_in_bsr, created_at, updated_at")),
       wd(admin.from("parents").select("id, user_id, signup_source, created_at, updated_at")),
       wd(admin.from("nanny_placements").select("id, nanny_id, parent_id, created_at")),
-      wd(admin.from("nanny_positions").select("id, parent_id, status, created_at")),
+      wd(admin.from("nanny_positions").select("id, parent_id, status, source, created_at").eq("source", "parent")),
       wd(admin.from("nanny_leads").select("id, visitor_id, lead_status, funnel_step, highest_page_reached, created_at, updated_at")),
     ]);
   return {
@@ -417,7 +417,7 @@ async function fetchShared(admin: any) {
       admin.from("viral_shares").select("id, user_id, case_type, reference_id, share_status, created_at, shared_at, submitted_at, approved_at, failed_at, bypassed_at, retry_count").then((r: any) => r).catch(() => ({ data: null })),
       admin.from("babysitting_requests").select("id, parent_id, status, accepted_nanny_id, accepted_at, created_at, expires_at").then((r: any) => r).catch(() => ({ data: null })),
       admin.from("bsr_notifications").select("id, babysitting_request_id, nanny_id, notified_at, viewed_at, requested_at, accepted_at, declined_at, created_at").then((r: any) => r).catch(() => ({ data: null })),
-      admin.from("nanny_positions").select("id, parent_id, dfy_activated_at, dfy_tier, dfy_expires_at, created_at").not('dfy_activated_at', 'is', null).then((r: any) => r).catch(() => ({ data: null })),
+      admin.from("nanny_positions").select("id, parent_id, dfy_activated_at, dfy_tier, dfy_expires_at, source, created_at").not('dfy_activated_at', 'is', null).eq("source", "parent").then((r: any) => r).catch(() => ({ data: null })),
       // Test account identification (is_test flag + email domain fallback)
       admin.from("user_profiles").select("user_id").eq("is_test", true).then((r: any) => r).catch(() => ({ data: [] })),
       admin.from("user_profiles").select("user_id").ilike("email", "%babybloomsydney.com.au"),

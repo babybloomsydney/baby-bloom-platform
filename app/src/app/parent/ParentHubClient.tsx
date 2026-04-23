@@ -81,6 +81,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { BrowseNanniesTab } from "@/components/parent/BrowseNanniesTab";
 import { MyChildcareTab } from "@/components/parent/MyChildcareTab";
+import { ChildCardGrid } from "@/components/bapp/ChildCardGrid";
+import type { ChildClient } from "@/types/bapp";
 
 interface ConfirmedNanny {
   connectionId: string;
@@ -129,6 +131,7 @@ interface ParentHubClientProps {
   initialTab?: string;
   initialSub?: string;
   initialView?: string;
+  educationChildren?: ChildClient[];
 }
 
 function bsrFormatSlotDate(dateStr: string): string {
@@ -240,6 +243,7 @@ function VerificationModal({ open, onClose }: { open: boolean; onClose: () => vo
 const TABS = [
   { id: "childcare" as const, label: "Childcare" },
   { id: "babysitting" as const, label: "Babysitting" },
+  { id: "education" as const, label: "Education" },
 ];
 type TabId = (typeof TABS)[number]["id"];
 
@@ -257,6 +261,7 @@ export function ParentHubClient({
   initialTab,
   initialSub,
   initialView,
+  educationChildren = [],
 }: ParentHubClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1509,6 +1514,15 @@ export function ParentHubClient({
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════
+          TAB CONTENT — EDUCATION
+         ═══════════════════════════════════════════════════ */}
+      <div style={{ display: activeTab === "education" ? undefined : "none" }}>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <ChildCardGrid children={educationChildren} role="parent" />
         </div>
       </div>
 

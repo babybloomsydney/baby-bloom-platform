@@ -77,6 +77,7 @@ export interface PendingWWCCCheck {
   last_name: string | null;
   email: string | null;
   profile_picture_url: string | null;
+  wwcc_ocg_submitted_at: string | null;
 }
 
 export interface VerificationStats {
@@ -289,14 +290,17 @@ async function getPendingIdentityChecks(): Promise<PendingIdentityCheck[]> {
 async function getPendingWWCCChecks(): Promise<PendingWWCCCheck[]> {
   const supabase = createAdminClient();
 
-  // WWCC review queue: all WWCC-stage statuses that need admin visibility
-  // 20=pending auto, 21=pending review, 24=doc failed, 25=processing, 26=OCG not found,
-  // 27=closed, 28=application pending, 29=submitted, 30=provisionally verified
+  // WWCC OCG submission queue: only statuses where admin needs to submit to OCG portal
+  // 21 = manual entry awaiting admin OCG submission
+  // 30 = provisionally verified (doc verified + cross-check) awaiting admin OCG submission
+  // NOT included: 24 (doc failed — user retries), 25 (AI processing — transient),
+  // 29 (submitted pre-AI — automated), 26/27/28 (post-OCG results — emails already sent)
   const [verificationsResult, profilesResult] = await Promise.all([
     supabase
       .from('verifications')
-      .select('id, user_id, surname, given_names, date_of_birth, wwcc_number, wwcc_verification_method, wwcc_verified, wwcc_rejection_reason, verification_status, created_at')
-      .in('verification_status', [20, 21, 24, 25, 26, 27, 28, 29, 30])
+      .select('id, user_id, surname, given_names, date_of_birth, wwcc_number, wwcc_verification_method, wwcc_verified, wwcc_rejection_reason, verification_status, created_at, wwcc_ocg_submitted_at')
+      .in('verification_status', [21, 30])
+      .not('wwcc_verification_method', 'is', null)
       .order('created_at', { ascending: true })
       .limit(50),
     supabase
@@ -329,6 +333,7 @@ async function getPendingWWCCChecks(): Promise<PendingWWCCCheck[]> {
       last_name: profile?.last_name ?? null,
       email: profile?.email ?? null,
       profile_picture_url: profile?.profile_picture_url ?? null,
+      wwcc_ocg_submitted_at: v.wwcc_ocg_submitted_at ?? null,
     };
   });
 }

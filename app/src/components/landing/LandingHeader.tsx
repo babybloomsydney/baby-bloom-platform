@@ -12,7 +12,7 @@ const DASHBOARDS: Record<string, string> = {
   super_admin: "/admin/dashboard",
 };
 
-const HIDDEN_PATHS = ["/matchmaking/onboarding"];
+const HIDDEN_PATHS = ["/matchmaking/onboarding", "/position/"];
 
 export function LandingHeader() {
   const { user, role, isLoading } = useAuth();

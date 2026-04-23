@@ -125,7 +125,7 @@ export async function verifyDriversLicense(
   try {
     // 1. Call OpenAI with the two images
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.4-nano',
       messages: [
         {
           role: 'system',
@@ -150,7 +150,7 @@ export async function verifyDriversLicense(
         },
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     });
 
     const rawContent = completion.choices[0]?.message?.content;

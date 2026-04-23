@@ -1,0 +1,411 @@
+"use client";
+
+import { useState, useEffect, useMemo } from "react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import {
+  ArrowLeft,
+  Utensils,
+  Moon,
+  Check,
+  Loader2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { logDiaryEntry } from "@/lib/actions/bapp/diary";
+import { ImageUpload } from "../shared/ImageUpload";
+
+type DiaryType = "food" | "sleep";
+type FoodSubtype = "meal" | "snack" | "bottle";
+
+// Bottle quantity options: 30ml/1oz → 240ml/8oz in 30ml increments
+const BOTTLE_QUANTITIES = [
+  "30ml / 1oz",
+  "60ml / 2oz",
+  "90ml / 3oz",
+  "120ml / 4oz",
+  "150ml / 5oz",
+  "180ml / 6oz",
+  "210ml / 7oz",
+  "240ml / 8oz",
+];
+
+interface DiarySheetProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  childId: string;
+}
+
+function calcDuration(start: string, end: string): string | null {
+  if (!start || !end) return null;
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+
+  let startMin = sh * 60 + sm;
+  let endMin = eh * 60 + em;
+
+  // Handle overnight (end < start → next day)
+  if (endMin <= startMin) {
+    endMin += 24 * 60;
+  }
+
+  const diffMin = endMin - startMin;
+  const hours = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+
+  if (hours === 0) return `${mins}m`;
+  if (mins === 0) return `${hours}h`;
+  return `${hours}h ${mins}m`;
+}
+
+export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
+  const [step, setStep] = useState<"type" | "form">("type");
+  const [diaryType, setDiaryType] = useState<DiaryType | null>(null);
+
+  // Food state
+  const [foodSubtype, setFoodSubtype] = useState<FoodSubtype>("meal");
+  const [foodDetails, setFoodDetails] = useState("");
+  const [bottleQuantity, setBottleQuantity] = useState("");
+  const [foodTime, setFoodTime] = useState("");
+
+  // Sleep state
+  const [sleepStart, setSleepStart] = useState("");
+  const [sleepEnd, setSleepEnd] = useState("");
+  const [sleepNotes, setSleepNotes] = useState("");
+
+  // Image state
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
+  // UI state
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Auto-calculate duration
+  const duration = useMemo(
+    () => calcDuration(sleepStart, sleepEnd),
+    [sleepStart, sleepEnd]
+  );
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setTimeout(() => {
+        setStep("type");
+        setDiaryType(null);
+        setFoodSubtype("meal");
+        setFoodDetails("");
+        setBottleQuantity("");
+        setFoodTime("");
+        setSleepStart("");
+        setSleepEnd("");
+        setSleepNotes("");
+        setImageUrl(null);
+        setLoading(false);
+        setSuccess(false);
+        setError(null);
+      }, 300);
+    }
+  }, [open]);
+
+  function selectType(type: DiaryType) {
+    setDiaryType(type);
+    setStep("form");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Submit
+  // ---------------------------------------------------------------------------
+
+  async function submitFood() {
+    setLoading(true);
+    setError(null);
+
+    const data: Record<string, unknown> = {
+      subtype: foodSubtype,
+      details: foodSubtype === "bottle" ? null : foodDetails || null,
+      quantity: foodSubtype === "bottle" ? bottleQuantity || null : null,
+      time: foodTime || null,
+      title: "Food Log",
+      image_url: imageUrl,
+    };
+
+    const result = await logDiaryEntry(childId, data);
+    if (result.success) {
+      setSuccess(true);
+      setTimeout(() => onOpenChange(false), 800);
+    } else {
+      setError(result.error);
+      setLoading(false);
+    }
+  }
+
+  async function submitSleep() {
+    setLoading(true);
+    setError(null);
+
+    const data: Record<string, unknown> = {
+      subtype: "sleep",
+      start: sleepStart || null,
+      end: sleepEnd || null,
+      duration: duration || null,
+      notes: sleepNotes || null,
+      title: "Sleep Log",
+      image_url: imageUrl,
+    };
+
+    const result = await logDiaryEntry(childId, data);
+    if (result.success) {
+      setSuccess(true);
+      setTimeout(() => onOpenChange(false), 800);
+    } else {
+      setError(result.error);
+      setLoading(false);
+    }
+  }
+
+  const foodValid =
+    foodSubtype === "bottle"
+      ? !!bottleQuantity
+      : !!foodDetails;
+
+  const sleepValid = !!sleepStart && !!sleepEnd;
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        className="h-[85vh] rounded-t-2xl px-4 pb-6"
+      >
+        <SheetHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            {step !== "type" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("type");
+                  setDiaryType(null);
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </button>
+            )}
+            <SheetTitle className="text-base">
+              {step === "type" && "New Diary Entry"}
+              {step === "form" && diaryType === "food" && "Food Log"}
+              {step === "form" && diaryType === "sleep" && "Sleep Log"}
+            </SheetTitle>
+          </div>
+        </SheetHeader>
+
+        {/* Success overlay */}
+        {success && (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+              <Check className="h-7 w-7 text-emerald-600" />
+            </div>
+            <p className="text-sm font-medium text-emerald-600">Added!</p>
+          </div>
+        )}
+
+        {error && !success && (
+          <p className="mb-3 text-center text-sm text-red-500">{error}</p>
+        )}
+
+        {!success && (
+          <div className="mt-2 space-y-4">
+            {/* Step 1: Type Selection */}
+            {step === "type" && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => selectType("food")}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-orange-100 text-orange-600">
+                    <Utensils className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Food</p>
+                    <p className="text-xs text-slate-400">
+                      Meals, snacks & bottles
+                    </p>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectType("sleep")}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                    <Moon className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Sleep</p>
+                    <p className="text-xs text-slate-400">
+                      Naps & overnight sleep
+                    </p>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Step 2a: Food Log */}
+            {step === "form" && diaryType === "food" && (
+              <div className="space-y-4">
+                {/* Food type selector */}
+                <div>
+                  <Label className="text-xs text-slate-500">Type</Label>
+                  <select
+                    value={foodSubtype}
+                    onChange={(e) =>
+                      setFoodSubtype(e.target.value as FoodSubtype)
+                    }
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value="meal">Meal</option>
+                    <option value="snack">Snack</option>
+                    <option value="bottle">Bottle</option>
+                  </select>
+                </div>
+
+                {/* Conditional: Meal/Snack → textarea, Bottle → quantity */}
+                {foodSubtype === "bottle" ? (
+                  <div>
+                    <Label className="text-xs text-slate-500">Quantity</Label>
+                    <select
+                      value={bottleQuantity}
+                      onChange={(e) => setBottleQuantity(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    >
+                      <option value="">Select amount...</option>
+                      {BOTTLE_QUANTITIES.map((q) => (
+                        <option key={q} value={q}>
+                          {q}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <Label className="text-xs text-slate-500">
+                      What did they have?
+                    </Label>
+                    <textarea
+                      value={foodDetails}
+                      onChange={(e) => setFoodDetails(e.target.value)}
+                      placeholder="Describe the meal or snack..."
+                      className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                      rows={3}
+                    />
+                  </div>
+                )}
+
+                {/* Time */}
+                <div>
+                  <Label className="text-xs text-slate-500">Time</Label>
+                  <input
+                    type="time"
+                    value={foodTime}
+                    onChange={(e) => setFoodTime(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  />
+                </div>
+
+                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+
+                <Button
+                  onClick={submitFood}
+                  disabled={loading || !foodValid}
+                  className="w-full bg-orange-500 hover:bg-orange-600"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Log Food"
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Step 2b: Sleep Log */}
+            {step === "form" && diaryType === "sleep" && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-xs text-slate-500">
+                    Went to Sleep
+                  </Label>
+                  <input
+                    type="time"
+                    value={sleepStart}
+                    onChange={(e) => setSleepStart(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-xs text-slate-500">Woke Up</Label>
+                  <input
+                    type="time"
+                    value={sleepEnd}
+                    onChange={(e) => setSleepEnd(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                  />
+                </div>
+
+                {/* Auto-calculated duration */}
+                {duration && (
+                  <div className="rounded-lg bg-indigo-50 px-4 py-3 text-center">
+                    <p className="text-xs uppercase tracking-wide text-indigo-400">
+                      Duration
+                    </p>
+                    <p className="text-lg font-semibold text-indigo-700">
+                      {duration}
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <Label className="text-xs text-slate-500">
+                    Notes (optional)
+                  </Label>
+                  <textarea
+                    value={sleepNotes}
+                    onChange={(e) => setSleepNotes(e.target.value)}
+                    placeholder="Any notes about their sleep..."
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                    rows={2}
+                  />
+                </div>
+
+                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+
+                <Button
+                  onClick={submitSleep}
+                  disabled={loading || !sleepValid}
+                  className="w-full bg-indigo-500 hover:bg-indigo-600"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Log Sleep"
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}

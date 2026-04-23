@@ -104,7 +104,7 @@ export async function verifyPassport(
   try {
     // Step 1: AI extracts data from passport image (does NOT decide pass/fail)
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: 'gpt-5.4-nano',
       messages: [
         { role: 'system', content: PASSPORT_SYSTEM_PROMPT },
         {
@@ -126,7 +126,7 @@ export async function verifyPassport(
         },
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     });
 
     const raw = completion.choices[0]?.message?.content?.trim();

@@ -16,7 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { LEVEL_LABELS, STATUS_LABELS } from "@/lib/verification";
 import { adminDeleteUser, adminChangeRole, adminResetVerification, adminRegenerateNannyBio } from "@/lib/actions/admin";
-import { CheckCircle2, Clock, XCircle, MapPin, Mail, Phone, Calendar, Shield, Baby, Loader2, Trash2, RefreshCw, UserCog, ExternalLink } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, MapPin, Mail, Phone, Calendar, Shield, Baby, Loader2, Trash2, RefreshCw, UserCog, ExternalLink, Send, Eye } from "lucide-react";
+import { ContactUserModal } from "./ContactUserModal";
 import type { UserData } from "./page";
 
 interface UserDetailDrawerProps {
@@ -25,17 +26,19 @@ interface UserDetailDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
-function getLevelVariant(level: number | null): "inactive" | "pending" | "active" | "verified" {
+function getLevelVariant(level: number | null): "inactive" | "pending" | "active" | "verified" | "info" {
   if (level === null) return "inactive";
   if (level === 0) return "inactive";
-  if (level <= 2) return "pending";
+  if (level === 1) return "pending";
+  if (level === 2) return "info";
   if (level === 3) return "active";
   return "verified";
 }
 
-function getStatusVariant(status: number | null): "unattempted" | "pending" | "failed" | "verified" | "active" {
+function getStatusVariant(status: number | null): "unattempted" | "pending" | "failed" | "verified" | "active" | "info" {
   if (status === null) return "unattempted";
   if (status === 0) return "unattempted";
+  if (status === 20) return "info";
   if (status === 12 || status === 22 || status === 23 || status === 26 || status === 27 || status === 28) return "failed";
   if (status === 30) return "active";
   if (status === 40) return "verified";
@@ -256,6 +259,8 @@ function AdminActions({ user, onClose }: { user: UserData; onClose: () => void }
 }
 
 export function UserDetailDrawer({ user, open, onOpenChange }: UserDetailDrawerProps) {
+  const [showContactModal, setShowContactModal] = useState(false);
+
   if (!user) return null;
 
   const name = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
@@ -300,17 +305,36 @@ export function UserDetailDrawer({ user, open, onOpenChange }: UserDetailDrawerP
             </div>
           </div>
 
-          {/* View Profile */}
-          {user.role === "nanny" && user.nanny_id && (
+          {/* View Profile + View as User + Contact */}
+          <div className="flex gap-2">
+            {user.role === "nanny" && user.nanny_id && (
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => window.open(`/nannies/${user.nanny_id}`, '_blank')}
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                View Profile
+              </Button>
+            )}
             <Button
               variant="outline"
-              className="w-full"
-              onClick={() => window.open(`/nannies/${user.nanny_id}`, '_blank')}
+              className="flex-1"
+              onClick={() => window.open(`/admin/viewer/${user.user_id}`, '_blank')}
             >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              View Nanny Profile
+              <Eye className="mr-2 h-4 w-4" />
+              View as User
             </Button>
-          )}
+            <Button
+              variant="outline"
+              className="flex-1"
+              disabled={!user.email}
+              onClick={() => setShowContactModal(true)}
+            >
+              <Send className="mr-2 h-4 w-4" />
+              Contact
+            </Button>
+          </div>
 
           {/* Personal Info */}
           <Card>
@@ -475,6 +499,17 @@ export function UserDetailDrawer({ user, open, onOpenChange }: UserDetailDrawerP
           {/* Admin Actions */}
           <AdminActions user={user} onClose={() => onOpenChange(false)} />
         </div>
+
+        {/* Contact User Modal */}
+        {user.email && (
+          <ContactUserModal
+            userEmail={user.email}
+            userName={name}
+            userId={user.user_id}
+            open={showContactModal}
+            onOpenChange={setShowContactModal}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

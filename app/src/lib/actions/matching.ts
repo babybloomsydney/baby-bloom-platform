@@ -620,6 +620,18 @@ export async function respondToDfyMatch(
     return { success: false, error: 'Not authenticated as nanny' };
   }
 
+  // Check verification level (level 3+ can respond)
+  const { data: nannyVerData } = await adminClient
+    .from('nannies')
+    .select('verification_level')
+    .eq('id', nannyInfo.nannyId)
+    .single();
+
+  const verificationLevel = nannyVerData?.verification_level ?? 0;
+  if (verificationLevel < 3) {
+    return { success: false, error: 'Please complete verification first.' };
+  }
+
   // Validate availability slots — same rules as acceptConnectionRequest
   if (!availableSlots || availableSlots.length < 5) {
     return { success: false, error: 'Please select at least 5 available time slots.' };
@@ -701,7 +713,11 @@ export async function respondToDfyMatch(
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-  // Create connection_request at ACCEPTED (stage 10) — skips REQUEST_SENT
+  // Create connection_request — level 3 gets pending stage, level 4+ gets real stage
+  const dfyStage = verificationLevel >= 4
+    ? CONNECTION_STAGE.ACCEPTED
+    : CONNECTION_STAGE.ACCEPTED_PENDING;
+
   const { data: connection, error: insertErr } = await adminClient
     .from('connection_requests')
     .insert({
@@ -709,7 +725,7 @@ export async function respondToDfyMatch(
       nanny_id: nannyInfo.nannyId,
       position_id: notification.position_id,
       status: 'accepted',
-      connection_stage: CONNECTION_STAGE.ACCEPTED,
+      connection_stage: dfyStage,
       proposed_times: availableSlots,
       responded_at: now,
       expires_at: expiresAt,
@@ -723,7 +739,7 @@ export async function respondToDfyMatch(
     return { success: false, error: 'Failed to create connection.' };
   }
 
-  funnelLog('dfyRespond', connection.id, 'DFY → ACCEPTED (10)', {
+  funnelLog('dfyRespond', connection.id, verificationLevel >= 4 ? 'DFY → ACCEPTED (10)' : 'DFY → ACCEPTED_PENDING (9)', {
     nannyId: nannyInfo.nannyId, parentId: position.parent_id,
     positionId: notification.position_id, source: 'dfy',
   });
@@ -756,42 +772,43 @@ export async function respondToDfyMatch(
     eventData: { source: 'dfy', slotsCount: availableSlots.length },
   });
 
-  // Get nanny name for parent notification
-  const nannyEmailInfo = await getUserEmailInfo(nannyInfo.userId);
-  const nannyName = nannyEmailInfo ? nannyEmailInfo.firstName : 'A nanny';
+  // Parent notifications — only at level 4+ (deferred for level 3)
+  if (verificationLevel >= 4) {
+    const nannyEmailInfo = await getUserEmailInfo(nannyInfo.userId);
+    const nannyName = nannyEmailInfo ? nannyEmailInfo.firstName : 'A nanny';
 
-  // Notify parent
-  const { data: parentData } = await adminClient
-    .from('parents')
-    .select('user_id')
-    .eq('id', position.parent_id)
-    .single();
+    const { data: parentData } = await adminClient
+      .from('parents')
+      .select('user_id')
+      .eq('id', position.parent_id)
+      .single();
 
-  if (parentData) {
-    await createInboxMessage({
-      userId: parentData.user_id,
-      type: 'dfy_nanny_interested',
-      title: `${nannyName} is interested and available for a meet and greet!`,
-      body: `${nannyName} has shared their availability. Pick a time for a meet and greet.`,
-      actionUrl: '/parent',
-      referenceId: connection.id,
-      referenceType: 'connection_request',
-    });
+    if (parentData) {
+      await createInboxMessage({
+        userId: parentData.user_id,
+        type: 'dfy_nanny_interested',
+        title: `${nannyName} is interested and available for a meet and greet!`,
+        body: `${nannyName} has shared their availability. Pick a time for a meet and greet.`,
+        actionUrl: '/parent',
+        referenceId: connection.id,
+        referenceType: 'connection_request',
+      });
 
-    const parentEmailInfo = await getUserEmailInfo(parentData.user_id);
-    if (parentEmailInfo) {
-      sendEmail({
-        to: parentEmailInfo.email,
-        subject: `${nannyName} is interested and available for a meet and greet!`,
-        html: `<div style="${BASE_STYLE}">
-          <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
-          <p style="color: #374151; font-size: 16px; line-height: 1.6;">${nannyName} has expressed interest in your nanny position and shared their availability for a meet and greet.</p>
-          <p style="color: #374151; font-size: 14px;">Pick a time that works for your meet and greet.</p>
-          <p style="margin-top: 24px;"><a href="${APP_URL}/parent" style="${BTN_STYLE}">Pick a Time</a></p>
-        </div>`,
-        emailType: 'dfy_parent_applicant',
-        recipientUserId: parentData.user_id,
-      }).catch(err => console.error('[DFY] DFY-002 email error:', err));
+      const parentEmailInfo = await getUserEmailInfo(parentData.user_id);
+      if (parentEmailInfo) {
+        sendEmail({
+          to: parentEmailInfo.email,
+          subject: `${nannyName} is interested and available for a meet and greet!`,
+          html: `<div style="${BASE_STYLE}">
+            <h1 style="color: #8B5CF6; font-size: 24px; margin-bottom: 16px;">Baby Bloom Sydney</h1>
+            <p style="color: #374151; font-size: 16px; line-height: 1.6;">${nannyName} has expressed interest in your nanny position and shared their availability for a meet and greet.</p>
+            <p style="color: #374151; font-size: 14px;">Pick a time that works for your meet and greet.</p>
+            <p style="margin-top: 24px;"><a href="${APP_URL}/parent" style="${BTN_STYLE}">Pick a Time</a></p>
+          </div>`,
+          emailType: 'dfy_parent_applicant',
+          recipientUserId: parentData.user_id,
+        }).catch(err => console.error('[DFY] DFY-002 email error:', err));
+      }
     }
   }
 
@@ -1737,6 +1754,30 @@ export interface PublicPositionProfile {
   parentFirstName: string;
   parentLastName: string | null;
   parentProfilePic: string | null;
+  weeklyRoster: string[];
+  rosterByDay: Record<string, string[]>;
+  description: string | null;
+  levelOfSupport: string[] | null;
+  reasonForNanny: string[] | null;
+  driversLicenseRequired: boolean | null;
+  carRequired: boolean | null;
+  nonSmokerRequired: boolean | null;
+  vaccinationRequired: boolean | null;
+  comfortableWithPetsRequired: boolean | null;
+  urgency: string | null;
+  startDate: string | null;
+  placementLength: string | null;
+  languagePreference: string | null;
+  languagePreferenceDetails: string | null;
+  yearsOfExperience: number | null;
+  minimumAgeRequirement: number | null;
+  focusType: string | null;
+  supportType: string | null;
+  childNeeds: boolean;
+  childNeedsDetails: string | null;
+  createdAt: string;
+  source: string | null;
+  expiresAt: string | null;
 }
 
 export async function getPublicPositionProfile(positionId: string): Promise<{
@@ -1747,11 +1788,16 @@ export async function getPublicPositionProfile(positionId: string): Promise<{
 
   const { data: position, error: posErr } = await admin
     .from('nanny_positions')
-    .select('id, parent_id, suburb, hourly_rate, hours_per_week, days_required, schedule_type')
+    .select('id, parent_id, suburb, hourly_rate, hours_per_week, days_required, schedule_type, details, description, level_of_support, reason_for_nanny, drivers_license_required, car_required, non_smoker_required, vaccination_required, comfortable_with_pets_required, urgency, start_date, placement_length, language_preference, language_preference_details, years_of_experience, minimum_age_requirement, created_at, family_display_name, source, expires_at')
     .eq('id', positionId)
     .maybeSingle();
 
   if (posErr || !position) return { data: null, error: 'Position not found' };
+
+  // Check expiry for admin/AI positions
+  if (position.expires_at && new Date(position.expires_at) < new Date()) {
+    return { data: null, error: 'Position expired' };
+  }
 
   // Get children
   const { data: children } = await admin
@@ -1760,28 +1806,73 @@ export async function getPublicPositionProfile(positionId: string): Promise<{
     .eq('position_id', positionId)
     .order('display_order', { ascending: true });
 
-  // Get parent's name + profile pic (via parents → user_profiles)
-  const { data: parent } = await admin
-    .from('parents')
-    .select('user_id')
-    .eq('id', position.parent_id)
-    .single();
-
+  // Get parent's name + profile pic
   let parentFirstName = 'A family';
   let parentLastName: string | null = null;
   let parentProfilePic: string | null = null;
 
-  if (parent) {
-    const { data: profile } = await admin
-      .from('user_profiles')
-      .select('first_name, last_name, profile_picture_url')
-      .eq('user_id', parent.user_id)
+  if (position.family_display_name) {
+    // Admin/AI position — use display name directly
+    parentFirstName = position.family_display_name;
+    parentLastName = null;
+  } else {
+    // Regular parent position — look up from parents → user_profiles
+    const { data: parent } = await admin
+      .from('parents')
+      .select('user_id')
+      .eq('id', position.parent_id)
+      .single();
+
+    if (parent) {
+      const { data: profile } = await admin
+        .from('user_profiles')
+        .select('first_name, last_name, profile_picture_url')
+        .eq('user_id', parent.user_id)
+        .maybeSingle();
+
+      if (profile) {
+        parentFirstName = profile.first_name ?? 'A family';
+        parentLastName = profile.last_name ?? null;
+        parentProfilePic = profile.profile_picture_url ?? null;
+      }
+    }
+  }
+
+  // Extract roster from details.form_data or position_schedule
+  const details = position.details as Record<string, unknown> | null;
+  const formData = (details?.form_data ?? {}) as Record<string, unknown>;
+  let weeklyRoster: string[] = (formData.weekly_roster as string[]) ?? position.days_required ?? [];
+  const DAY_ROSTER_FIELD: Record<string, string> = {
+    Monday: 'monday_roster', Tuesday: 'tuesday_roster', Wednesday: 'wednesday_roster',
+    Thursday: 'thursday_roster', Friday: 'friday_roster', Saturday: 'saturday_roster', Sunday: 'sunday_roster',
+  };
+  let rosterByDay: Record<string, string[]> = {};
+
+  if (position.source && position.source !== 'parent') {
+    // Admin/AI position — use position_schedule table
+    const { data: scheduleRow } = await admin
+      .from('position_schedule')
+      .select('schedule')
+      .eq('position_id', positionId)
       .maybeSingle();
 
-    if (profile) {
-      parentFirstName = profile.first_name ?? 'A family';
-      parentLastName = profile.last_name ?? null;
-      parentProfilePic = profile.profile_picture_url ?? null;
+    if (scheduleRow?.schedule) {
+      const schedule = scheduleRow.schedule as Record<string, string[]>;
+      // Convert lowercase day keys to title case for weeklyRoster
+      weeklyRoster = Object.keys(schedule).map(d => d.charAt(0).toUpperCase() + d.slice(1));
+      // Build rosterByDay with title-case keys
+      for (const [day, brackets] of Object.entries(schedule)) {
+        const titleDay = day.charAt(0).toUpperCase() + day.slice(1);
+        rosterByDay[titleDay] = brackets;
+      }
+    }
+  } else {
+    // Regular parent position — use form_data roster fields
+    for (const day of weeklyRoster) {
+      const field = DAY_ROSTER_FIELD[day];
+      if (field && formData[field]) {
+        rosterByDay[day] = formData[field] as string[];
+      }
     }
   }
 
@@ -1797,6 +1888,30 @@ export async function getPublicPositionProfile(positionId: string): Promise<{
       parentFirstName,
       parentLastName,
       parentProfilePic,
+      weeklyRoster,
+      rosterByDay,
+      description: position.description ?? null,
+      levelOfSupport: position.level_of_support ?? null,
+      reasonForNanny: position.reason_for_nanny ?? null,
+      driversLicenseRequired: position.drivers_license_required ?? null,
+      carRequired: position.car_required ?? null,
+      nonSmokerRequired: position.non_smoker_required ?? null,
+      vaccinationRequired: position.vaccination_required ?? null,
+      comfortableWithPetsRequired: position.comfortable_with_pets_required ?? null,
+      urgency: position.urgency ?? null,
+      startDate: position.start_date ?? null,
+      placementLength: position.placement_length ?? null,
+      languagePreference: position.language_preference ?? null,
+      languagePreferenceDetails: position.language_preference_details ?? null,
+      yearsOfExperience: position.years_of_experience ? Number(position.years_of_experience) : null,
+      minimumAgeRequirement: position.minimum_age_requirement ? Number(position.minimum_age_requirement) : null,
+      focusType: (details?.focus_type as string) ?? null,
+      supportType: (details?.support_type as string) ?? null,
+      childNeeds: !!(details?.child_needs),
+      childNeedsDetails: (details?.child_needs_details as string) ?? null,
+      createdAt: position.created_at,
+      source: position.source ?? null,
+      expiresAt: position.expires_at ?? null,
     },
     error: null,
   };

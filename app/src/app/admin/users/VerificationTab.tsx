@@ -86,7 +86,8 @@ function formatDobForCopy(dateStr: string | null): string | null {
 
 // ── Status badge variant for verification status integer ──
 
-function getStatusBadgeVariant(status: number): "pending" | "verified" | "inactive" | "active" | "failed" {
+function getStatusBadgeVariant(status: number): "pending" | "verified" | "inactive" | "active" | "failed" | "info" {
+  if (status === VERIFICATION_STATUS.PENDING_WWCC_AUTO) return "info";
   if (status === VERIFICATION_STATUS.ID_REJECTED || status === VERIFICATION_STATUS.WWCC_REJECTED
     || status === VERIFICATION_STATUS.WWCC_EXPIRED || status === VERIFICATION_STATUS.WWCC_OCG_NOT_FOUND
     || status === VERIFICATION_STATUS.WWCC_CLOSED || status === VERIFICATION_STATUS.WWCC_APPLICATION_PENDING) return "failed";
@@ -98,9 +99,10 @@ function getStatusBadgeVariant(status: number): "pending" | "verified" | "inacti
 export function VerificationTab({ stats, identityChecks, wwccChecks }: VerificationTabProps) {
   const router = useRouter();
   const [selectedIdCheck, setSelectedIdCheck] = useState<PendingIdentityCheck | null>(null);
-  const [confirmedWWCCs, setConfirmedWWCCs] = useState<Set<string>>(new Set());
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
+  // Optimistic UI: track IDs confirmed this session to prevent flash before router.refresh() lands
+  const [justConfirmed, setJustConfirmed] = useState<Set<string>>(new Set());
 
   async function handleConfirmWWCC(checkId: string) {
     setLoadingId(checkId);
@@ -108,11 +110,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
     setLoadingId(null);
 
     if (result.success) {
-      setConfirmedWWCCs((prev) => {
-        const next = new Set(Array.from(prev));
-        next.add(checkId);
-        return next;
-      });
+      setJustConfirmed((prev) => { const next = new Set(Array.from(prev)); next.add(checkId); return next; });
       setConfirmingId(null);
       router.refresh();
     } else {
@@ -327,7 +325,7 @@ export function VerificationTab({ stats, identityChecks, wwccChecks }: Verificat
                   <TableBody>
                     {wwccChecks.map((check) => {
                       const name = `${check.first_name || ""} ${check.last_name || ""}`.trim() || "Unknown";
-                      const isConfirmed = confirmedWWCCs.has(check.id);
+                      const isConfirmed = check.wwcc_ocg_submitted_at !== null || justConfirmed.has(check.id);
                       const isConfirming = confirmingId === check.id;
                       const isLoading = loadingId === check.id;
 

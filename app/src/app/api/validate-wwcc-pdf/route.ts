@@ -17,6 +17,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
+    // Server-side file type check — catches anything that bypasses client-side accept attribute
+    if (file.type !== 'application/pdf' && !file.name?.toLowerCase().endsWith('.pdf')) {
+      return NextResponse.json({
+        pass: false,
+        needsAIFallback: false,
+        issues: ['This doesn\u2019t look like a PDF. Please save your grant email as a PDF first (Print \u2192 Save as PDF), then upload it here.'],
+        extracted: null,
+      });
+    }
+
     const buffer = Buffer.from(await file.arrayBuffer());
 
     const result = await verifyWWCCPdf(buffer, {

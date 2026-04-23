@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   MapPin, Clock, DollarSign, Calendar, Users, ChevronRight, Bell, Heart, Loader2, X,
-  Baby, Phone, Mail, PawPrint, Pencil, Check, MoreHorizontal, Sparkles, CheckCircle, XCircle, Lock,
+  Baby, Phone, Mail, PawPrint, Pencil, Check, MoreHorizontal, Sparkles, CheckCircle, XCircle,
 } from "lucide-react";
 import { formatSydneyDate } from "@/lib/timezone";
 import { CONNECTION_STAGE, CONNECTION_STAGE_LABELS } from "@/lib/position/constants";
@@ -60,14 +60,14 @@ interface NannyPositionsClientProps {
   upcomingIntros?: UpcomingIntro[];
   dfyNotificationsInitial?: DfyNotification[];
   shareUnlocked?: boolean;
-  cardsLocked?: boolean;
-  onLockedCardClick?: () => void;
+  embedded?: boolean;
 }
 
 function getStageBadge(stage: number, fillInitiatedBy?: string | null, trialDate?: string | null): { label: string; color: string } {
   switch (stage) {
     case CONNECTION_STAGE.REQUEST_SENT:
       return { label: "New Request", color: "bg-amber-100 text-amber-700" };
+    case CONNECTION_STAGE.ACCEPTED_PENDING:
     case CONNECTION_STAGE.ACCEPTED:
       return { label: "Scheduling", color: "bg-blue-100 text-blue-700" };
     case CONNECTION_STAGE.INTRO_SCHEDULED:
@@ -98,7 +98,7 @@ function getStageBadge(stage: number, fillInitiatedBy?: string | null, trialDate
   }
 }
 
-export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotificationsInitial = [], shareUnlocked = false, cardsLocked = false, onLockedCardClick }: NannyPositionsClientProps) {
+export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotificationsInitial = [], shareUnlocked = false, embedded = false }: NannyPositionsClientProps) {
   const router = useRouter();
   const active = placements.filter((p) => p.status === "active");
   const past = placements.filter((p) => p.status !== "active");
@@ -170,8 +170,14 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
   const activeConnections = upcomingIntros.filter(
     (i) => i.connectionStage !== CONNECTION_STAGE.REQUEST_SENT &&
            i.connectionStage !== CONNECTION_STAGE.NOT_HIRED &&
+           i.connectionStage !== CONNECTION_STAGE.NANNY_APPLIED &&
+           i.connectionStage !== CONNECTION_STAGE.NANNY_APPLIED_PENDING &&
            i.source !== 'dfy' &&
            !(i.positionId && activePlacementPositionIds.has(i.positionId))
+  );
+  const nannyAppliedIntros = upcomingIntros.filter(
+    (i) => i.connectionStage === CONNECTION_STAGE.NANNY_APPLIED ||
+           i.connectionStage === CONNECTION_STAGE.NANNY_APPLIED_PENDING
   );
   const [dismissing, setDismissing] = useState<string | null>(null);
 
@@ -265,12 +271,14 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
   return (
     <div className="space-y-6">
       {/* ═══ UNIFIED CARD — mirrors parent hub "Nannies" card ═══ */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        {/* Card header */}
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="h-5 w-5 text-violet-600" />
-          <p className="text-base font-semibold text-slate-800">Families</p>
-        </div>
+      <div className={embedded ? "p-4 pt-3" : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"}>
+        {/* Card header — hidden when embedded inside parent card */}
+        {!embedded && (
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-violet-600" />
+            <p className="text-base font-semibold text-slate-800">Families</p>
+          </div>
+        )}
 
         {/* ── My Positions (active placements) ── */}
         {active.length > 0 && (
@@ -282,16 +290,9 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
             {active.map((placement) => (
               <div
                 key={placement.id}
-                className={`relative flex items-center gap-3 px-4 py-3.5 cursor-pointer ${cardsLocked ? "" : "hover:bg-slate-50/80"} transition-colors group`}
-                onClick={cardsLocked ? onLockedCardClick : () => setActivePlacementId(placement.id)}
+                className="relative flex items-center gap-3 px-4 py-3.5 cursor-pointer hover:bg-slate-50/80 transition-colors group"
+                onClick={() => setActivePlacementId(placement.id)}
               >
-                {cardsLocked && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
-                      <Lock className="h-4 w-4 text-slate-400" />
-                    </div>
-                  </div>
-                )}
                 {/* Avatar */}
                 {placement.parentPhoto ? (
                   <img
@@ -877,16 +878,9 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
             {introRequests.map((intro) => (
               <Card
                 key={intro.connectionId}
-                className={`relative border-amber-200 bg-amber-50/50 cursor-pointer ${cardsLocked ? "" : "hover:bg-amber-50 hover:border-amber-300"} transition-colors`}
-                onClick={cardsLocked ? onLockedCardClick : () => setSelectedIntro(intro)}
+                className="relative border-amber-200 bg-amber-50/50 cursor-pointer hover:bg-amber-50 hover:border-amber-300 transition-colors"
+                onClick={() => setSelectedIntro(intro)}
               >
-                {cardsLocked && (
-                  <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none rounded-xl">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
-                      <Lock className="h-4 w-4 text-slate-400" />
-                    </div>
-                  </div>
-                )}
                 <CardContent className="py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -979,14 +973,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                 const parentSurname = notification.parent.lastName;
 
                 return (
-                  <Card key={notification.id} className={`relative border-violet-200 bg-violet-50/30 ${cardsLocked ? "cursor-pointer" : ""}`} onClick={cardsLocked ? onLockedCardClick : undefined}>
-                    {cardsLocked && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none rounded-xl">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
-                          <Lock className="h-4 w-4 text-slate-400" />
-                        </div>
-                      </div>
-                    )}
+                  <Card key={notification.id} className="relative border-violet-200 bg-violet-50/30">
                     <CardContent className="py-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3">
@@ -1073,7 +1060,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                       })()}
 
                       {/* ── Step 1: "I'm interested" button ── */}
-                      {!cardsLocked && !isPending && !isLocallyInterested && (
+                      {!isPending && !isLocallyInterested && (
                         <Button
                           size="sm"
                           onClick={() => {
@@ -1090,7 +1077,7 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                       )}
 
                       {/* ── Step 2: Inline AvailabilityGrid (same as regular connections) ── */}
-                      {!cardsLocked && !isPending && isLocallyInterested && (
+                      {!isPending && isLocallyInterested && (
                         <AvailabilityGrid
                           submitting={isResponding}
                           onBack={() => setDfyInterestedId(null)}
@@ -1118,16 +1105,9 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                 return (
                   <div
                     key={intro.connectionId}
-                    className={`relative rounded-lg border border-slate-100 bg-white p-3 cursor-pointer ${cardsLocked ? "" : "hover:bg-violet-50 hover:border-violet-200"} transition-colors`}
-                    onClick={cardsLocked ? onLockedCardClick : () => setSelectedIntro(intro)}
+                    className="relative rounded-lg border border-slate-100 bg-white p-3 cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition-colors"
+                    onClick={() => setSelectedIntro(intro)}
                   >
-                    {cardsLocked && (
-                      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 shadow-sm">
-                          <Lock className="h-4 w-4 text-slate-400" />
-                        </div>
-                      </div>
-                    )}
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {intro.otherPartyPhoto ? (
@@ -1173,6 +1153,57 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Applications ── */}
+        {nannyAppliedIntros.length > 0 && (
+          <div className="mt-6 pt-5 border-t border-slate-100">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
+              Applications ({nannyAppliedIntros.length})
+            </p>
+            <div className="space-y-2">
+              {nannyAppliedIntros.map((intro) => (
+                <div
+                  key={intro.connectionId}
+                  className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-3 py-3 cursor-pointer hover:bg-violet-50 hover:border-violet-200 transition-colors"
+                  onClick={() => setSelectedIntro(intro)}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {intro.otherPartyPhoto ? (
+                      <img
+                        src={intro.otherPartyPhoto}
+                        alt=""
+                        className="h-9 w-9 rounded-full object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-50 shrink-0">
+                        <span className="text-xs font-semibold text-violet-600">
+                          {intro.otherPartyName.charAt(0)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {intro.otherPartyName}
+                      </p>
+                      {intro.otherPartySuburb && (
+                        <span className="flex items-center gap-1 text-xs text-slate-500">
+                          <MapPin className="h-3 w-3" />
+                          {intro.otherPartySuburb}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <span className="rounded-full bg-violet-100 text-violet-700 px-2.5 py-1 text-xs font-medium">
+                      Applied
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-slate-300" />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -30,11 +30,15 @@ function getIntermediaryText(
   trialDate?: string | null,
 ): string {
   if (checkpoint === "Connect") {
+    if (stage === CONNECTION_STAGE.NANNY_APPLIED || stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING)
+      return role === "nanny"
+        ? "Applied"
+        : "A nanny has applied to your position";
     if (stage === CONNECTION_STAGE.REQUEST_SENT)
       return role === "parent"
         ? "We're reaching out to your potential nanny"
         : "A family has sent you a connection request";
-    if (stage === CONNECTION_STAGE.ACCEPTED)
+    if (stage === CONNECTION_STAGE.ACCEPTED || stage === CONNECTION_STAGE.ACCEPTED_PENDING)
       return role === "parent"
         ? "They accepted! Pick a time for your meet and greet"
         : "Accepted! The family will arrange a meet and greet";
@@ -92,6 +96,7 @@ interface ConnectionProgressProps {
   fillInitiatedBy?: string | null;
   trialDate?: string | null;
   confirmedTime?: string | null;
+  hideMatchmaking?: boolean;
 }
 
 export function ConnectionProgress({
@@ -100,8 +105,11 @@ export function ConnectionProgress({
   fillInitiatedBy,
   trialDate,
   confirmedTime,
+  hideMatchmaking = false,
 }: ConnectionProgressProps) {
-  const visible = CHECKPOINTS;
+  const visible = hideMatchmaking
+    ? CHECKPOINTS.filter(cp => cp.label !== "Matchmaking")
+    : CHECKPOINTS;
 
   const getState = (i: number): "completed" | "current" | "future" => {
     const cp = visible[i];

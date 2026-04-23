@@ -2548,6 +2548,7 @@ interface PositionSummary {
   placementLength: string | null;
   reasonForNanny: string[] | null;
   languagePreference: string | null;
+  languagePreferenceDetails: string | null;
   qualificationRequirement: string | null;
   certificateRequirements: string[] | null;
   vaccinationRequired: boolean | null;
@@ -2558,6 +2559,12 @@ interface PositionSummary {
   otherRequirements: string | null;
   suburb: string | null;
   description: string | null;
+  yearsOfExperience: number | null;
+  focusType: string | null;
+  supportType: string | null;
+  childNeeds: boolean;
+  childNeedsDetails: string | null;
+  source: string | null;
 }
 
 /** Note: "intro" in code = "Meet and Greet" in user-facing UI */
@@ -2604,6 +2611,9 @@ export async function getNannyUpcomingIntros(): Promise<{
     .eq('nanny_id', nannyInfo.nannyId)
     .in('connection_stage', [
       CONNECTION_STAGE.REQUEST_SENT,
+      CONNECTION_STAGE.NANNY_APPLIED_PENDING,
+      CONNECTION_STAGE.NANNY_APPLIED,
+      CONNECTION_STAGE.ACCEPTED_PENDING,
       CONNECTION_STAGE.ACCEPTED,
       CONNECTION_STAGE.INTRO_SCHEDULED,
       CONNECTION_STAGE.INTRO_COMPLETE,
@@ -2640,13 +2650,20 @@ export async function getNannyUpcomingIntros(): Promise<{
   // Fetch position data for connections that have a position_id
   const positionIds = Array.from(new Set(connections.map(c => c.position_id).filter(Boolean)));
   const positionMap = new Map<string, PositionSummary>();
+  const positionDisplayNameMap = new Map<string, string>();
   if (positionIds.length > 0) {
     const { data: positions } = await adminClient
       .from('nanny_positions')
-      .select('id, schedule_type, hours_per_week, days_required, level_of_support, hourly_rate, urgency, start_date, placement_length, reason_for_nanny, language_preference, qualification_requirement, certificate_requirements, vaccination_required, drivers_license_required, car_required, comfortable_with_pets_required, non_smoker_required, other_requirements_details, description, parent_id, suburb')
+      .select('id, schedule_type, hours_per_week, days_required, level_of_support, hourly_rate, urgency, start_date, placement_length, reason_for_nanny, language_preference, language_preference_details, qualification_requirement, certificate_requirements, vaccination_required, drivers_license_required, car_required, comfortable_with_pets_required, non_smoker_required, other_requirements_details, description, parent_id, suburb, family_display_name, years_of_experience, details, source')
       .in('id', positionIds);
 
     if (positions) {
+      // Build display-name fallback map for admin-created positions
+      for (const pos of positions) {
+        if (pos.family_display_name) {
+          positionDisplayNameMap.set(pos.id, pos.family_display_name);
+        }
+      }
       // Fetch children for all positions
       const { data: allChildren } = await adminClient
         .from('position_children')
@@ -2672,6 +2689,7 @@ export async function getNannyUpcomingIntros(): Promise<{
       );
 
       for (const pos of positions) {
+        const details = pos.details as Record<string, unknown> | null;
         positionMap.set(pos.id, {
           scheduleType: pos.schedule_type,
           hoursPerWeek: pos.hours_per_week,
@@ -2685,6 +2703,7 @@ export async function getNannyUpcomingIntros(): Promise<{
           placementLength: pos.placement_length,
           reasonForNanny: pos.reason_for_nanny,
           languagePreference: pos.language_preference,
+          languagePreferenceDetails: pos.language_preference_details ?? null,
           qualificationRequirement: pos.qualification_requirement,
           certificateRequirements: pos.certificate_requirements,
           vaccinationRequired: pos.vaccination_required,
@@ -2695,6 +2714,12 @@ export async function getNannyUpcomingIntros(): Promise<{
           otherRequirements: pos.other_requirements_details,
           suburb: pos.suburb || null,
           description: pos.description,
+          yearsOfExperience: pos.years_of_experience ? Number(pos.years_of_experience) : null,
+          focusType: (details?.focus_type as string) ?? null,
+          supportType: (details?.support_type as string) ?? null,
+          childNeeds: !!(details?.child_needs),
+          childNeedsDetails: (details?.child_needs_details as string) ?? null,
+          source: pos.source ?? null,
         });
       }
     }
@@ -2703,11 +2728,19 @@ export async function getNannyUpcomingIntros(): Promise<{
   const result: UpcomingIntro[] = connections.map(c => {
     const parent = parentMap.get(c.parent_id);
     const profile = parent ? profileMap.get(parent.user_id) : null;
+    const isSelfReference = parent?.user_id === nannyInfo.userId;
+    const displayName = c.position_id ? positionDisplayNameMap.get(c.position_id) : null;
+    // Prefer family_display_name when set, or when parent resolves to nanny's own profile
+    const otherPartyName = displayName
+      ? displayName
+      : (profile?.last_name && !isSelfReference)
+        ? `${profile.last_name} Family`
+        : 'Family';
     return {
       connectionId: c.id,
-      otherPartyName: profile ? `${profile.last_name} Family` : 'Unknown',
+      otherPartyName,
       otherPartySuburb: (c.position_id ? positionMap.get(c.position_id)?.suburb : null) || '',
-      otherPartyPhoto: profile?.profile_picture_url || null,
+      otherPartyPhoto: isSelfReference ? null : (profile?.profile_picture_url || null),
       confirmedTime: c.confirmed_time || '',
       connectionStage: c.connection_stage,
       fillInitiatedBy: c.fill_initiated_by ?? null,

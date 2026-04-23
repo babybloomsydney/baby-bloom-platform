@@ -39,7 +39,10 @@ export const CONNECTION_STAGE = {
   REQUEST_EXPIRED: 1,
   DECLINED: 2,
   REQUEST_CANCELLED: 3,
+  NANNY_APPLIED_PENDING: 4,  // Held application — nanny applied at level 3
+  NANNY_APPLIED: 5,
   // 10-19: Scheduling
+  ACCEPTED_PENDING: 9,       // Held acceptance — nanny accepted/interested at level 3
   ACCEPTED: 10,
   SCHEDULE_EXPIRED: 11,
   // 20-29: Meet (user-facing: "Meet and Greet"; internal code still uses "intro")
@@ -96,6 +99,9 @@ export const CONNECTION_STAGE_LABELS: Record<ConnectionStage, string> = {
   [CONNECTION_STAGE.REQUEST_EXPIRED]: 'Request Expired',
   [CONNECTION_STAGE.DECLINED]: 'Declined',
   [CONNECTION_STAGE.REQUEST_CANCELLED]: 'Request Cancelled',
+  [CONNECTION_STAGE.NANNY_APPLIED_PENDING]: 'Applied',
+  [CONNECTION_STAGE.NANNY_APPLIED]: 'Applied',
+  [CONNECTION_STAGE.ACCEPTED_PENDING]: 'Accepted',
   [CONNECTION_STAGE.ACCEPTED]: 'Accepted',
   [CONNECTION_STAGE.SCHEDULE_EXPIRED]: 'Schedule Expired',
   [CONNECTION_STAGE.INTRO_SCHEDULED]: 'Meet Scheduled',
@@ -119,6 +125,9 @@ export const CONNECTION_STAGE_LABELS: Record<ConnectionStage, string> = {
 /** Connection stages visible in nanny's My Positions */
 export const VISIBLE_CONNECTION_STAGES: ConnectionStage[] = [
   CONNECTION_STAGE.REQUEST_SENT,
+  CONNECTION_STAGE.NANNY_APPLIED_PENDING,
+  CONNECTION_STAGE.NANNY_APPLIED,
+  CONNECTION_STAGE.ACCEPTED_PENDING,
   CONNECTION_STAGE.ACCEPTED,
   CONNECTION_STAGE.INTRO_SCHEDULED,
   CONNECTION_STAGE.INTRO_COMPLETE,

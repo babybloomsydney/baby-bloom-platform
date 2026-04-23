@@ -32,19 +32,21 @@ type StatusFilter = "all" | "id_stage" | "wwcc_stage" | "verified" | "rejected";
 
 // ── Level badge variant ──
 
-function getLevelVariant(level: number | null): "inactive" | "pending" | "active" | "verified" {
+function getLevelVariant(level: number | null): "inactive" | "pending" | "active" | "verified" | "info" {
   if (level === null) return "inactive";
   if (level === 0) return "inactive";
-  if (level <= 2) return "pending";
+  if (level === 1) return "pending";
+  if (level === 2) return "info";
   if (level === 3) return "active";
   return "verified";
 }
 
 // ── Status badge variant ──
 
-function getStatusVariant(status: number | null): "unattempted" | "pending" | "failed" | "verified" | "active" {
+function getStatusVariant(status: number | null): "unattempted" | "pending" | "failed" | "verified" | "active" | "info" {
   if (status === null) return "unattempted";
   if (status === 0) return "unattempted";
+  if (status === 20) return "info";
   if (status === 12 || status === 22 || status === 23 || status === 26 || status === 27 || status === 28) return "failed";
   if (status === 30) return "active";
   if (status === 40) return "verified";

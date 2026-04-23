@@ -5,7 +5,174 @@ import { getNannyPlacements, getNannyUpcomingIntros } from '@/lib/actions/positi
 import { getNannyBabysittingJobs } from '@/lib/actions/babysitting';
 import { getDfyNotificationsForNanny } from '@/lib/actions/matching';
 import { getVerificationData } from '@/lib/actions/verification';
-import { NannyHubClient, type NannyProfileAccordionData } from './NannyHubClient';
+import { NannyHubClient, type NannyProfileAccordionData, type NannyApplication } from './NannyHubClient';
+import type { OpenPosition } from './jobs/NannyJobsView';
+import { CONNECTION_STAGE } from '@/lib/position/constants';
+import type { ChildClient } from '@/types/bapp';
+
+async function fetchOpenPositions(): Promise<OpenPosition[]> {
+  const admin = createAdminClient();
+
+  const { data: positions, error } = await admin
+    .from('nanny_positions')
+    .select('id, suburb, schedule_type, hourly_rate, hours_per_week, source, created_at, days_required, details')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+
+  if (error || !positions) return [];
+
+  // Batch-fetch children for all positions
+  const positionIds = positions.map(p => p.id);
+  const { data: allChildren } = await admin
+    .from('position_children')
+    .select('position_id, age_months, gender')
+    .in('position_id', positionIds)
+    .order('display_order', { ascending: true });
+
+  const childrenByPosition = new Map<string, Array<{ age_months: number; gender: string | null }>>();
+  for (const child of allChildren ?? []) {
+    const list = childrenByPosition.get(child.position_id) ?? [];
+    list.push({ age_months: child.age_months, gender: child.gender });
+    childrenByPosition.set(child.position_id, list);
+  }
+
+  // Batch-fetch schedules for AI/admin positions
+  const adminPositionIds = positions.filter(p => p.source && p.source !== 'parent').map(p => p.id);
+  const scheduleByPosition = new Map<string, Record<string, string[]>>();
+  if (adminPositionIds.length > 0) {
+    const { data: schedules } = await admin
+      .from('position_schedule')
+      .select('position_id, schedule')
+      .in('position_id', adminPositionIds);
+
+    for (const row of schedules ?? []) {
+      if (row.schedule) {
+        scheduleByPosition.set(row.position_id, row.schedule as Record<string, string[]>);
+      }
+    }
+  }
+
+  const DAY_ROSTER_FIELD: Record<string, string> = {
+    Monday: 'monday_roster', Tuesday: 'tuesday_roster', Wednesday: 'wednesday_roster',
+    Thursday: 'thursday_roster', Friday: 'friday_roster', Saturday: 'saturday_roster', Sunday: 'sunday_roster',
+  };
+
+  return positions.map(pos => {
+    let weeklyRoster: string[] = [];
+    const rosterByDay: Record<string, string[]> = {};
+
+    if (pos.source && pos.source !== 'parent') {
+      // AI/admin — read from position_schedule
+      const schedule = scheduleByPosition.get(pos.id);
+      if (schedule) {
+        for (const [day, brackets] of Object.entries(schedule)) {
+          const titleDay = day.charAt(0).toUpperCase() + day.slice(1);
+          weeklyRoster.push(titleDay);
+          rosterByDay[titleDay] = brackets;
+        }
+      } else {
+        weeklyRoster = pos.days_required ?? [];
+      }
+    } else {
+      // Parent — read from form_data
+      const details = pos.details as Record<string, unknown> | null;
+      const formData = (details?.form_data ?? {}) as Record<string, unknown>;
+      weeklyRoster = (formData.weekly_roster as string[]) ?? pos.days_required ?? [];
+      for (const day of weeklyRoster) {
+        const field = DAY_ROSTER_FIELD[day];
+        if (field && formData[field]) {
+          rosterByDay[day] = formData[field] as string[];
+        }
+      }
+    }
+
+    return {
+      id: pos.id,
+      suburb: pos.suburb,
+      schedule_type: pos.schedule_type,
+      hourly_rate: pos.hourly_rate ? Number(pos.hourly_rate) : null,
+      hours_per_week: pos.hours_per_week,
+      source: pos.source ?? null,
+      created_at: pos.created_at,
+      children: childrenByPosition.get(pos.id) ?? [],
+      weekly_roster: weeklyRoster,
+      roster_by_day: rosterByDay,
+    };
+  });
+}
+
+async function fetchNannyApplications(nannyId: string, currentUserId: string): Promise<NannyApplication[]> {
+  const admin = createAdminClient();
+
+  // Get stage 4 (pending) and stage 5 (applied) connection requests for this nanny
+  const { data: applications, error } = await admin
+    .from('connection_requests')
+    .select('id, position_id, created_at')
+    .eq('nanny_id', nannyId)
+    .in('connection_stage', [CONNECTION_STAGE.NANNY_APPLIED_PENDING, CONNECTION_STAGE.NANNY_APPLIED])
+    .order('created_at', { ascending: false });
+
+  if (error || !applications || applications.length === 0) return [];
+
+  // Get position details (suburb + parent info)
+  const positionIds = applications.map(a => a.position_id).filter(Boolean) as string[];
+  if (positionIds.length === 0) return [];
+
+  const { data: positions } = await admin
+    .from('nanny_positions')
+    .select('id, suburb, parent_id, family_display_name, source')
+    .in('id', positionIds);
+
+  if (!positions) return [];
+
+  // Get parent names for parent-sourced positions
+  const parentIds = positions.filter(p => !p.source || p.source === 'parent').map(p => p.parent_id);
+  const parentNameMap = new Map<string, string>();
+  if (parentIds.length > 0) {
+    const { data: parents } = await admin
+      .from('parents')
+      .select('id, user_id')
+      .in('id', parentIds);
+
+    if (parents && parents.length > 0) {
+      const userIds = parents.map(p => p.user_id);
+      const { data: profiles } = await admin
+        .from('user_profiles')
+        .select('user_id, last_name, first_name')
+        .in('user_id', userIds);
+
+      if (profiles) {
+        const profileMap = new Map(profiles.map(p => [p.user_id, p]));
+        for (const parent of parents) {
+          // Skip if parent resolves to the nanny's own user (dual role)
+          if (parent.user_id === currentUserId) continue;
+          const profile = profileMap.get(parent.user_id);
+          if (profile) {
+            parentNameMap.set(parent.id, profile.last_name ? `${profile.last_name} Family` : `${profile.first_name}'s Family`);
+          }
+        }
+      }
+    }
+  }
+
+  const positionMap = new Map(positions.map(p => [p.id, p]));
+
+  return applications
+    .filter(a => a.position_id && positionMap.has(a.position_id))
+    .map(a => {
+      const pos = positionMap.get(a.position_id!)!;
+      const familyName = pos.family_display_name
+        ?? parentNameMap.get(pos.parent_id)
+        ?? 'Family';
+      return {
+        id: a.id,
+        positionId: a.position_id!,
+        familyName,
+        suburb: pos.suburb,
+        createdAt: a.created_at,
+      };
+    });
+}
 
 export default async function NannyHubPage() {
   const supabase = createClient();
@@ -22,8 +189,8 @@ export default async function NannyHubPage() {
 
   const nannyId = nannyRes.data?.id;
 
-  // Phase 2: all data for both tabs + accordion availability
-  const [placementsRes, introsRes, bsrRes, dfyRes, verificationRes, availRes, credsRes] = await Promise.all([
+  // Phase 2: all data for both tabs + accordion availability + open positions + applications + education children
+  const [placementsRes, introsRes, bsrRes, dfyRes, verificationRes, availRes, credsRes, openPositions, nannyApplications, educationChildrenRes] = await Promise.all([
     getNannyPlacements(),
     getNannyUpcomingIntros(),
     getNannyBabysittingJobs(),
@@ -35,6 +202,9 @@ export default async function NannyHubPage() {
     nannyId
       ? admin.from('nanny_credentials').select('credential_category, qualification_type, certification_type').eq('nanny_id', nannyId)
       : Promise.resolve({ data: null }),
+    fetchOpenPositions(),
+    nannyId ? fetchNannyApplications(nannyId, user.id) : Promise.resolve([]),
+    admin.from('child_client').select('*').eq('nanny_user_id', user.id).eq('under_three', true).order('created_at', { ascending: true }),
   ]);
 
   const shareUnlocked = nannyRes.data?.visible_in_bsr === true;
@@ -92,10 +262,13 @@ export default async function NannyHubPage() {
         placements={placementsRes.data || []}
         upcomingIntros={introsRes.data || []}
         dfyNotifications={dfyRes.data || []}
+        openPositions={openPositions}
+        nannyApplications={nannyApplications}
         babysittingJobs={bsrRes.data || []}
         bsrBanned={bsrRes.banned || false}
         bsrBanUntil={bsrRes.banUntil || null}
         shareUnlocked={shareUnlocked}
+        educationChildren={(educationChildrenRes.data ?? []) as ChildClient[]}
       />
     </div>
   );

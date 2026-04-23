@@ -815,6 +815,7 @@ export const MOCK_ADMIN_WWCC_CHECKS: PendingWWCCCheck[] = [
     last_name: "Taylor",
     email: "emma@example.com",
     profile_picture_url: null,
+    wwcc_ocg_submitted_at: null,
   },
 ];
 

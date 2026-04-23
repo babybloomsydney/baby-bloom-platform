@@ -10,6 +10,7 @@ import {
   Pencil,
   MapPin,
   ShieldCheck,
+  ShieldAlert,
   Car,
   Baby,
   Globe,
@@ -34,10 +35,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NannyPositionsClient, type Placement } from "./positions/NannyPositionsClient";
+import { NannyJobsView, type OpenPosition } from "./jobs/NannyJobsView";
 import { NannyBabysittingClient } from "./babysitting/NannyBabysittingClient";
 import type { NannyBabysittingJob } from "@/lib/actions/babysitting";
 import type { UpcomingIntro } from "@/lib/actions/position-funnel";
 import type { DfyNotification } from "@/lib/actions/matching";
+import { ChildCardGrid } from "@/components/bapp/ChildCardGrid";
+import type { ChildClient } from "@/types/bapp";
 import {
   Dialog,
   DialogContent,
@@ -90,6 +94,14 @@ export interface NannyProfileAccordionData {
   additional_needs: boolean;
 }
 
+export interface NannyApplication {
+  id: string;
+  positionId: string;
+  familyName: string;
+  suburb: string | null;
+  createdAt: string;
+}
+
 interface NannyHubClientProps {
   firstName: string;
   lastName: string;
@@ -100,15 +112,18 @@ interface NannyHubClientProps {
   placements: Placement[];
   upcomingIntros: UpcomingIntro[];
   dfyNotifications: DfyNotification[];
+  openPositions: OpenPosition[];
+  nannyApplications: NannyApplication[];
   babysittingJobs: NannyBabysittingJob[];
   bsrBanned: boolean;
   bsrBanUntil: string | null;
   shareUnlocked: boolean;
+  educationChildren: ChildClient[];
 }
 
 // ── Tab definitions ──────────────────────────────────────────────────────────
 
-type MainTabId = "verification" | "nannying" | "babysitting";
+type MainTabId = "verification" | "nannying" | "babysitting" | "education";
 
 const PROFILE_TABS = [
   { id: "about" as const, label: "About" },
@@ -130,20 +145,22 @@ export function NannyHubClient({
   placements,
   upcomingIntros,
   dfyNotifications,
+  openPositions,
+  nannyApplications,
   babysittingJobs,
   bsrBanned,
   bsrBanUntil,
   shareUnlocked,
+  educationChildren,
 }: NannyHubClientProps) {
   // ── Verification locking ──
   const isTabsLocked = verificationLevel < 3;
-  const isCardsLocked = verificationLevel < 4;
 
   const [activeTab, setActiveTab] = useState<MainTabId>(isTabsLocked ? "verification" : "nannying");
+  const [nannySubTab, setNannySubTab] = useState<"jobs" | "connections">("jobs");
   const [profileExpanded, setProfileExpanded] = useState(false);
   const [profileTab, setProfileTab] = useState<ProfileTabId>("about");
   const [showTabLockedModal, setShowTabLockedModal] = useState(false);
-  const [showCardLockedModal, setShowCardLockedModal] = useState(false);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
 
@@ -153,6 +170,34 @@ export function NannyHubClient({
 
   // Verification — numeric level (1-4), badge shows at 3+
   const isVerified = verificationLevel >= 3;
+
+  // Dynamic verification banner — only shows when action is required (not during processing/review)
+  const verificationBanner = (() => {
+    if (isVerified) return null;
+
+    // No verifications row at all — hasn't started
+    if (!verificationData)
+      return 'Verify your account to connect with families';
+
+    const { identity_status, wwcc_status, contact_status } = verificationData;
+
+    // Failed/rejected states — action required
+    if (['failed', 'rejected'].includes(identity_status))
+      return 'Your ID verification needs attention — review and resubmit';
+    if (['failed', 'rejected', 'ocg_not_found', 'expired', 'closed'].includes(wwcc_status))
+      return 'Your WWCC verification needs attention — review and resubmit';
+
+    // Not started states — prompt to begin
+    if (contact_status !== 'saved' && contact_status !== 'verified')
+      return 'Verify your address to start connecting with families';
+    if (['not_started'].includes(identity_status))
+      return 'Upload your ID to get verified and connect with families';
+    if (['not_started'].includes(wwcc_status))
+      return 'Submit your WWCC to complete verification';
+
+    // Processing/pending/review — no banner (waiting on us, not them)
+    return null;
+  })();
 
   // ── AI content extraction (new V2 field paths) ──
   const bioSummary = ai?.bio_summary;
@@ -190,13 +235,30 @@ export function NannyHubClient({
   return (
     <>
       {/* ═══════════════════════════════════════════════════════════════════
+          VERIFICATION BANNER
+         ═══════════════════════════════════════════════════════════════════ */}
+      {verificationBanner && (
+        <Link href="/nanny/verification" className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 group hover:bg-amber-100 transition-colors">
+          <div className="flex items-center gap-3 min-w-0">
+            <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0" />
+            <p className="text-sm text-amber-800 font-medium truncate">{verificationBanner}</p>
+          </div>
+          <span className="text-xs font-semibold text-amber-700 bg-amber-200/60 px-3 py-1 rounded-full shrink-0 ml-3 group-hover:bg-amber-200 transition-colors">Verify Now</span>
+        </Link>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
           HERO CARD
          ═══════════════════════════════════════════════════════════════════ */}
       <div className="relative rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {isVerified && (
+        {isVerified ? (
           <span className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1 text-xs font-semibold text-green-700">
             <ShieldCheck className="h-3.5 w-3.5" /> Verified
           </span>
+        ) : (
+          <a href="/nanny/verification" className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors">
+            <ShieldAlert className="h-3.5 w-3.5" /> Unverified
+          </a>
         )}
         <div className="h-12 bg-gradient-to-br from-violet-50 to-violet-100/50" />
 
@@ -678,6 +740,7 @@ export function NannyHubClient({
           : [
               { id: "nannying" as MainTabId, label: "Nannying", locked: false },
               { id: "babysitting" as MainTabId, label: "Babysitting", locked: false },
+              { id: "education" as MainTabId, label: "Education", locked: false },
             ]
         ).map((tab) => {
           const isActive = activeTab === tab.id;
@@ -708,10 +771,54 @@ export function NannyHubClient({
         <VerificationSummaryTile verificationData={verificationData} />
       )}
       {activeTab === "nannying" && (
-        <NannyPositionsClient placements={placements} upcomingIntros={upcomingIntros} dfyNotificationsInitial={dfyNotifications} shareUnlocked={shareUnlocked} cardsLocked={isCardsLocked} onLockedCardClick={() => setShowCardLockedModal(true)} />
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {/* Sub-tab toggle */}
+          <div className="px-4 pt-3 pb-0">
+            <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
+              {([
+                { id: "jobs" as const, label: "Jobs" },
+                { id: "connections" as const, label: "Connections" },
+              ]).map((tab) => {
+                const isActive = nannySubTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setNannySubTab(tab.id)}
+                    className={cn(
+                      "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
+                      isActive
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Subtab content */}
+          {nannySubTab === "jobs" && (
+            <div className="p-4">
+              <NannyJobsView
+                positions={openPositions}
+                appliedPositionIds={new Set(nannyApplications.map(a => a.positionId))}
+              />
+            </div>
+          )}
+          {nannySubTab === "connections" && (
+            <NannyPositionsClient placements={placements} upcomingIntros={upcomingIntros} dfyNotificationsInitial={dfyNotifications} shareUnlocked={shareUnlocked} embedded />
+          )}
+        </div>
       )}
       {activeTab === "babysitting" && (
-        <NannyBabysittingClient jobs={babysittingJobs} banned={bsrBanned} banUntil={bsrBanUntil} hideHeader shareUnlocked={shareUnlocked} cardsLocked={isCardsLocked} onLockedCardClick={() => setShowCardLockedModal(true)} />
+        <NannyBabysittingClient jobs={babysittingJobs} banned={bsrBanned} banUntil={bsrBanUntil} hideHeader shareUnlocked={shareUnlocked} />
+      )}
+      {activeTab === "education" && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <ChildCardGrid children={educationChildren} role="nanny" />
+        </div>
       )}
 
       {/* Tab-locked modal */}
@@ -732,26 +839,6 @@ export function NannyHubClient({
                 <ShieldCheck className="h-4 w-4 mr-1.5" />
                 Verify Now
               </Link>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Card-locked modal (WWCC/OCG pending) */}
-      <Dialog open={showCardLockedModal} onOpenChange={setShowCardLockedModal}>
-        <DialogContent className="sm:max-w-sm">
-          <div className="flex flex-col items-center gap-4 py-2 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 ring-1 ring-amber-200">
-              <ShieldCheck className="h-6 w-6 text-amber-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">Verification in progress</h3>
-              <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
-                Although you have passed your automatic verification, we are yet to receive confirmation of your WWCC from The Office of the Children&apos;s Guardian (OCG). Once your WWCC is given the all clear we will be able to connect you with families. Check back soon! Thank you for your patience.
-              </p>
-            </div>
-            <Button className="w-full" onClick={() => setShowCardLockedModal(false)}>
-              OK
             </Button>
           </div>
         </DialogContent>

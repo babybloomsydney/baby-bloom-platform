@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-type StatusVariant = "pending" | "active" | "verified" | "inactive" | "failed" | "unattempted";
+type StatusVariant = "pending" | "active" | "verified" | "inactive" | "failed" | "unattempted" | "info";
 
 interface StatusBadgeProps {
   variant: StatusVariant;
@@ -15,6 +15,7 @@ const variantStyles: Record<StatusVariant, string> = {
   inactive: "bg-gray-100 text-gray-800",
   failed: "bg-red-100 text-red-800",
   unattempted: "bg-slate-100 text-slate-600",
+  info: "bg-blue-100 text-blue-800",
 };
 
 export function StatusBadge({ variant, children, className }: StatusBadgeProps) {

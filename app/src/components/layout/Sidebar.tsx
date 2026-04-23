@@ -67,6 +67,7 @@ const parentNavItems = [
 const adminNavItems = [
   { href: "/admin/dashboard", icon: Home, label: "Dashboard" },
   { href: "/admin/pipeline", icon: Filter, label: "User Pipeline" },
+  { href: "/admin/positions", icon: Briefcase, label: "Positions" },
   { href: "/admin/users", icon: Users, label: "User Management" },
   { href: "/admin/verification-reference", icon: BookOpen, label: "Verification Ref" },
   { href: "/admin/analytics", icon: BarChart3, label: "Analytics" },

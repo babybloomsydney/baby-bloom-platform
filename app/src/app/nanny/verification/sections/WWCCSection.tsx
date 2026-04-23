@@ -356,24 +356,38 @@ export function WWCCSection({ verification, identityVerified, onSaved }: WWCCSec
         {needsAction && !verification?.wwcc_user_guidance && status !== "review" && (
           <div className="space-y-3">
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700 space-y-1">
-              <p className="font-semibold text-amber-800">WWCC verification was not successful</p>
+              <p className="font-semibold text-amber-800">We couldn&apos;t verify your WWCC</p>
               <p>
-                {status === "ocg_not_found" ? "Your WWCC number could not be found in the OCG register. Please double-check your details."
-                  : status === "closed" ? "This WWCC clearance has been closed. Please contact the Office of the Children\u2019s Guardian."
-                  : status === "expired" ? "Your WWCC has expired. Please renew it before continuing."
-                  : status === "application_pending" ? "Your WWCC application is still pending with the Office of the Children\u2019s Guardian."
-                  : "Please re-upload your WWCC documents or try a different verification method."}
+                {status === "ocg_not_found" ? "We weren\u2019t able to find your WWCC number in the OCG register. Please double-check your details and try again."
+                  : status === "closed" ? "It looks like this WWCC clearance has been closed. You may need to contact the Office of the Children\u2019s Guardian for more information."
+                  : status === "expired" ? "Your WWCC has expired. You\u2019ll need to renew it before we can continue with verification."
+                  : status === "application_pending" ? "It looks like your WWCC application is still being processed by the Office of the Children\u2019s Guardian. You can try again once it\u2019s been approved."
+                  : "No worries \u2014 you can try uploading again or enter your details manually instead."}
               </p>
             </div>
             {!isBarred && (
-              <Button
-                type="button"
-                onClick={() => { setEditing(true); setWwccConfirmed(false); }}
-                className="bg-violet-600 hover:bg-violet-700 text-white"
-                size="sm"
-              >
-                Edit & Resubmit
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => { setEditing(true); setWwccConfirmed(false); }}
+                  variant="outline"
+                  size="sm"
+                >
+                  {verification?.wwcc_verification_method === "service_nsw_app"
+                    ? "Try a different screenshot"
+                    : verification?.wwcc_verification_method === "grant_email"
+                    ? "Try a different file"
+                    : "Edit & Resubmit"}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => { setMethod("manual_entry"); setEditing(true); setWwccConfirmed(false); }}
+                  size="sm"
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                >
+                  Enter details manually
+                </Button>
+              </div>
             )}
           </div>
         )}

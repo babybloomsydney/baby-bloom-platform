@@ -6,7 +6,9 @@ import { getDfyStatus } from "@/lib/actions/matching";
 import { getParentBabysittingRequests } from "@/lib/actions/babysitting";
 import { POSITION_STAGE } from "@/lib/position/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import { ParentHubClient } from "./ParentHubClient";
+import type { ChildClient } from "@/types/bapp";
 
 const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
 
@@ -35,13 +37,21 @@ export default async function ParentHubPage({
         .then(({ data }) => (data?.verification_level ?? 0) >= 1)
     : Promise.resolve(false);
 
-  const [placementResult, connectionsResult, introsResult, dfyStatusResult, bsrResult, parentVerified] = await Promise.all([
+  // Get auth user for education children query
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const admin = createAdminClient();
+
+  const [placementResult, connectionsResult, introsResult, dfyStatusResult, bsrResult, parentVerified, educationChildrenRes] = await Promise.all([
     getParentPlacement(),
     position?.id ? getConfirmedConnections(position.id) : Promise.resolve({ data: [], error: null }),
     getParentUpcomingIntros(),
     getDfyStatus(),
     getParentBabysittingRequests(),
     verificationPromise,
+    user
+      ? admin.from('child_client').select('*').eq('parent_user_id', user.id).eq('under_three', true).order('created_at', { ascending: true })
+      : Promise.resolve({ data: [] }),
   ]);
 
   const placement = placementResult.data;
@@ -84,6 +94,7 @@ export default async function ParentHubPage({
         initialTab={searchParams.t}
         initialSub={searchParams.s}
         initialView={searchParams.v}
+        educationChildren={(educationChildrenRes.data ?? []) as ChildClient[]}
       />
     </div>
   );

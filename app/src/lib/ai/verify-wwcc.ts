@@ -181,7 +181,7 @@ export async function verifyWWCC(
     }
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: 'gpt-5.4-nano',
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -196,7 +196,7 @@ export async function verifyWWCC(
         },
       ],
       response_format: { type: 'json_object' },
-      max_tokens: 2000,
+      max_completion_tokens: 2000,
     });
 
     const raw = completion.choices[0]?.message?.content?.trim();

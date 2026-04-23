@@ -87,7 +87,7 @@ async function expireStaleRequests(
 
   const query = supabase
     .from('connection_requests')
-    .select('id, parent_id, nanny_id, status')
+    .select('id, parent_id, nanny_id, status, connection_stage, source')
     .in('status', ['pending', 'accepted'])
     .lt('expires_at', now);
 
@@ -97,9 +97,21 @@ async function expireStaleRequests(
   const { data: stale } = await query;
 
   for (const req of stale ?? []) {
-    const expireStage = req.status === 'accepted'
-      ? CONNECTION_STAGE.SCHEDULE_EXPIRED
-      : CONNECTION_STAGE.REQUEST_EXPIRED;
+    // Determine correct expiry stage based on pending status
+    const isPendingApp = req.connection_stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING;
+    const isPendingAcceptDfy = req.connection_stage === CONNECTION_STAGE.ACCEPTED_PENDING && req.source === 'dfy';
+    const isPendingAcceptParent = req.connection_stage === CONNECTION_STAGE.ACCEPTED_PENDING && req.source !== 'dfy';
+
+    // Stage 4 and parent-initiated stage 9: expire to REQUEST_EXPIRED
+    // (from parent's perspective, nanny never responded)
+    let expireStage: number;
+    if (isPendingApp || isPendingAcceptParent) {
+      expireStage = CONNECTION_STAGE.REQUEST_EXPIRED;
+    } else {
+      expireStage = req.status === 'accepted'
+        ? CONNECTION_STAGE.SCHEDULE_EXPIRED
+        : CONNECTION_STAGE.REQUEST_EXPIRED;
+    }
 
     await supabase
       .from('connection_requests')
@@ -124,20 +136,26 @@ async function expireStaleRequests(
 
     const expiredStatus = req.status as string;
 
-    if (parentData) {
+    // Parent notification — skip for connections parent never saw
+    const skipParentNotification = isPendingApp || isPendingAcceptDfy;
+
+    if (parentData && !skipParentNotification) {
       await createInboxMessage({
         userId: parentData.user_id,
         type: 'connection_expired',
         title: 'Connection request expired',
-        body: expiredStatus === 'accepted'
-          ? 'Your accepted connection has expired because a meet and greet was not scheduled in time.'
-          : 'Your connection request has expired as the nanny did not respond in time.',
+        body: isPendingAcceptParent
+          ? 'Your connection request has expired as the nanny did not respond in time.'
+          : (expiredStatus === 'accepted'
+            ? 'Your accepted connection has expired because a meet and greet was not scheduled in time.'
+            : 'Your connection request has expired as the nanny did not respond in time.'),
         actionUrl: '/parent/connections',
         referenceId: req.id,
         referenceType: 'connection_request',
       });
     }
 
+    // Nanny notification — always sent
     if (nannyData) {
       await createInboxMessage({
         userId: nannyData.user_id,
@@ -322,6 +340,18 @@ export async function acceptConnectionRequest(
     return { success: false, error: 'Not authenticated as nanny' };
   }
 
+  // Check verification level (level 3+ can accept)
+  const { data: nannyVerData } = await adminClient
+    .from('nannies')
+    .select('verification_level')
+    .eq('id', nannyInfo.nannyId)
+    .single();
+
+  const verificationLevel = nannyVerData?.verification_level ?? 0;
+  if (verificationLevel < 3) {
+    return { success: false, error: 'Please complete verification to accept connections.' };
+  }
+
   // Validate available slots
   if (!availableSlots || availableSlots.length < 5) {
     return { success: false, error: 'Please select at least 5 available time slots.' };
@@ -370,12 +400,16 @@ export async function acceptConnectionRequest(
   // Parent has 72 hours to pick a time
   const newExpiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-  // Update request with available slots
+  // Update request — level 3 gets pending stage, level 4+ gets real stage
+  const acceptStage = verificationLevel >= 4
+    ? CONNECTION_STAGE.ACCEPTED
+    : CONNECTION_STAGE.ACCEPTED_PENDING;
+
   const { error: updateErr } = await adminClient
     .from('connection_requests')
     .update({
       status: 'accepted',
-      connection_stage: CONNECTION_STAGE.ACCEPTED,
+      connection_stage: acceptStage,
       proposed_times: availableSlots,
       responded_at: now,
       expires_at: newExpiresAt,
@@ -389,7 +423,7 @@ export async function acceptConnectionRequest(
     return { success: false, error: 'Failed to accept connection.' };
   }
 
-  funnelLog('accept', requestId, '0 → 10', { nannyId: nannyInfo.nannyId });
+  funnelLog('accept', requestId, verificationLevel >= 4 ? '0 → 10' : '0 → 9 (pending)', { nannyId: nannyInfo.nannyId });
 
   // Log event
   await logConnectionEvent({
@@ -410,7 +444,8 @@ export async function acceptConnectionRequest(
     .eq('id', request.parent_id)
     .single();
 
-  if (parentData) {
+  // Parent notifications — only at level 4+ (deferred for level 3)
+  if (parentData && verificationLevel >= 4) {
     // Inbox message for parent
     await createInboxMessage({
       userId: parentData.user_id,
@@ -444,7 +479,7 @@ export async function acceptConnectionRequest(
     }
   }
 
-  // Inbox message for nanny
+  // Inbox message for nanny — always sent immediately
   await createInboxMessage({
     userId: nannyInfo.userId,
     type: 'connection_accepted_nanny',
@@ -895,6 +930,7 @@ export async function getParentConnectionRequests(): Promise<{ data: ConnectionR
     .from('connection_requests')
     .select('*')
     .eq('parent_id', parentId)
+    .not('connection_stage', 'eq', CONNECTION_STAGE.NANNY_APPLIED_PENDING) // Hide pending applications
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -906,8 +942,27 @@ export async function getParentConnectionRequests(): Promise<{ data: ConnectionR
     return { data: [], error: null };
   }
 
+  // Filter and remap pending stages for parent view:
+  // - DFY stage 9: hide entirely (parent never saw it)
+  // - Parent-initiated stage 9: remap to stage 0 (parent sees "Request Sent")
+  const parentViewData = data
+    .filter(req => {
+      if (req.connection_stage === CONNECTION_STAGE.ACCEPTED_PENDING && req.source === 'dfy') return false;
+      return true;
+    })
+    .map(req => {
+      if (req.connection_stage === CONNECTION_STAGE.ACCEPTED_PENDING) {
+        return { ...req, connection_stage: CONNECTION_STAGE.REQUEST_SENT };
+      }
+      return req;
+    });
+
+  if (parentViewData.length === 0) {
+    return { data: [], error: null };
+  }
+
   // Fetch nanny details separately
-  const nannyIds = Array.from(new Set(data.map(r => r.nanny_id)));
+  const nannyIds = Array.from(new Set(parentViewData.map(r => r.nanny_id)));
 
   const { data: nannies } = await adminClient
     .from('nannies')
@@ -924,7 +979,7 @@ export async function getParentConnectionRequests(): Promise<{ data: ConnectionR
 
   const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
 
-  const requests: ConnectionRequestWithDetails[] = data.map((req) => {
+  const requests: ConnectionRequestWithDetails[] = parentViewData.map((req) => {
     const nanny = nannyMap.get(req.nanny_id);
     const profile = nanny ? profileMap.get(nanny.user_id) : null;
     return {
