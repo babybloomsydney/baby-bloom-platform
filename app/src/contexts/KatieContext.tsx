@@ -18,7 +18,9 @@ import {
   useMemo,
   useState,
   useCallback,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { usePathname } from "next/navigation";
 
@@ -35,7 +37,7 @@ export type VisibleDeck = "katie" | "main";
 interface KatieContextValue {
   currentSurface: CurrentSurface;
   unreadCount: number;
-  setUnreadCount: (n: number) => void;
+  setUnreadCount: Dispatch<SetStateAction<number>>;
   visibleDeck: VisibleDeck;
   showKatie: () => void;
   showMain: () => void;

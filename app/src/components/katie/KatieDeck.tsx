@@ -45,9 +45,33 @@ export function KatieDeck() {
   const { currentSurface } = useKatie();
   const [messages, setMessages] = useState<KatieMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isHydrating, setIsHydrating] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const { send, isStreaming, streamingText } = useChatStream();
+
+  // Fetch history on mount
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/chat/messages?limit=30", {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { messages: KatieMessage[] };
+        if (cancelled) return;
+        setMessages(data.messages ?? []);
+      } catch {
+        // non-fatal; empty state will show
+      } finally {
+        if (!cancelled) setIsHydrating(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -78,7 +102,9 @@ export function KatieDeck() {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
         <div className="space-y-4">
-          {messages.length === 0 && !isStreaming ? <EmptyState /> : null}
+          {!isHydrating && messages.length === 0 && !isStreaming ? (
+            <EmptyState />
+          ) : null}
 
           {messages.map((m) => (
             <MessageRow key={m.id} message={m} />

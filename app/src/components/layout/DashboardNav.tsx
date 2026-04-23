@@ -1,10 +1,11 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { Baby, Bell, Settings, LogOut } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { UserAvatar } from '@/components/dashboard/UserAvatar';
-import { useAuth } from '@/contexts/AuthContext';
+import Link from "next/link";
+import { Baby, Bell, Settings, LogOut } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/dashboard/UserAvatar";
+import { useAuth } from "@/contexts/AuthContext";
+import { KatieSwapButton } from "@/components/katie/KatieSwapButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,20 +13,20 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { trackEvent } from '@/lib/analytics/trackEvent';
+} from "@/components/ui/dropdown-menu";
+import { trackEvent } from "@/lib/analytics/trackEvent";
 
 interface DashboardNavProps {
-  role: 'nanny' | 'parent';
+  role: "nanny" | "parent";
 }
 
 export function DashboardNav({ role }: DashboardNavProps) {
   const { profile, role: authRole, signOut } = useAuth();
 
   const fullName = profile
-    ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-    : '';
-  const firstName = profile?.first_name || 'User';
+    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
+    : "";
+  const firstName = profile?.first_name || "User";
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
@@ -33,7 +34,9 @@ export function DashboardNav({ role }: DashboardNavProps) {
       <Link
         href={`/${role}`}
         className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-        onClick={() => trackEvent({ event_name: 'logo_clicked', user_role: role })}
+        onClick={() =>
+          trackEvent({ event_name: "logo_clicked", user_role: role })
+        }
       >
         <Baby className="h-7 w-7 text-violet-500" />
         <span className="text-xl font-bold">
@@ -42,18 +45,19 @@ export function DashboardNav({ role }: DashboardNavProps) {
         </span>
       </Link>
 
-      {/* Right: Bell + Avatar dropdown */}
+      {/* Right: Katie swap (narrow viewport only) + Bell + Avatar dropdown */}
       <div className="flex items-center gap-2">
+        <KatieSwapButton />
         {/* Notifications */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="relative"
-          asChild
-        >
+        <Button variant="ghost" size="icon" className="relative" asChild>
           <Link
             href={`/${role}/inbox`}
-            onClick={() => trackEvent({ event_name: 'notifications_bell_clicked', user_role: role })}
+            onClick={() =>
+              trackEvent({
+                event_name: "notifications_bell_clicked",
+                user_role: role,
+              })
+            }
           >
             <Bell className="h-5 w-5" />
             <span className="sr-only">Notifications</span>
@@ -74,7 +78,9 @@ export function DashboardNav({ role }: DashboardNavProps) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{fullName || firstName}</p>
+                <p className="text-sm font-medium leading-none">
+                  {fullName || firstName}
+                </p>
                 <p className="text-xs leading-none text-muted-foreground capitalize">
                   {authRole}
                 </p>
@@ -84,7 +90,12 @@ export function DashboardNav({ role }: DashboardNavProps) {
             <DropdownMenuItem asChild className="cursor-pointer">
               <Link
                 href={`/${role}/settings`}
-                onClick={() => trackEvent({ event_name: 'settings_clicked', user_role: role })}
+                onClick={() =>
+                  trackEvent({
+                    event_name: "settings_clicked",
+                    user_role: role,
+                  })
+                }
               >
                 <Settings className="mr-2 h-4 w-4" />
                 Settings
@@ -94,7 +105,7 @@ export function DashboardNav({ role }: DashboardNavProps) {
             <DropdownMenuItem
               className="cursor-pointer"
               onClick={() => {
-                trackEvent({ event_name: 'sign_out_clicked', user_role: role });
+                trackEvent({ event_name: "sign_out_clicked", user_role: role });
                 signOut();
               }}
             >

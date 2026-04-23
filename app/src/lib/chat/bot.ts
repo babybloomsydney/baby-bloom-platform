@@ -70,7 +70,43 @@ export async function getOrCreateBot(
     );
   }
 
+  // First-visit templated intro. Non-blocking — log and carry on on failure.
+  try {
+    await admin.from("chat_messages").insert({
+      bloombot_id: created.id,
+      role: "assistant",
+      content: firstVisitIntro(role),
+      trigger_source: "proactive_template",
+      proactive_trigger_id: "bloombot.first_visit",
+      is_read: false,
+    });
+  } catch (e) {
+    console.warn("[bloombot] first-visit intro insert failed", e);
+  }
+
   return created as BotRecord;
+}
+
+/** Role-specific first-visit intro message (template tier, zero cost). */
+function firstVisitIntro(role: BotRole): string {
+  if (role === "parent") {
+    return `Hi — I'm Katie.
+
+I'll help you follow your child's development, manage the people in your care circle, and stay on top of your schedule — usually before you have to ask.
+
+Try me: "show me this week's progress".`;
+  }
+  if (role === "admin") {
+    return `Hi — I'm Katie (admin mode).
+
+You can inspect my prompts, propose edits, and see what's deployed. I'll show diffs before applying anything. Protected sections need a second confirmation.`;
+  }
+  // nanny (default)
+  return `Hi — I'm Katie.
+
+I'll help you across all of Baby Bloom. Logging meals, tracking progress, planning activities, browsing jobs — I can handle it from here.
+
+Try: "log Oliver's breakfast — banana and yogurt, 8am".`;
 }
 
 /**
