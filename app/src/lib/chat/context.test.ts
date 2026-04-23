@@ -277,4 +277,74 @@ describe("buildSystemPrompt", () => {
     });
     expect(prompt).toContain("You are Katie");
   });
+
+  it("falls back to module.systemPromptFragment when DB lacks a module.<id> row", async () => {
+    // DB provides no module.* rows. Registered modules (progress, feed,
+    // child-profile) should contribute their fallback fragments.
+    mockSections = [
+      {
+        section: "identity",
+        content: "You are Katie.",
+        version: 1,
+        protected: false,
+      },
+      {
+        section: "role_nanny",
+        content: "User is a nanny.",
+        version: 1,
+        protected: false,
+      },
+    ];
+    __resetPromptCache();
+    const { buildSystemPrompt } = await import("./context");
+    const prompt = await buildSystemPrompt({
+      botId: "b1",
+      userId: "u1",
+      role: "nanny",
+      effectiveRole: "nanny",
+      userName: "Bailey",
+      children: [],
+    });
+    // Fragment strings come verbatim from each module definition.
+    expect(prompt).toContain("read_child_profile");
+    expect(prompt).toContain("read_recent_feed");
+    expect(prompt).toContain("read_milestones");
+  });
+
+  it("prefers DB row over module fragment when both exist", async () => {
+    mockSections = [
+      {
+        section: "identity",
+        content: "You are Katie.",
+        version: 1,
+        protected: false,
+      },
+      {
+        section: "role_nanny",
+        content: "User is a nanny.",
+        version: 1,
+        protected: false,
+      },
+      {
+        section: "module.feed",
+        content: "DB-ONLY-FEED-MARKER",
+        version: 1,
+        protected: false,
+      },
+    ];
+    __resetPromptCache();
+    const { buildSystemPrompt } = await import("./context");
+    const prompt = await buildSystemPrompt({
+      botId: "b1",
+      userId: "u1",
+      role: "nanny",
+      effectiveRole: "nanny",
+      userName: "Bailey",
+      children: [],
+    });
+    expect(prompt).toContain("DB-ONLY-FEED-MARKER");
+    // The feed module's fallback fragment must NOT leak in when the DB
+    // row is present, otherwise admin Katie edits get shadowed.
+    expect(prompt).not.toContain("Use `read_recent_feed` to see");
+  });
 });

@@ -17,6 +17,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
+import { getActiveModules } from "@/lib/chat/modules/registry";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -201,14 +202,32 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
     }
   }
 
-  // Append all active module.* fragments in deterministic (alphabetical) order
-  const moduleFragments: Array<[string, PromptSection]> = [];
+  // Module fragments: prefer DB rows (editable by admin Katie), fall back
+  // to each module's own systemPromptFragment when no DB row exists.
+  // Deterministic alphabetical order by module id.
+  const byModuleId = new Map<string, string>();
+
+  // 1. DB-sourced module.* rows (can be for modules that aren't registered
+  //    yet — admin Katie may stage them ahead of release; we still emit).
   for (const [id, s] of sections) {
-    if (id.startsWith("module.")) moduleFragments.push([id, s]);
+    if (!id.startsWith("module.")) continue;
+    const modId = id.slice("module.".length);
+    byModuleId.set(modId, interpolate(s.content, buildVariables(ctx)));
   }
-  moduleFragments.sort((a, b) => a[0].localeCompare(b[0]));
-  for (const [, s] of moduleFragments) {
-    parts.push(interpolate(s.content, buildVariables(ctx)));
+
+  // 2. Registered modules whose fragment hasn't already been provided by DB.
+  for (const mod of getActiveModules(ctx.effectiveRole)) {
+    if (byModuleId.has(mod.id)) continue;
+    if (mod.systemPromptFragment) {
+      byModuleId.set(mod.id, mod.systemPromptFragment);
+    }
+  }
+
+  const ordered = Array.from(byModuleId.entries()).sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  );
+  for (const [, content] of ordered) {
+    parts.push(content);
   }
 
   // Runtime-injected blocks (not stored in katie_prompt)
