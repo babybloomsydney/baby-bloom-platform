@@ -413,6 +413,7 @@ export async function runBasicMatchmaking(positionId: string): Promise<MatchingR
       role_types_preferred: null,
       level_of_support_offered: null,
       immediate_start_available: null,
+      nationality: null,
       ai_content: nanny.ai_content as NannyMatchData['ai_content'],
     };
 

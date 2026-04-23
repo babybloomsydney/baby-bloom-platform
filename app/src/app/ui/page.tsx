@@ -15,8 +15,8 @@ const PARENT_EMAIL = "baileywright.ref@gmail.com";
 
 export default async function UIShowcasePage() {
   let nannyCard: NannyCardData = FALLBACK_NANNY;
-  let nannyCard2: NannyCardData = FALLBACK_NANNY_2;
-  let nannyCard3: NannyCardData = FALLBACK_NANNY_3;
+  const nannyCard2: NannyCardData = FALLBACK_NANNY_2;
+  const nannyCard3: NannyCardData = FALLBACK_NANNY_3;
   let parentData: MockParentData = FALLBACK_PARENT;
   let nannySchedule: Record<string, string[]> = MOCK_NANNY_SCHEDULE;
   let nannyProfilePic: string | null = null;

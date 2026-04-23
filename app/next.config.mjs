@@ -1,10 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   typescript: {
-    ignoreBuildErrors: true,
+    // strict: build fails on TS errors
+    ignoreBuildErrors: false,
   },
   async redirects() {
     return [

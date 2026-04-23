@@ -817,6 +817,7 @@ export function NannyHubClient({
       )}
       {activeTab === "education" && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}
           <ChildCardGrid children={educationChildren} role="nanny" />
         </div>
       )}

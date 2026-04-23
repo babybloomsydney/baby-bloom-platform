@@ -796,8 +796,9 @@ export function UIShowcaseClient({
               <Button variant="outline" onClick={() => setConnectionPopupOpen(true)}>
                 Open Connection Detail
               </Button>
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
               <ConnectionDetailPopup
-                intro={MOCK_UPCOMING_INTRO}
+                intro={MOCK_UPCOMING_INTRO as any}
                 open={connectionPopupOpen}
                 onOpenChange={setConnectionPopupOpen}
                 role="parent"
@@ -820,7 +821,8 @@ export function UIShowcaseClient({
 
             {/* CMP-035 PositionAccordion */}
             <ShowcaseCard code="CMP-035" name="PositionAccordion">
-              <PositionAccordion position={MOCK_POSITION} />
+              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+              <PositionAccordion position={MOCK_POSITION as any} />
             </ShowcaseCard>
           </div>
         </section>

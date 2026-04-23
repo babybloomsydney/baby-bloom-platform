@@ -1028,7 +1028,8 @@ export function NannyPositionsClient({ placements, upcomingIntros = [], dfyNotif
                       )}
 
                       {/* Full position details accordion */}
-                      <PositionAccordion position={notification.position} />
+                      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                      <PositionAccordion position={notification.position as any} />
 
                       {/* ── Pending state (already responded) — clickable if connection exists ── */}
                       {isPending && (() => {

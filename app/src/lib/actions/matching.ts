@@ -1846,7 +1846,7 @@ export async function getPublicPositionProfile(positionId: string): Promise<{
     Monday: 'monday_roster', Tuesday: 'tuesday_roster', Wednesday: 'wednesday_roster',
     Thursday: 'thursday_roster', Friday: 'friday_roster', Saturday: 'saturday_roster', Sunday: 'sunday_roster',
   };
-  let rosterByDay: Record<string, string[]> = {};
+  const rosterByDay: Record<string, string[]> = {};
 
   if (position.source && position.source !== 'parent') {
     // Admin/AI position — use position_schedule table

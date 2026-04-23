@@ -43,10 +43,10 @@ function getConnectionStageBadgeVariant(stage: number | null): 'active' | 'pendi
   if (stage == null) return 'inactive';
   if (stage === CONNECTION_STAGE.REQUEST_SENT) return 'pending';
   if (stage === CONNECTION_STAGE.ACCEPTED) return 'info';
-  if ([CONNECTION_STAGE.INTRO_SCHEDULED, CONNECTION_STAGE.INTRO_COMPLETE, CONNECTION_STAGE.TRIAL_ARRANGED, CONNECTION_STAGE.TRIAL_COMPLETE, CONNECTION_STAGE.OFFERED, CONNECTION_STAGE.AWAITING_RESPONSE].includes(stage as ConnectionStage)) return 'verified';
-  if ([CONNECTION_STAGE.CONFIRMED, CONNECTION_STAGE.ACTIVE].includes(stage as ConnectionStage)) return 'active';
-  if ([CONNECTION_STAGE.DECLINED, CONNECTION_STAGE.CANCELLED_BY_PARENT, CONNECTION_STAGE.CANCELLED_BY_NANNY, CONNECTION_STAGE.NOT_HIRED, CONNECTION_STAGE.NOT_SELECTED, CONNECTION_STAGE.REQUEST_CANCELLED].includes(stage as ConnectionStage)) return 'failed';
-  if ([CONNECTION_STAGE.REQUEST_EXPIRED, CONNECTION_STAGE.SCHEDULE_EXPIRED, CONNECTION_STAGE.FINISHED, CONNECTION_STAGE.INTRO_INCOMPLETE].includes(stage as ConnectionStage)) return 'inactive';
+  if (([CONNECTION_STAGE.INTRO_SCHEDULED, CONNECTION_STAGE.INTRO_COMPLETE, CONNECTION_STAGE.TRIAL_ARRANGED, CONNECTION_STAGE.TRIAL_COMPLETE, CONNECTION_STAGE.OFFERED, CONNECTION_STAGE.AWAITING_RESPONSE] as ConnectionStage[]).includes(stage as ConnectionStage)) return 'verified';
+  if (([CONNECTION_STAGE.CONFIRMED, CONNECTION_STAGE.ACTIVE] as ConnectionStage[]).includes(stage as ConnectionStage)) return 'active';
+  if (([CONNECTION_STAGE.DECLINED, CONNECTION_STAGE.CANCELLED_BY_PARENT, CONNECTION_STAGE.CANCELLED_BY_NANNY, CONNECTION_STAGE.NOT_HIRED, CONNECTION_STAGE.NOT_SELECTED, CONNECTION_STAGE.REQUEST_CANCELLED] as ConnectionStage[]).includes(stage as ConnectionStage)) return 'failed';
+  if (([CONNECTION_STAGE.REQUEST_EXPIRED, CONNECTION_STAGE.SCHEDULE_EXPIRED, CONNECTION_STAGE.FINISHED, CONNECTION_STAGE.INTRO_INCOMPLETE] as ConnectionStage[]).includes(stage as ConnectionStage)) return 'inactive';
   return 'inactive';
 }
 
@@ -337,7 +337,7 @@ export function AdminPositionsClient({ positions }: Props) {
 
 function PositionDetail({ position, onOpenUser }: { position: AdminPosition; onOpenUser: (userId: string) => void }) {
   const activeConnections = position.connections.filter(c =>
-    c.connection_stage != null && ![
+    c.connection_stage != null && !([
       CONNECTION_STAGE.REQUEST_EXPIRED,
       CONNECTION_STAGE.DECLINED,
       CONNECTION_STAGE.REQUEST_CANCELLED,
@@ -346,7 +346,7 @@ function PositionDetail({ position, onOpenUser }: { position: AdminPosition; onO
       CONNECTION_STAGE.NOT_SELECTED,
       CONNECTION_STAGE.CANCELLED_BY_PARENT,
       CONNECTION_STAGE.CANCELLED_BY_NANNY,
-    ].includes(c.connection_stage as ConnectionStage)
+    ] as ConnectionStage[]).includes(c.connection_stage as ConnectionStage)
   );
   const closedConnections = position.connections.filter(c =>
     !activeConnections.includes(c)

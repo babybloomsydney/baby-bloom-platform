@@ -143,7 +143,7 @@ export default async function ParentBrowsePage({
 }: {
   searchParams: { sort?: string; page?: string; view?: string };
 }) {
-  const view: ViewType = searchParams.view === "matches" ? "matches" : "all";
+  const view: ViewType = searchParams.view === "matches" ? "matches" as const : "all" as const;
   const sortBy = (SORT_OPTIONS.some((o) => o.key === searchParams.sort)
     ? searchParams.sort
     : "newest") as SortKey;
@@ -230,7 +230,10 @@ export default async function ParentBrowsePage({
               <Link
                 href={viewHref("matches")}
                 className={`inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
-                  view === "matches"
+                  // view is narrowed to "all" here by outer {view === "all" && ...} guard.
+                  // This branch is currently unreachable, but kept for when the toggle is refactored.
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  (view as any) === "matches"
                     ? "bg-violet-600 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-600"
                 }`}

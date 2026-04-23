@@ -46,7 +46,7 @@ function calcDuration(start: string, end: string): string | null {
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
 
-  let startMin = sh * 60 + sm;
+  const startMin = sh * 60 + sm;
   let endMin = eh * 60 + em;
 
   // Handle overnight (end < start → next day)

@@ -255,9 +255,12 @@ async function renderNannyHub(admin: any, targetUserId: string) {
         verificationData={verificationRes.data}
         nannyProfile={nannyProfile}
         placements={placements}
-        upcomingIntros={upcomingIntros}
+        upcomingIntros={upcomingIntros as unknown as import("@/lib/actions/position-funnel").UpcomingIntro[]}
         dfyNotifications={dfyData}
-        babysittingJobs={babysittingJobs.data}
+        babysittingJobs={babysittingJobs.data as unknown as import("@/lib/actions/babysitting").NannyBabysittingJob[]}
+        openPositions={[]}
+        nannyApplications={[]}
+        educationChildren={[]}
         bsrBanned={banned}
         bsrBanUntil={banUntil}
         shareUnlocked={shareUnlocked}
@@ -336,13 +339,15 @@ async function renderParentHub(admin: any, targetUserId: string) {
     if (conns && conns.length > 0) {
       const nannyIds = Array.from(new Set(conns.map((c: { nanny_id: string }) => c.nanny_id)));
       const { data: nannies } = await admin.from("nannies").select("id, user_id").in("id", nannyIds);
-      const nannyMap = new Map((nannies || []).map((n: { id: string; user_id: string }) => [n.id, n]));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const nannyMap = new Map<string, any>((nannies || []).map((n: any) => [n.id, n]));
       const nannyUserIds = (nannies || []).map((n: { user_id: string }) => n.user_id);
       const { data: profiles } = await admin
         .from("user_profiles")
         .select("user_id, first_name, last_name, suburb, profile_picture_url")
         .in("user_id", nannyUserIds);
-      const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const profileMap = new Map<string, any>((profiles || []).map((p: any) => [p.user_id, p]));
 
       // Deduplicate — keep highest stage per nanny
       const bestByNanny = new Map<string, typeof conns[0]>();
@@ -402,14 +407,16 @@ async function buildNannyPlacements(admin: any, rawPlacements: any[]) {
 
   const parentIds = Array.from(new Set(visible.map((p: { parent_id: string }) => p.parent_id)));
   const { data: parents } = await admin.from("parents").select("id, user_id").in("id", parentIds);
-  const parentMap = new Map((parents || []).map((p: { id: string }) => [p.id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parentMap = new Map<string, any>((parents || []).map((p: any) => [p.id, p]));
   const parentUserIds = (parents || []).map((p: { user_id: string }) => p.user_id);
 
   const { data: profiles } = await admin
     .from("user_profiles")
     .select("user_id, first_name, last_name, suburb, profile_picture_url, date_of_birth, email, mobile_number")
     .in("user_id", parentUserIds);
-  const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileMap = new Map<string, any>((profiles || []).map((p: any) => [p.user_id, p]));
 
   const positionIds = visible
     .filter((p: { position_id: string | null; status: string }) => p.position_id && p.status === "active")
@@ -458,14 +465,16 @@ async function buildNannyUpcomingIntros(admin: any, connections: any[]) {
 
   const parentIds = Array.from(new Set(connections.map((c: { parent_id: string }) => c.parent_id)));
   const { data: parents } = await admin.from("parents").select("id, user_id").in("id", parentIds);
-  const parentMap = new Map((parents || []).map((p: { id: string }) => [p.id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parentMap = new Map<string, any>((parents || []).map((p: any) => [p.id, p]));
   const parentUserIds = (parents || []).map((p: { user_id: string }) => p.user_id);
 
   const { data: profiles } = await admin
     .from("user_profiles")
     .select("user_id, first_name, last_name, suburb, profile_picture_url")
     .in("user_id", parentUserIds);
-  const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileMap = new Map<string, any>((profiles || []).map((p: any) => [p.user_id, p]));
 
   // Fetch position data
   const positionIds = Array.from(
@@ -584,7 +593,8 @@ async function buildNannyBabysittingJobs(admin: any, nannyId: string, notificati
       .in("babysitting_request_id", bsrIds),
   ]);
 
-  const bsrMap = new Map((bsrRes.data || []).map((b: { id: string }) => [b.id, b]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bsrMap = new Map<string, any>((bsrRes.data || []).map((b: any) => [b.id, b]));
   const slotMap = new Map<string, typeof slotsRes.data>();
   for (const slot of slotsRes.data || []) {
     const existing = slotMap.get(slot.babysitting_request_id) ?? [];
@@ -669,7 +679,8 @@ async function buildDfyNotifications(admin: any, notifications: any[]) {
     admin.from("position_schedule").select("position_id, schedule").in("position_id", positionIds),
   ]);
 
-  const positionMap = new Map((posRes.data || []).map((p: { id: string }) => [p.id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const positionMap = new Map<string, any>((posRes.data || []).map((p: any) => [p.id, p]));
   const childrenByPosition = new Map<string, { ageMonths: number; gender: string | null }[]>();
   for (const c of childrenRes.data || []) {
     const arr = childrenByPosition.get(c.position_id) || [];
@@ -687,7 +698,8 @@ async function buildDfyNotifications(admin: any, notifications: any[]) {
   // Get parent profiles
   const parentIds = Array.from(new Set((posRes.data || []).map((p: { parent_id: string }) => p.parent_id)));
   const allParents = (parentRes.data || []).filter((p: { id: string }) => parentIds.includes(p.id));
-  const parentMap = new Map(allParents.map((p: { id: string }) => [p.id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parentMap = new Map<string, any>(allParents.map((p: any) => [p.id, p]));
   const parentUserIds = allParents.map((p: { user_id: string }) => p.user_id);
 
   const { data: parentProfiles } = await admin
@@ -695,8 +707,10 @@ async function buildDfyNotifications(admin: any, notifications: any[]) {
     .select("user_id, first_name, last_name, profile_picture_url")
     .in("user_id", parentUserIds.length > 0 ? parentUserIds : ["__none__"]);
 
-  const parentProfileMap = new Map(
-    (parentProfiles || []).map((p: { user_id: string }) => [p.user_id, p])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parentProfileMap = new Map<string, any>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (parentProfiles || []).map((p: any) => [p.user_id, p])
   );
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -861,14 +875,16 @@ async function buildParentUpcomingIntros(admin: any, parentId: string) {
 
   const nannyIds = Array.from(new Set(connections.map((c: { nanny_id: string }) => c.nanny_id)));
   const { data: nannies } = await admin.from("nannies").select("id, user_id").in("id", nannyIds);
-  const nannyMap = new Map((nannies || []).map((n: { id: string }) => [n.id, n]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nannyMap = new Map<string, any>((nannies || []).map((n: any) => [n.id, n]));
   const nannyUserIds = (nannies || []).map((n: { user_id: string }) => n.user_id);
 
   const { data: profiles } = await admin
     .from("user_profiles")
     .select("user_id, first_name, last_name, suburb, profile_picture_url")
     .in("user_id", nannyUserIds);
-  const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const profileMap = new Map<string, any>((profiles || []).map((p: any) => [p.user_id, p]));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return connections.map((c: any) => {
@@ -1051,8 +1067,10 @@ async function buildParentBabysittingRequests(admin: any, parentId: string) {
         .select("user_id, first_name, last_name, date_of_birth, suburb, profile_picture_url")
         .in("user_id", reqUserIds);
 
-      const reqNannyMap = new Map((reqNannies ?? []).map((n: { id: string }) => [n.id, n]));
-      const reqProfileByUserId = new Map((reqProfiles ?? []).map((p: { user_id: string }) => [p.user_id, p]));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const reqNannyMap = new Map<string, any>((reqNannies ?? []).map((n: any) => [n.id, n]));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const reqProfileByUserId = new Map<string, any>((reqProfiles ?? []).map((p: any) => [p.user_id, p]));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const notif of requestNotifs as any[]) {

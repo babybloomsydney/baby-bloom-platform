@@ -41,7 +41,8 @@ export async function generateClientHirePDF(params: GenerateClientPDFParams): Pr
       verificationDate: params.verificationDate,
     });
 
-    const buffer = await renderToBuffer(element);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buffer = await renderToBuffer(element as any);
     const filename = `client-hire-summary-${referenceNumber}.pdf`;
 
     // Upload to Supabase Storage
@@ -79,7 +80,8 @@ export async function generateProfessionalHirePDF(params: GenerateProfessionalPD
       verificationDate: params.verificationDate,
     });
 
-    const buffer = await renderToBuffer(element);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const buffer = await renderToBuffer(element as any);
     const filename = `professional-hire-summary-${referenceNumber}.pdf`;
 
     const adminClient = createAdminClient();

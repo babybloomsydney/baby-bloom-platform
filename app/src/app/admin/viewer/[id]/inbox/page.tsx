@@ -90,7 +90,8 @@ async function renderNannyInbox(admin: any, targetUserId: string) {
       .select("id, user_id")
       .in("id", parentIds);
 
-    const parentMap = new Map((parents || []).map((p: { id: string }) => [p.id, p]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parentMap = new Map<string, any>((parents || []).map((p: any) => [p.id, p]));
     const parentUserIds = (parents || []).map((p: { user_id: string }) => p.user_id);
 
     const { data: profiles } = await admin
@@ -98,7 +99,8 @@ async function renderNannyInbox(admin: any, targetUserId: string) {
       .select("user_id, first_name, last_name, suburb")
       .in("user_id", parentUserIds);
 
-    const profileMap = new Map((profiles || []).map((p: { user_id: string }) => [p.user_id, p]));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const profileMap = new Map<string, any>((profiles || []).map((p: any) => [p.user_id, p]));
 
     enrichedConnections = await Promise.all(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

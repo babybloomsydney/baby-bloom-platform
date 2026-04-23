@@ -418,7 +418,9 @@ export const MOCK_NANNY_UPCOMING_INTROS: UpcomingIntro[] = [
 
 // ── Position With Children (CMP-059) ───────────────────────────────
 
-export const MOCK_POSITION_WITH_CHILDREN: PositionWithChildren = {
+// TODO(BAI): mock uses legacy `form_data` shape; Position interface is flattened.
+// Casting keeps UI showcase compiling; update when flat shape is adopted by consumers.
+export const MOCK_POSITION_WITH_CHILDREN = {
   id: "mock-pos-001",
   parent_id: "mock-parent-001",
   stage: 7,
@@ -460,7 +462,7 @@ export const MOCK_POSITION_WITH_CHILDREN: PositionWithChildren = {
     { id: "child-001", position_id: "mock-pos-001", child_label: "Child 1", age_months: 18, gender: "female", display_order: 0 },
     { id: "child-002", position_id: "mock-pos-001", child_label: "Child 2", age_months: 42, gender: "male", display_order: 1 },
   ],
-};
+} as unknown as PositionWithChildren;
 
 // ── Position Share Data (CMP-063) ──────────────────────────────────
 
@@ -672,6 +674,7 @@ export const MOCK_ADMIN_USERS: UserData[] = [
     identity_verified: true,
     parent_status: null,
     babysitter_eligible: true,
+    nanny_id: null,
   },
   {
     user_id: "mock-user-002",
@@ -692,6 +695,7 @@ export const MOCK_ADMIN_USERS: UserData[] = [
     identity_verified: true,
     parent_status: "active",
     babysitter_eligible: null,
+    nanny_id: null,
   },
   {
     user_id: "mock-user-003",
@@ -712,6 +716,7 @@ export const MOCK_ADMIN_USERS: UserData[] = [
     identity_verified: true,
     parent_status: null,
     babysitter_eligible: true,
+    nanny_id: null,
   },
   {
     user_id: "mock-user-004",
@@ -732,6 +737,7 @@ export const MOCK_ADMIN_USERS: UserData[] = [
     identity_verified: null,
     parent_status: null,
     babysitter_eligible: null,
+    nanny_id: null,
   },
   {
     user_id: "mock-user-005",
@@ -752,6 +758,7 @@ export const MOCK_ADMIN_USERS: UserData[] = [
     identity_verified: false,
     parent_status: null,
     babysitter_eligible: false,
+    nanny_id: null,
   },
 ];
 
