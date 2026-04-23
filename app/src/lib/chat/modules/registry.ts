@@ -16,6 +16,7 @@ import type { BotRole } from "@/lib/ai/model-selector";
 import { childProfileModule } from "./child-profile";
 import { feedModule } from "./feed";
 import { progressModule } from "./progress";
+import { diaryModule } from "./diary";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -23,8 +24,9 @@ const ALL_MODULES: BloomBotModule[] = [
   childProfileModule,
   feedModule,
   progressModule,
+  diaryModule,
   // Future:
-  //   observationsModule, diaryModule, activitiesModule,
+  //   observationsModule, activitiesModule,
   //   agentMemoryModule, feedWriterModule, insightsModule, katieSchedulingModule,
   //   katieAdminModule (admin-only), jobSearchModule, bsrModule,
   //   verificationModule, profileModule, connectionsModule
