@@ -11,7 +11,7 @@ import type { FeedItem } from "@/types/bapp";
 export async function getLibraryImages(
   childId: string,
   cursor: string | null,
-  limit: number = 12
+  limit: number = 12,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -25,15 +25,22 @@ export async function getLibraryImages(
       error: authError,
     } = await supabase.auth.getUser();
     if (authError || !user) {
-      return { success: false, error: "Not authenticated", data: [], nextCursor: null };
+      return {
+        success: false,
+        error: "Not authenticated",
+        data: [],
+        nextCursor: null,
+      };
     }
 
     const admin = createAdminClient();
 
+    // is_active filter keeps soft-deleted tiles out of the image library.
     let query = admin
       .from("bapp_logs")
       .select("*")
       .eq("child_client_id", childId)
+      .eq("is_active", true)
       .not("data->image_url", "is", null)
       .order("created_at", { ascending: false })
       .limit(limit + 1);
@@ -46,7 +53,12 @@ export async function getLibraryImages(
 
     if (logsError) {
       console.error("getLibraryImages error:", logsError);
-      return { success: false, error: logsError.message, data: [], nextCursor: null };
+      return {
+        success: false,
+        error: logsError.message,
+        data: [],
+        nextCursor: null,
+      };
     }
 
     if (!logs || logs.length === 0) {
@@ -56,15 +68,21 @@ export async function getLibraryImages(
     // Filter out rows where image_url is null/empty in JSONB
     const filtered = logs.filter((l) => {
       const d = l.data as Record<string, unknown>;
-      return d.image_url && typeof d.image_url === "string" && d.image_url.length > 0;
+      return (
+        d.image_url && typeof d.image_url === "string" && d.image_url.length > 0
+      );
     });
 
     const hasMore = filtered.length > limit;
     const pageItems = hasMore ? filtered.slice(0, limit) : filtered;
-    const nextCursor = hasMore ? pageItems[pageItems.length - 1].created_at : null;
+    const nextCursor = hasMore
+      ? pageItems[pageItems.length - 1].created_at
+      : null;
 
     // Batch fetch author names
-    const authorIds = Array.from(new Set(pageItems.map((l) => l.author_id).filter(Boolean)));
+    const authorIds = Array.from(
+      new Set(pageItems.map((l) => l.author_id).filter(Boolean)),
+    );
     const authorMap = new Map<string, string>();
     if (authorIds.length > 0) {
       const { data: profiles } = await admin
@@ -78,21 +96,29 @@ export async function getLibraryImages(
 
     // Batch fetch parent logs (for report tiles)
     const parentLogIds = Array.from(
-      new Set(pageItems.map((l) => l.parent_log_id).filter(Boolean))
+      new Set(pageItems.map((l) => l.parent_log_id).filter(Boolean)),
     ) as string[];
-    const parentMap = new Map<string, { data: Record<string, unknown>; type: string }>();
+    const parentMap = new Map<
+      string,
+      { data: Record<string, unknown>; type: string }
+    >();
     if (parentLogIds.length > 0) {
       const { data: parentLogs } = await admin
         .from("bapp_logs")
         .select("id, data, type")
         .in("id", parentLogIds);
       for (const p of parentLogs ?? []) {
-        parentMap.set(p.id, { data: p.data as Record<string, unknown>, type: p.type });
+        parentMap.set(p.id, {
+          data: p.data as Record<string, unknown>,
+          type: p.type,
+        });
       }
     }
 
     const feedItems: FeedItem[] = pageItems.map((log) => {
-      const parent = log.parent_log_id ? parentMap.get(log.parent_log_id) : undefined;
+      const parent = log.parent_log_id
+        ? parentMap.get(log.parent_log_id)
+        : undefined;
       return {
         ...log,
         data: log.data as Record<string, unknown>,
@@ -105,6 +131,11 @@ export async function getLibraryImages(
     return { success: true, error: null, data: feedItems, nextCursor };
   } catch (err) {
     console.error("getLibraryImages unexpected error:", err);
-    return { success: false, error: "Failed to fetch library", data: [], nextCursor: null };
+    return {
+      success: false,
+      error: "Failed to fetch library",
+      data: [],
+      nextCursor: null,
+    };
   }
 }

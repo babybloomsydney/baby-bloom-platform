@@ -11,7 +11,7 @@ import { DOMAIN_CODES } from "@/lib/bapp-constants";
 
 export async function recalculateProgress(
   childId: string,
-  updates: { id: string; score: number }[]
+  updates: { id: string; score: number }[],
 ): Promise<void> {
   const admin = createAdminClient();
 
@@ -95,7 +95,7 @@ export async function recalculateProgress(
 
 export async function writeHistorySnapshot(
   childId: string,
-  refLogId: string | null
+  refLogId: string | null,
 ): Promise<void> {
   const admin = createAdminClient();
 
@@ -111,10 +111,7 @@ export async function writeHistorySnapshot(
 
   for (const row of allScores ?? []) {
     const scores = row.scores as Record<string, number>;
-    domainTotals[row.domain] = Object.values(scores).reduce(
-      (a, b) => a + b,
-      0
-    );
+    domainTotals[row.domain] = Object.values(scores).reduce((a, b) => a + b, 0);
   }
 
   await admin.from("bapp_progress_history").insert({
@@ -158,7 +155,11 @@ export async function getProgressScores(childId: string): Promise<{
     };
   } catch (err) {
     console.error("getProgressScores unexpected error:", err);
-    return { success: false, error: "Failed to fetch progress scores", data: [] };
+    return {
+      success: false,
+      error: "Failed to fetch progress scores",
+      data: [],
+    };
   }
 }
 
@@ -194,7 +195,11 @@ export async function getProgressMatrix(childId: string): Promise<{
     return { success: true, error: null, data: matrix };
   } catch (err) {
     console.error("getProgressMatrix unexpected error:", err);
-    return { success: false, error: "Failed to fetch progress matrix", data: {} };
+    return {
+      success: false,
+      error: "Failed to fetch progress matrix",
+      data: {},
+    };
   }
 }
 
@@ -219,33 +224,43 @@ export async function getDashboardData(childId: string): Promise<{
 
     const admin = createAdminClient();
 
-    // Parallel: progress scores + log counts + first log date
-    const [scoresRes, activityCount, obsCount, firstLogRes] = await Promise.all([
-      admin
-        .from("bapp_progress_scores")
-        .select("domain, scores, percent")
-        .eq("child_client_id", childId),
-      admin
-        .from("bapp_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("child_client_id", childId)
-        .eq("type", "activity"),
-      admin
-        .from("bapp_logs")
-        .select("id", { count: "exact", head: true })
-        .eq("child_client_id", childId)
-        .eq("type", "observation")
-        .eq("context", "adhoc"),
-      admin
-        .from("bapp_logs")
-        .select("created_at")
-        .eq("child_client_id", childId)
-        .order("created_at", { ascending: true })
-        .limit(1),
-    ]);
+    // Parallel: progress scores + log counts + first log date.
+    // is_active filter on bapp_logs keeps soft-deleted tiles out of
+    // dashboard counts.
+    const [scoresRes, activityCount, obsCount, firstLogRes] = await Promise.all(
+      [
+        admin
+          .from("bapp_progress_scores")
+          .select("domain, scores, percent")
+          .eq("child_client_id", childId),
+        admin
+          .from("bapp_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("child_client_id", childId)
+          .eq("type", "activity")
+          .eq("is_active", true),
+        admin
+          .from("bapp_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("child_client_id", childId)
+          .eq("type", "observation")
+          .eq("context", "adhoc")
+          .eq("is_active", true),
+        admin
+          .from("bapp_logs")
+          .select("created_at")
+          .eq("child_client_id", childId)
+          .eq("is_active", true)
+          .order("created_at", { ascending: true })
+          .limit(1),
+      ],
+    );
 
     // Domain data
-    const domains: Record<string, { score: number; total: number; percent: number }> = {};
+    const domains: Record<
+      string,
+      { score: number; total: number; percent: number }
+    > = {};
     let strongestDomain = "";
     let highestPercent = -1;
 
@@ -270,8 +285,8 @@ export async function getDashboardData(childId: string): Promise<{
           1,
           Math.ceil(
             (Date.now() - new Date(firstLog.created_at).getTime()) /
-              (1000 * 60 * 60 * 24)
-          )
+              (1000 * 60 * 60 * 24),
+          ),
         )
       : 0;
 
@@ -290,6 +305,10 @@ export async function getDashboardData(childId: string): Promise<{
     };
   } catch (err) {
     console.error("getDashboardData unexpected error:", err);
-    return { success: false, error: "Failed to fetch dashboard data", data: null };
+    return {
+      success: false,
+      error: "Failed to fetch dashboard data",
+      data: null,
+    };
   }
 }

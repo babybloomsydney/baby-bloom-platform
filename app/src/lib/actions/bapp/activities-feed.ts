@@ -10,7 +10,7 @@ import type { FeedItem } from "@/types/bapp";
 export async function getActivities(
   childId: string,
   cursor: string | null = null,
-  limit: number = 20
+  limit: number = 20,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -24,16 +24,23 @@ export async function getActivities(
       error: authError,
     } = await supabase.auth.getUser();
     if (authError || !user) {
-      return { success: false, error: "Not authenticated", data: [], nextCursor: null };
+      return {
+        success: false,
+        error: "Not authenticated",
+        data: [],
+        nextCursor: null,
+      };
     }
 
     const admin = createAdminClient();
 
+    // is_active filter keeps soft-deleted activities out of the list.
     let query = admin
       .from("bapp_logs")
       .select("*")
       .eq("child_client_id", childId)
       .eq("type", "activity")
+      .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(limit + 1);
 
@@ -45,7 +52,12 @@ export async function getActivities(
 
     if (logsError) {
       console.error("getActivities error:", logsError);
-      return { success: false, error: logsError.message, data: [], nextCursor: null };
+      return {
+        success: false,
+        error: logsError.message,
+        data: [],
+        nextCursor: null,
+      };
     }
 
     if (!logs || logs.length === 0) {
@@ -54,10 +66,14 @@ export async function getActivities(
 
     const hasMore = logs.length > limit;
     const pageItems = hasMore ? logs.slice(0, limit) : logs;
-    const nextCursor = hasMore ? pageItems[pageItems.length - 1].created_at : null;
+    const nextCursor = hasMore
+      ? pageItems[pageItems.length - 1].created_at
+      : null;
 
     // Batch fetch author names
-    const authorIds = Array.from(new Set(pageItems.map((l) => l.author_id).filter(Boolean)));
+    const authorIds = Array.from(
+      new Set(pageItems.map((l) => l.author_id).filter(Boolean)),
+    );
     const authorMap = new Map<string, string>();
     if (authorIds.length > 0) {
       const { data: profiles } = await admin
@@ -69,15 +85,23 @@ export async function getActivities(
       }
     }
 
-    const feedItems: FeedItem[] = pageItems.map((log) => ({
-      ...log,
-      data: log.data as Record<string, unknown>,
-      author_name: authorMap.get(log.author_id) || "User",
-    } as FeedItem));
+    const feedItems: FeedItem[] = pageItems.map(
+      (log) =>
+        ({
+          ...log,
+          data: log.data as Record<string, unknown>,
+          author_name: authorMap.get(log.author_id) || "User",
+        }) as FeedItem,
+    );
 
     return { success: true, error: null, data: feedItems, nextCursor };
   } catch (err) {
     console.error("getActivities unexpected error:", err);
-    return { success: false, error: "Failed to fetch activities", data: [], nextCursor: null };
+    return {
+      success: false,
+      error: "Failed to fetch activities",
+      data: [],
+      nextCursor: null,
+    };
   }
 }

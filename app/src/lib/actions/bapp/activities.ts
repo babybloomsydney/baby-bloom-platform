@@ -41,7 +41,7 @@ async function maybeActivateChild(childId: string): Promise<void> {
 
 export async function generateActivity(
   childId: string,
-  milestoneIds: string[]
+  milestoneIds: string[],
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -73,7 +73,7 @@ export async function generateActivity(
     const ageMonths = child.date_of_birth
       ? Math.floor(
           (Date.now() - new Date(child.date_of_birth).getTime()) /
-            (1000 * 60 * 60 * 24 * 30.44)
+            (1000 * 60 * 60 * 24 * 30.44),
         )
       : 12;
 
@@ -127,7 +127,7 @@ export async function generateActivity(
 
     // 4. Call OpenAI (async — don't block the response)
     callOpenAI(logId, childId, childName, ageMonths, promptContext).catch(
-      (err) => console.error("OpenAI call failed:", err)
+      (err) => console.error("OpenAI call failed:", err),
     );
 
     return { success: true, error: null };
@@ -142,7 +142,7 @@ async function callOpenAI(
   childId: string,
   childName: string,
   ageMonths: number,
-  promptContext: { domain: string; age: string; desc: string }[]
+  promptContext: { domain: string; age: string; desc: string }[],
 ): Promise<void> {
   const admin = createAdminClient();
 
@@ -150,7 +150,7 @@ async function callOpenAI(
     const userPrompt = buildActivityUserPrompt(
       childName,
       ageMonths,
-      promptContext
+      promptContext,
     );
 
     const response = await openai.chat.completions.create({
@@ -223,6 +223,7 @@ export async function getActivity(logId: string): Promise<{
       .select("*")
       .eq("id", logId)
       .eq("type", "activity")
+      .eq("is_active", true)
       .single();
 
     if (error || !log) {

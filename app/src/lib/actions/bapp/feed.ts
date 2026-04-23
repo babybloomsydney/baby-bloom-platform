@@ -6,7 +6,7 @@ import type { FeedItem } from "@/types/bapp";
 
 export async function getFeed(
   childId: string,
-  limit: number = 100
+  limit: number = 100,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -24,11 +24,13 @@ export async function getFeed(
 
     const admin = createAdminClient();
 
-    // Fetch logs for this child, ordered newest first
+    // Fetch logs for this child, ordered newest first. is_active filter
+    // keeps soft-deleted tiles (Katie delete_tile) out of the feed.
     const { data: logs, error: logsError } = await admin
       .from("bapp_logs")
       .select("*")
       .eq("child_client_id", childId)
+      .eq("is_active", true)
       .order("created_at", { ascending: false })
       .limit(limit);
 
@@ -42,9 +44,11 @@ export async function getFeed(
     }
 
     // Collect unique author IDs and parent_log_ids for batch lookups
-    const authorIds = Array.from(new Set(logs.map((l) => l.author_id).filter(Boolean)));
+    const authorIds = Array.from(
+      new Set(logs.map((l) => l.author_id).filter(Boolean)),
+    );
     const parentLogIds = Array.from(
-      new Set(logs.map((l) => l.parent_log_id).filter(Boolean))
+      new Set(logs.map((l) => l.parent_log_id).filter(Boolean)),
     ) as string[];
 
     // Batch fetch author names
