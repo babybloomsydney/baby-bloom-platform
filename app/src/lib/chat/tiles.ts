@@ -37,21 +37,51 @@ export interface KatieNoteTile {
 }
 
 /**
- * Future interactive kinds follow this id-only shape. The rendering
- * component reads live data itself so we never diverge from the main page.
+ * Activity plan — renders the same ActivityTile component the child
+ * feed uses at /nanny/development/<childId>. Payload carries a snapshot
+ * of the FeedItem at tile-creation time; bapp_logs of type='activity'
+ * are effectively append-only (status transitions pending → ready once
+ * during the OpenAI call and stays there), so a snapshot is safe and
+ * avoids an extra DB fetch on render.
+ */
+export interface ActivityChatTile {
+  kind: "activity";
+  data: {
+    /**
+     * FeedItem-shaped. Matches @/types/bapp#FeedItem but duplicated
+     * here to keep @/lib/chat/tiles browser + server safe and
+     * dependency-light. The TileRegistry branch casts back on render.
+     */
+    item: {
+      id: string;
+      child_client_id: string;
+      author_id: string;
+      author_name: string;
+      type: "activity";
+      status: "pending" | "ready" | "completed";
+      context: string;
+      parent_log_id: string | null;
+      data: Record<string, unknown>;
+      created_at: string;
+      updated_at: string;
+    };
+  };
+}
+
+/**
+ * Future interactive kinds follow an id-only shape — the rendering
+ * component reads live data itself so we never diverge from the main
+ * page. e.g.
  *
  *   | { kind: "interview_request"; data: { id: string } }
  *   | { kind: "connection_request"; data: { id: string } }
  *   | { kind: "bsr_job"; data: { id: string; slot_id?: string } }
- *   | { kind: "nanny_profile_preview"; data: { nanny_id: string } }
- *   | { kind: "parent_position_preview"; data: { position_id: string } }
  *
- * Do NOT add them to the union until the matching module + tile component
- * actually ship. Stubbing breaks the "one kind ↔ one implementation"
- * invariant.
+ * Do NOT add them to the union until the matching module + tile
+ * component actually ship.
  */
 
-export type ChatTile = KatieNoteTile;
+export type ChatTile = KatieNoteTile | ActivityChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -73,6 +103,18 @@ export function isChatTile(value: unknown): value is ChatTile {
   switch (obj.kind) {
     case "katie_note":
       return typeof data.body === "string" && data.body.length > 0;
+    case "activity": {
+      const item = data.item as Record<string, unknown> | undefined;
+      if (!item || typeof item !== "object") return false;
+      return (
+        typeof item.id === "string" &&
+        typeof item.child_client_id === "string" &&
+        item.type === "activity" &&
+        typeof item.status === "string" &&
+        item.data != null &&
+        typeof item.data === "object"
+      );
+    }
     default:
       return false;
   }

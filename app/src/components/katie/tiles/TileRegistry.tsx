@@ -15,23 +15,28 @@
  */
 
 import type { ChatTile } from "@/lib/chat/tiles";
+import type { FeedItem } from "@/types/bapp";
 import { KatieNoteTile } from "./KatieNoteTile";
+import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 
 export function RenderTile({ tile }: { tile: ChatTile }) {
   switch (tile.kind) {
     case "katie_note":
       return <KatieNoteTile tile={tile} />;
-    // Add future kinds here. Each new kind should:
-    //   1. Import the SAME React component used on the main page.
-    //   2. Pass the minimal id payload; component fetches live data.
-    // e.g.:
+    case "activity":
+      // Same component the child feed uses. No `onViewActivity` handler
+      // here — the "View Activity →" button only renders when a handler
+      // is supplied, so Katie's inline version stays compact. Users who
+      // want the full sheet can open the child's development page.
+      return <ActivityTile item={tile.data.item as FeedItem} />;
+    // Future kinds — add here, importing the SAME component used on the
+    // main page. e.g.:
     //   case "interview_request":
     //     return <InterviewRequestTile id={tile.data.id} />;
-    default:
-      // Once ChatTile has ≥2 members, reinstate the exhaustiveness guard
-      // (`const _exhaustive: never = tile`). Single-member unions don't
-      // narrow the default branch to `never`, so TS rejects the guard
-      // today. Keep the explicit default return instead.
+    default: {
+      const _exhaustive: never = tile;
+      void _exhaustive;
       return null;
+    }
   }
 }

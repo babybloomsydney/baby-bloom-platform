@@ -126,6 +126,18 @@ describe("activities module — plan_activity", () => {
     const data = r.data as any;
     expect(data.title).toBe("Banana Breakfast Bonanza");
     expect(data.log_id).toBe("log-act-1");
+    // Tile payload for inline chat rendering — wraps the existing
+    // ActivityTile component via TileRegistry.
+    expect(r.tile?.kind).toBe("activity");
+    if (r.tile?.kind === "activity") {
+      expect(r.tile.data.item.id).toBe("log-act-1");
+      expect(r.tile.data.item.type).toBe("activity");
+      expect(r.tile.data.item.status).toBe("ready");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((r.tile.data.item.data as any).title).toBe(
+        "Banana Breakfast Bonanza",
+      );
+    }
   });
 
   it("surfaces error when child can't be resolved", async () => {

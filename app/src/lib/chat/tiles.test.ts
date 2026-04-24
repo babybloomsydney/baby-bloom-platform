@@ -40,6 +40,56 @@ describe("isChatTile", () => {
     );
   });
 
+  it("accepts a valid activity tile", () => {
+    expect(
+      isChatTile({
+        kind: "activity",
+        data: {
+          item: {
+            id: "log-1",
+            child_client_id: "c1",
+            author_id: "u-1",
+            author_name: "Katie",
+            type: "activity",
+            status: "ready",
+            context: "adhoc",
+            parent_log_id: null,
+            data: { title: "Peek-a-Voice Buddy", activity_json: {} },
+            created_at: "2026-04-24T00:00:00Z",
+            updated_at: "2026-04-24T00:00:00Z",
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects activity tile with missing item", () => {
+    expect(isChatTile({ kind: "activity", data: {} })).toBe(false);
+  });
+
+  it("rejects activity tile whose inner type isn't 'activity'", () => {
+    expect(
+      isChatTile({
+        kind: "activity",
+        data: {
+          item: {
+            id: "x",
+            child_client_id: "c1",
+            author_id: "u",
+            author_name: "Katie",
+            type: "observation",
+            status: "ready",
+            context: "adhoc",
+            parent_log_id: null,
+            data: {},
+            created_at: "",
+            updated_at: "",
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("rejects katie_note with empty body", () => {
     expect(isChatTile({ kind: "katie_note", data: { body: "" } })).toBe(false);
   });

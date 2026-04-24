@@ -125,19 +125,25 @@ async function planActivity(
 
   // 4. Fill in the log row with the generated plan.
   const title = plan?.creativeName ?? "Activity Plan";
+  const activityData = {
+    milestone_ids: milestoneIds,
+    prompt_context: promptContext,
+    activity_json: plan,
+    title,
+  };
+  const nowIso = new Date().toISOString();
   await ctx.supabase
     .from("bapp_logs")
     .update({
       status: "ready",
-      data: {
-        milestone_ids: milestoneIds,
-        prompt_context: promptContext,
-        activity_json: plan,
-        title,
-      },
+      data: activityData,
     })
     .eq("id", logId);
 
+  // 5. Emit the same ActivityTile the child feed uses. FeedItem-shaped
+  //    snapshot is fine here — bapp_logs of type='activity' are
+  //    effectively append-only after ready, so the tile stays correct
+  //    on scroll-back without a re-fetch.
   return {
     success: true,
     feedEntry: true,
@@ -147,6 +153,26 @@ async function planActivity(
       title,
       milestone_ids: milestoneIds,
       plan,
+    },
+    tile: {
+      kind: "activity",
+      data: {
+        item: {
+          id: logId,
+          child_client_id: child.id,
+          author_id: ctx.userId,
+          // Katie-authored — "Katie" as the byline matches the sparkle
+          // vibe the tile already leans into when rendered in chat.
+          author_name: "Katie",
+          type: "activity",
+          status: "ready",
+          context: "adhoc",
+          parent_log_id: null,
+          data: activityData,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      },
     },
   };
 }
