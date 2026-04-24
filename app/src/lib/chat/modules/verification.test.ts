@@ -500,6 +500,75 @@ describe("verification module — read_verification_status", () => {
     );
     expect(r.success).toBe(false);
   });
+
+  it("attaches a katie_note tile when there's a next-step action", async () => {
+    // Nanny at level 1 who hasn't submitted verification → how_to_continue
+    // is present → tool result should carry an inline tile.
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 1 },
+      verifications: {
+        verification_status: 0,
+        identity_status: "not_started",
+        wwcc_status: "not_started",
+        cross_check_status: "not_started",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(r.tile).toBeDefined();
+    expect(r.tile?.kind).toBe("katie_note");
+    if (r.tile?.kind === "katie_note") {
+      expect(r.tile.data.action?.href).toBe("/nanny/verification");
+      expect(r.tile.data.badge).toBe("Verification");
+    }
+  });
+
+  it("does NOT attach a tile when there's nothing for the user to do", async () => {
+    // Fully verified nanny — headline is "You're fully verified",
+    // how_to_continue is null, no tile.
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 4 },
+      verifications: {
+        verification_status: 40,
+        identity_status: "verified",
+        wwcc_status: "verified",
+        cross_check_status: "passed",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(r.tile).toBeUndefined();
+  });
+
+  it("does NOT attach a tile at level 3 (provisional — 'Verified' UX)", async () => {
+    // Provisional nanny sees "Verified" on their dashboard — Katie's
+    // behaviour mirrors that. No tile nudge, no unprompted mention of
+    // the silent final check.
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 3 },
+      verifications: {
+        verification_status: 30,
+        identity_status: "verified",
+        wwcc_status: "verified",
+        cross_check_status: "passed",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(r.tile).toBeUndefined();
+  });
 });
 
 describe("verification module — read_verification_next_steps", () => {

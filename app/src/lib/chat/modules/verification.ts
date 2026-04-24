@@ -23,6 +23,7 @@
  */
 
 import type { BloomBotModule, ToolResult } from "./types";
+import type { ChatTile } from "@/lib/chat/tiles";
 
 // ── Internal row shapes (what we query from DB) ────────────────────────────
 
@@ -367,6 +368,43 @@ export function summariseParentState(
 
 // ── Handlers ───────────────────────────────────────────────────────────────
 
+/**
+ * Builds the inline tile that rides with a verification-status tool
+ * result. Renders the same headline Katie speaks, plus a single-tap
+ * action link to the traditional verification form when the user has
+ * a next step to take. Keeps Katie's voice (narration) and the
+ * operator's hand (form) visually co-located.
+ *
+ * Only emits a tile when `summary.how_to_continue` is set — when
+ * there's nothing actionable (fully verified, or a "we're on it"
+ * in-progress state) Katie speaks text only.
+ */
+function tileForVerification(
+  summary: VerificationSummary,
+): ChatTile | undefined {
+  if (!summary.how_to_continue) return undefined;
+  // Pick the most informative supporting line for the tile body.
+  const body =
+    summary.system_guidance?.trim() ||
+    summary.whats_still_needed[0] ||
+    summary.whats_in_progress[0] ||
+    summary.headline;
+  // VerificationSummary uses { label, url }; ChatTile action uses
+  // { label, href }. Translate at the boundary.
+  return {
+    kind: "katie_note",
+    data: {
+      badge: "Verification",
+      title: summary.headline,
+      body,
+      action: {
+        label: summary.how_to_continue.label,
+        href: summary.how_to_continue.url,
+      },
+    },
+  };
+}
+
 async function readVerificationStatus(
   _args: Record<string, unknown>,
   ctx: Parameters<BloomBotModule["execute"]>[2],
@@ -384,12 +422,14 @@ async function readVerificationStatus(
       )
       .eq("user_id", ctx.userId)
       .maybeSingle();
+    const summary = summariseParentState(
+      parent as ParentRow | null,
+      ver as ParentVerificationRow | null,
+    );
     return {
       success: true,
-      data: summariseParentState(
-        parent as ParentRow | null,
-        ver as ParentVerificationRow | null,
-      ),
+      data: summary,
+      tile: tileForVerification(summary),
     };
   }
 
@@ -406,12 +446,14 @@ async function readVerificationStatus(
       )
       .eq("user_id", ctx.userId)
       .maybeSingle();
+    const summary = summariseNannyState(
+      nanny as NannyRow | null,
+      ver as NannyVerificationRow | null,
+    );
     return {
       success: true,
-      data: summariseNannyState(
-        nanny as NannyRow | null,
-        ver as NannyVerificationRow | null,
-      ),
+      data: summary,
+      tile: tileForVerification(summary),
     };
   }
 
