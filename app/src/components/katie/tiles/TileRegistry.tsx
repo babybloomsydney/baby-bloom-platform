@@ -17,6 +17,7 @@
 import type { ChatTile } from "@/lib/chat/tiles";
 import type { FeedItem } from "@/types/bapp";
 import { KatieNoteTile } from "./KatieNoteTile";
+import { VerificationStatusTile } from "./VerificationStatusTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 import { DiaryTile } from "@/components/bapp/tiles/DiaryTile";
@@ -44,6 +45,11 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       // annotated version renders on the child's main-feed page where
       // the milestoneMap is in scope.
       return <ProgressTile item={tile.data.item as FeedItem} />;
+    case "verification_status":
+      // Wraps VerificationProgress — the stepper component from the
+      // design system. Step derivation is server-side so Katie never
+      // speaks raw verification_level / verification_status codes.
+      return <VerificationStatusTile tile={tile} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":

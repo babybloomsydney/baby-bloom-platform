@@ -369,40 +369,139 @@ export function summariseParentState(
 // ── Handlers ───────────────────────────────────────────────────────────────
 
 /**
+ * Derive the step labels + statuses that VerificationProgress expects,
+ * from the raw verification state rows. Lives server-side so the
+ * browser never sees `verification_level` / `verification_status`
+ * codes.
+ *
+ * Step statuses align with VerificationProgress.getStepState which
+ * treats ["verified","saved","doc_verified","passed"] as completed,
+ * ["processing","pending","review","application_pending"] as in
+ * progress, and ["failed","rejected","barred","ocg_not_found",
+ * "closed","expired"] as action-needed.
+ *
+ * Provisional UX rule: for a level-3 nanny, ALL steps are marked
+ * `verified` so the tile reads "Verified" visually. The silent
+ * OCG-confirmation-pending detail lives in
+ * VerificationSummary.only_if_asked and is surfaced only when the
+ * user directly asks.
+ */
+export function deriveNannySteps(
+  nanny: NannyRow | null,
+  ver: NannyVerificationRow | null,
+): Array<{ label: string; status: string }> {
+  const level = nanny?.verification_level ?? 0;
+  const identityStatus = ver?.identity_status ?? "not_started";
+  const wwccStatus = ver?.wwcc_status ?? "not_started";
+  const status = ver?.verification_status ?? 0;
+
+  const profileStatus = level >= 1 ? "verified" : "not_started";
+
+  let idStep: string;
+  if (level >= 2) {
+    idStep = "verified";
+  } else if (identityStatus === "processing" || status === 10) {
+    idStep = "processing";
+  } else if (identityStatus === "review" || status === 11) {
+    idStep = "review";
+  } else if (
+    identityStatus === "rejected" ||
+    identityStatus === "failed" ||
+    status === 12
+  ) {
+    idStep = "failed";
+  } else {
+    idStep = "not_started";
+  }
+
+  let wwccStep: string;
+  if (level >= 3) {
+    // Level 3 = provisional (OCG passed initial check). Main-page UX
+    // labels this "Verified", so the stepper shows verified too. The
+    // final-admin-check pending story is only surfaced on direct
+    // request via VerificationSummary.only_if_asked.
+    wwccStep = "verified";
+  } else if (
+    wwccStatus === "processing" ||
+    wwccStatus === "pending" ||
+    status === 20
+  ) {
+    wwccStep = "processing";
+  } else if (wwccStatus === "review" || status === 21) {
+    wwccStep = "review";
+  } else if (
+    wwccStatus === "rejected" ||
+    wwccStatus === "failed" ||
+    status === 22
+  ) {
+    wwccStep = "failed";
+  } else if (status === 23) {
+    wwccStep = "expired";
+  } else {
+    wwccStep = "not_started";
+  }
+
+  return [
+    { label: "Profile complete", status: profileStatus },
+    { label: "ID verified", status: idStep },
+    { label: "Working With Children Check", status: wwccStep },
+  ];
+}
+
+export function deriveParentSteps(
+  parent: ParentRow | null,
+  ver: ParentVerificationRow | null,
+): Array<{ label: string; status: string }> {
+  const level = parent?.verification_level ?? 0;
+  const identityStatus = ver?.identity_status ?? "not_started";
+  const status = ver?.verification_status ?? 0;
+
+  // Parent account always exists if they're calling this — signup is
+  // the implicit step 1.
+  const accountStatus = "verified";
+
+  let idStep: string;
+  if (level >= 1) {
+    idStep = "verified";
+  } else if (identityStatus === "processing" || status === 10) {
+    idStep = "processing";
+  } else if (identityStatus === "review" || status === 11) {
+    idStep = "review";
+  } else if (
+    identityStatus === "failed" ||
+    identityStatus === "rejected" ||
+    status === 12 ||
+    status === 13
+  ) {
+    idStep = "failed";
+  } else {
+    idStep = "not_started";
+  }
+
+  return [
+    { label: "Account created", status: accountStatus },
+    { label: "Identity verified", status: idStep },
+  ];
+}
+
+/**
  * Builds the inline tile that rides with a verification-status tool
- * result. Renders the same headline Katie speaks, plus a one-tap
- * action link to the traditional verification form when the user has
- * a next step. Keeps Katie's voice (narration) and the operator's
+ * result. Renders the VerificationProgress stepper (same component
+ * the design system uses) plus a headline and an optional one-tap
+ * action link to the traditional verification form when the user
+ * has a next step. Keeps Katie's voice (narration) and the operator's
  * hand (form) visually co-located.
  *
- * Always emits a tile — the tile is Katie's visual answer to
- * "how am I doing?" regardless of state:
- *
- *   - action state   → badge "Verification" + body describing the
- *                      gap + link to the traditional form
- *   - verified state → badge "Verified ✓" + short confirmation body,
- *                      no link
- *   - waiting state  → badge "Verification" + body describing what's
- *                      in progress, no link
- *
- * For provisional (level 3), the UX rule still applies: the body
- * must NOT mention the silent final check. summariseNannyState has
- * already routed that string into `only_if_asked`, so the body
- * selected here is safe.
+ * For provisional (level 3), the UX rule still applies: the tile
+ * must NOT mention the silent final check. deriveNannySteps marks
+ * all steps as `verified` at that level, and summariseNannyState
+ * routes the pending-check note into `only_if_asked` so it never
+ * appears on the tile.
  */
-function tileForVerification(summary: VerificationSummary): ChatTile {
-  // Pick the most informative supporting line for the tile body.
-  const body =
-    summary.system_guidance?.trim() ||
-    summary.whats_still_needed[0] ||
-    summary.whats_in_progress[0] ||
-    summary.whats_complete[0] ||
-    summary.headline;
-
-  const isVerified = /you'?re (fully )?verified/i.test(summary.headline);
-
-  // VerificationSummary uses { label, url }; ChatTile action uses
-  // { label, href }. Translate at the boundary.
+function tileForVerification(
+  summary: VerificationSummary,
+  steps: Array<{ label: string; status: string }>,
+): ChatTile {
   const action = summary.how_to_continue
     ? {
         label: summary.how_to_continue.label,
@@ -411,11 +510,10 @@ function tileForVerification(summary: VerificationSummary): ChatTile {
     : undefined;
 
   return {
-    kind: "katie_note",
+    kind: "verification_status",
     data: {
-      badge: isVerified ? "Verified ✓" : "Verification",
-      title: summary.headline,
-      body,
+      headline: summary.headline,
+      steps,
       action,
     },
   };
@@ -438,14 +536,14 @@ async function readVerificationStatus(
       )
       .eq("user_id", ctx.userId)
       .maybeSingle();
-    const summary = summariseParentState(
-      parent as ParentRow | null,
-      ver as ParentVerificationRow | null,
-    );
+    const parentRow = parent as ParentRow | null;
+    const verRow = ver as ParentVerificationRow | null;
+    const summary = summariseParentState(parentRow, verRow);
+    const steps = deriveParentSteps(parentRow, verRow);
     return {
       success: true,
       data: summary,
-      tile: tileForVerification(summary),
+      tile: tileForVerification(summary, steps),
     };
   }
 
@@ -462,14 +560,14 @@ async function readVerificationStatus(
       )
       .eq("user_id", ctx.userId)
       .maybeSingle();
-    const summary = summariseNannyState(
-      nanny as NannyRow | null,
-      ver as NannyVerificationRow | null,
-    );
+    const nannyRow = nanny as NannyRow | null;
+    const verRow = ver as NannyVerificationRow | null;
+    const summary = summariseNannyState(nannyRow, verRow);
+    const steps = deriveNannySteps(nannyRow, verRow);
     return {
       success: true,
       data: summary,
-      tile: tileForVerification(summary),
+      tile: tileForVerification(summary, steps),
     };
   }
 

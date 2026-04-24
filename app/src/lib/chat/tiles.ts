@@ -88,6 +88,29 @@ export interface ProgressChatTile {
 }
 
 /**
+ * Verification status — wraps the existing VerificationProgress stepper.
+ *
+ * Pre-computed on the server so the tile renders without needing Katie's
+ * verification pipeline in the browser. `steps` is passed directly to
+ * VerificationProgress (same component the design system uses); the
+ * step statuses use the verification vocabulary
+ * (`verified` / `processing` / `review` / `failed` / `not_started`).
+ *
+ * Provisional UX rule still holds: for a level-3 nanny, all steps
+ * render as `verified` and the pending-final-check note never appears
+ * on the tile — that information lives in the VerificationSummary's
+ * `only_if_asked` list, which Katie only surfaces when the user asks.
+ */
+export interface VerificationStatusChatTile {
+  kind: "verification_status";
+  data: {
+    headline: string;
+    steps: Array<{ label: string; status: string }>;
+    action?: { label: string; href: string };
+  };
+}
+
+/**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
  * page. e.g.
@@ -105,7 +128,8 @@ export type ChatTile =
   | ActivityChatTile
   | ObservationChatTile
   | DiaryChatTile
-  | ProgressChatTile;
+  | ProgressChatTile
+  | VerificationStatusChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -135,6 +159,19 @@ export function isChatTile(value: unknown): value is ChatTile {
       return isFeedItemSnapshot(data.item, "diary");
     case "progress":
       return isFeedItemSnapshot(data.item, "progress");
+    case "verification_status":
+      return (
+        typeof data.headline === "string" &&
+        data.headline.length > 0 &&
+        Array.isArray(data.steps) &&
+        data.steps.every(
+          (s): s is { label: string; status: string } =>
+            Boolean(s) &&
+            typeof s === "object" &&
+            typeof (s as { label: unknown }).label === "string" &&
+            typeof (s as { status: unknown }).status === "string",
+        )
+      );
     default:
       return false;
   }

@@ -141,6 +141,56 @@ describe("isChatTile", () => {
     ).toBe(false);
   });
 
+  it("accepts a valid verification_status tile with steps", () => {
+    expect(
+      isChatTile({
+        kind: "verification_status",
+        data: {
+          headline: "You're verified.",
+          steps: [
+            { label: "Profile complete", status: "verified" },
+            { label: "ID verified", status: "verified" },
+            { label: "Working With Children Check", status: "verified" },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts a verification_status tile with action link", () => {
+    expect(
+      isChatTile({
+        kind: "verification_status",
+        data: {
+          headline: "Start verification.",
+          steps: [{ label: "Profile complete", status: "verified" }],
+          action: { label: "Start", href: "/nanny/verification" },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects verification_status tile with missing headline", () => {
+    expect(
+      isChatTile({
+        kind: "verification_status",
+        data: { steps: [] },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects verification_status tile with malformed steps", () => {
+    expect(
+      isChatTile({
+        kind: "verification_status",
+        data: {
+          headline: "x",
+          steps: [{ label: "only label, no status" }],
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("rejects katie_note with empty body", () => {
     expect(isChatTile({ kind: "katie_note", data: { body: "" } })).toBe(false);
   });

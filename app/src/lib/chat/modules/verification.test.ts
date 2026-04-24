@@ -501,9 +501,10 @@ describe("verification module — read_verification_status", () => {
     expect(r.success).toBe(false);
   });
 
-  it("attaches a katie_note tile when there's a next-step action", async () => {
+  it("attaches a verification_status tile when there's a next-step action", async () => {
     // Nanny at level 1 who hasn't submitted verification → how_to_continue
-    // is present → tool result should carry an inline tile.
+    // is present → tool result should carry an inline tile with a stepper
+    // and a "Continue" link.
     const ctx = makeCtx("nanny", {
       nanny: { verification_level: 1 },
       verifications: {
@@ -520,14 +521,20 @@ describe("verification module — read_verification_status", () => {
     );
     expect(r.success).toBe(true);
     expect(r.tile).toBeDefined();
-    expect(r.tile?.kind).toBe("katie_note");
-    if (r.tile?.kind === "katie_note") {
+    expect(r.tile?.kind).toBe("verification_status");
+    if (r.tile?.kind === "verification_status") {
       expect(r.tile.data.action?.href).toBe("/nanny/verification");
-      expect(r.tile.data.badge).toBe("Verification");
+      expect(r.tile.data.steps).toHaveLength(3);
+      expect(r.tile.data.steps[0]).toEqual({
+        label: "Profile complete",
+        status: "verified",
+      });
+      expect(r.tile.data.steps[1].status).toBe("not_started");
+      expect(r.tile.data.steps[2].status).toBe("not_started");
     }
   });
 
-  it("attaches a 'Verified ✓' tile with no action when fully verified", async () => {
+  it("attaches a fully-verified tile (all steps 'verified', no action) at level 4", async () => {
     const ctx = makeCtx("nanny", {
       nanny: { verification_level: 4 },
       verifications: {
@@ -543,14 +550,22 @@ describe("verification module — read_verification_status", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.tile?.kind).toBe("katie_note");
-    if (r.tile?.kind === "katie_note") {
-      expect(r.tile.data.badge).toBe("Verified ✓");
+    expect(r.tile?.kind).toBe("verification_status");
+    if (r.tile?.kind === "verification_status") {
       expect(r.tile.data.action).toBeUndefined();
+      expect(r.tile.data.headline.toLowerCase()).toMatch(
+        /you'?re (fully )?verified/,
+      );
+      expect(r.tile.data.steps.every((s) => s.status === "verified")).toBe(
+        true,
+      );
     }
   });
 
-  it("attaches a 'Verified ✓' tile at level 3, body must NOT mention the silent final check", async () => {
+  it("at level 3 the tile shows all steps 'verified' — the final check pending note is stripped from tile output", async () => {
+    // Provisional level 3 UX: dashboard + Katie tile both say
+    // "Verified". The silent OCG confirmation sits in only_if_asked and
+    // must NOT show on the tile.
     const ctx = makeCtx("nanny", {
       nanny: { verification_level: 3 },
       verifications: {
@@ -566,14 +581,17 @@ describe("verification module — read_verification_status", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.tile?.kind).toBe("katie_note");
-    if (r.tile?.kind === "katie_note") {
-      expect(r.tile.data.badge).toBe("Verified ✓");
+    expect(r.tile?.kind).toBe("verification_status");
+    if (r.tile?.kind === "verification_status") {
       expect(r.tile.data.action).toBeUndefined();
-      // The provisional-state pending-check note lives in only_if_asked,
-      // not in the tile body. Assert that explicitly.
-      const body = r.tile.data.body.toLowerCase();
-      expect(body).not.toMatch(
+      expect(r.tile.data.headline.toLowerCase()).toMatch(/you'?re verified/);
+      expect(r.tile.data.steps.every((s) => s.status === "verified")).toBe(
+        true,
+      );
+      // Nothing in the visible tile copy should leak the pending
+      // admin-check language.
+      const blob = JSON.stringify(r.tile.data).toLowerCase();
+      expect(blob).not.toMatch(
         /final (administrative )?check|still in progress|pending/,
       );
     }
