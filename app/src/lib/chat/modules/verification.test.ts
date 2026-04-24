@@ -146,26 +146,62 @@ describe("summariseNannyState — ID done, WWCC pending", () => {
 });
 
 describe("summariseNannyState — provisionally verified (level 3)", () => {
-  it("is visible in search, final WWCC still in progress", () => {
-    const s = summariseNannyState(
-      { verification_level: 3 },
-      {
-        verification_status: 30,
-        identity_status: "verified",
-        wwcc_status: "verified",
-        cross_check_status: "passed",
-        identity_user_guidance: null,
-        wwcc_user_guidance: null,
-        identity_rejection_reason: null,
-        wwcc_rejection_reason: null,
-      },
-    );
-    expect(s.can_do_now.some((x) => /visible to parents/i.test(x))).toBe(true);
-    expect(s.cannot_do_yet.some((x) => /accept interview/i.test(x.what))).toBe(
+  // UX rule: the nanny sees "Verified" on their dashboard. Katie must not
+  // volunteer the pending-final-check note or the interview/babysitting
+  // holds unless the user specifically asks. Those live in only_if_asked.
+  const s = summariseNannyState(
+    { verification_level: 3 },
+    {
+      verification_status: 30,
+      identity_status: "verified",
+      wwcc_status: "verified",
+      cross_check_status: "passed",
+      identity_user_guidance: null,
+      wwcc_user_guidance: null,
+      identity_rejection_reason: null,
+      wwcc_rejection_reason: null,
+    },
+  );
+
+  it("headline reads as 'verified' (matches dashboard)", () => {
+    expect(s.headline).toMatch(/verified/i);
+    expect(s.headline).not.toMatch(/finalising|pending|not (yet|fully)/i);
+  });
+
+  it("WWCC is in whats_complete, not in whats_in_progress", () => {
+    expect(s.whats_complete.some((x) => /working with children/i.test(x))).toBe(
       true,
     );
-    expect(s.whats_in_progress.some((x) => /final check/i.test(x))).toBe(true);
+    expect(
+      s.whats_in_progress.some((x) => /working with children/i.test(x)),
+    ).toBe(false);
+  });
+
+  it("does NOT list interview/babysitting blockers in cannot_do_yet", () => {
+    expect(s.cannot_do_yet.some((x) => /interview/i.test(x.what))).toBe(false);
+    expect(s.cannot_do_yet.some((x) => /babysitting/i.test(x.what))).toBe(
+      false,
+    );
+  });
+
+  it("still reports visible to parents in can_do_now", () => {
+    expect(s.can_do_now.some((x) => /visible to parents/i.test(x))).toBe(true);
+  });
+
+  it("hides the final-check note + accept-holds in only_if_asked", () => {
+    expect(
+      s.only_if_asked.some((x) => /final administrative check/i.test(x)),
+    ).toBe(true);
+    expect(s.only_if_asked.some((x) => /accept(ing)? interview/i.test(x))).toBe(
+      true,
+    );
+  });
+
+  it("has no next action for the user", () => {
     expect(s.how_to_continue).toBeNull();
+  });
+
+  it("still passes the forbidden-token guard", () => {
     assertNoLeaks(s);
   });
 });
@@ -278,6 +314,58 @@ describe("summariseParentState — fully verified", () => {
     expect(s.cannot_do_yet).toHaveLength(0);
     expect(s.how_to_continue).toBeNull();
     assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — only_if_asked for non-provisional levels", () => {
+  it("is an empty array when not provisional (nothing to hide)", () => {
+    const levels = [0, 1, 2, 4] as const;
+    for (const level of levels) {
+      const s = summariseNannyState(
+        { verification_level: level },
+        {
+          verification_status: level === 4 ? 40 : level === 2 ? 20 : 0,
+          identity_status: level >= 2 ? "verified" : "not_started",
+          wwcc_status: level === 4 ? "verified" : "not_started",
+          cross_check_status: level >= 2 ? "passed" : "not_started",
+          identity_user_guidance: null,
+          wwcc_user_guidance: null,
+          identity_rejection_reason: null,
+          wwcc_rejection_reason: null,
+        },
+      );
+      expect(Array.isArray(s.only_if_asked)).toBe(true);
+      expect(s.only_if_asked).toHaveLength(0);
+    }
+  });
+});
+
+describe("summariseParentState — only_if_asked always empty", () => {
+  it("parent side has no hidden state", () => {
+    for (const status of [0, 10, 11, 12, 13, 20]) {
+      const s = summariseParentState(
+        { verification_level: status === 20 ? 1 : 0 },
+        {
+          verification_status: status,
+          identity_status:
+            status === 10
+              ? "processing"
+              : status === 11
+                ? "review"
+                : status === 12
+                  ? "failed"
+                  : status === 13
+                    ? "rejected"
+                    : status === 20
+                      ? "verified"
+                      : "not_started",
+          cross_check_status: "passed",
+          identity_user_guidance: null,
+          identity_rejection_reason: null,
+        },
+      );
+      expect(s.only_if_asked).toEqual([]);
+    }
   });
 });
 

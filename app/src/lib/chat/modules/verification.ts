@@ -72,6 +72,15 @@ export interface VerificationSummary {
   how_to_continue: { label: string; url: string } | null;
   /** Copy-through of the guidance the verification pipeline has already generated. */
   system_guidance: string | null;
+  /**
+   * Extra context that must NOT be volunteered. Katie only surfaces these
+   * items when the user explicitly asks — e.g. "is anything else happening
+   * with my verification?", "why can't I accept interviews?", "is my WWCC
+   * fully confirmed?". For level-3 provisional nannies this is where the
+   * silent OCG confirmation + interview/babysitting holds live, so the
+   * default experience matches the dashboard label of "Verified".
+   */
+  only_if_asked: string[];
 }
 
 export interface VerificationNextStep {
@@ -108,6 +117,7 @@ export function summariseNannyState(
     cannot_do_yet: [],
     how_to_continue: null,
     system_guidance: null,
+    only_if_asked: [],
   };
 
   // Profile signal — level 1+ means the registration form is done.
@@ -154,8 +164,15 @@ export function summariseNannyState(
     );
   } else if (level === 3) {
     // Provisional — auto-passed, silent admin check in progress.
-    out.whats_in_progress.push(
-      "A final check of your Working With Children Check is in progress with our team.",
+    // Per product UX, the nanny sees "Verified" on their dashboard and
+    // shouldn't be told about the pending final check unless they
+    // specifically ask. So the WWCC complete line goes in whats_complete
+    // and the final-check-in-progress note is stashed in only_if_asked.
+    out.whats_complete.push(
+      "Your Working With Children Check has been confirmed.",
+    );
+    out.only_if_asked.push(
+      "A final administrative check on your Working With Children Check is still in progress with our team — you don't need to do anything, and we'll let you know once it's fully confirmed.",
     );
   } else if (level === 2) {
     if (
@@ -202,7 +219,17 @@ export function summariseNannyState(
     out.can_do_now.push(
       "You can accept babysitting jobs (subject to being eligible for babysitting).",
     );
+  } else if (level === 3) {
+    // Provisional — the holds on interview/babysitting acceptance are
+    // deliberately NOT volunteered. Stash them in only_if_asked so Katie
+    // can answer if the user specifically raises them, without breaking
+    // the "you're verified" UX.
+    out.only_if_asked.push(
+      "Accepting interview requests and babysitting jobs is held until that final check finishes.",
+    );
   } else {
+    // Levels 0–2: user is still working toward verification, so the
+    // blockers are informative.
     out.cannot_do_yet.push({
       what: "Accept interview requests",
       why: "your Working With Children Check is not yet fully confirmed",
@@ -218,8 +245,9 @@ export function summariseNannyState(
     out.headline = "You're fully verified.";
     out.how_to_continue = null;
   } else if (level === 3) {
-    out.headline =
-      "You're verified enough to appear in search. Our team is finalising your WWCC check.";
+    // Match the nanny's dashboard experience — "Verified". The final
+    // admin check is captured in only_if_asked for when they dig in.
+    out.headline = "You're verified.";
     out.how_to_continue = null;
   } else if (level === 0) {
     // Brand-new signup — haven't completed the profile form yet.
@@ -277,6 +305,7 @@ export function summariseParentState(
     cannot_do_yet: [],
     how_to_continue: null,
     system_guidance: null,
+    only_if_asked: [],
   };
 
   if (level >= 1) {
@@ -459,5 +488,6 @@ export const verificationModule: BloomBotModule = {
     "• NEVER mention 'level 1/2/3/4', 'status 10/11/20/30/40', 'tier 1/2/3', 'verification_level', 'verification_status', 'verification_tier', 'identity_status', 'wwcc_status', or any other internal field or code. Just describe what's happened and what's next in natural English.\n" +
     "• NEVER offer to collect documents, take passport/WWCC numbers, tick the consent/waiver checkbox, or submit anything on the user's behalf. Verification is a legal process — it happens on the traditional form at /nanny/verification or /parent/verification. Always redirect there with the `how_to_continue` link when there's something to do.\n" +
     "• If the user asks for a status update, lead with the `headline`, mention what's `in_progress` if anything, then tell them what they can/can't do. If they ask 'what's next', use `read_verification_next_steps`.\n" +
+    "• DO NOT narrate anything in the `only_if_asked` list unsolicited. Those items are deliberately hidden to match the product UX (e.g. a provisionally-verified nanny sees 'Verified' on their dashboard and shouldn't be told unprompted that a background check is still pending). Only surface them when the user specifically asks — for example 'is anything else happening with my verification?', 'why can't I accept interviews?', 'is my WWCC fully confirmed?', 'tell me everything'. If they ask a general 'am I verified?' or 'what's my status?', lead with the headline and what they can do; don't volunteer the pending-check note.\n" +
     "• If `system_guidance` is present, the verification pipeline has already chosen the exact wording to show the user — prefer that text over your own paraphrase.",
 };
