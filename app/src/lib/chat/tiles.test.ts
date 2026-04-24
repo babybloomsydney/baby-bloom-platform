@@ -35,9 +35,16 @@ describe("isChatTile", () => {
   });
 
   it("rejects tile with unknown kind", () => {
-    expect(isChatTile({ kind: "bsr_job", data: { id: "whatever" } })).toBe(
-      false,
-    );
+    expect(
+      isChatTile({ kind: "not_a_real_kind_xyz", data: { id: "whatever" } }),
+    ).toBe(false);
+  });
+
+  it("accepts bsr_job and job_match id-only tiles", () => {
+    expect(isChatTile({ kind: "bsr_job", data: { id: "bsr-1" } })).toBe(true);
+    expect(isChatTile({ kind: "job_match", data: { id: "m-1" } })).toBe(true);
+    expect(isChatTile({ kind: "bsr_job", data: { id: "" } })).toBe(false);
+    expect(isChatTile({ kind: "job_match", data: {} })).toBe(false);
   });
 
   it("accepts a valid activity tile", () => {

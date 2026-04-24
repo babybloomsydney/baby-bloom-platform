@@ -130,6 +130,33 @@ export interface ConnectionRequestChatTile {
 }
 
 /**
+ * Babysitting job — id-only. Same live-fetch pattern as
+ * `connection_request`. BsrJobTile reads from
+ * `/api/chat/bsr/[id]` (role-aware: nanny sees their invitation,
+ * parent sees their own request). Expiry ticks visibly until the
+ * user acts; buckets shift when the nanny / parent decides.
+ */
+export interface BsrJobChatTile {
+  kind: "bsr_job";
+  data: {
+    id: string;
+  };
+}
+
+/**
+ * DFY-match notification — id-only. Nanny-only; job matches don't
+ * have state equivalent to connections, but the details come from
+ * a server action that resolves recent position data. The tile
+ * fetches live from `/api/chat/job-matches/[id]`.
+ */
+export interface JobMatchChatTile {
+  kind: "job_match";
+  data: {
+    id: string;
+  };
+}
+
+/**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
  * page. e.g.
@@ -149,7 +176,9 @@ export type ChatTile =
   | DiaryChatTile
   | ProgressChatTile
   | VerificationStatusChatTile
-  | ConnectionRequestChatTile;
+  | ConnectionRequestChatTile
+  | BsrJobChatTile
+  | JobMatchChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -198,6 +227,10 @@ export function isChatTile(value: unknown): value is ChatTile {
       );
     }
     case "connection_request":
+      return typeof data.id === "string" && data.id.length > 0;
+    case "bsr_job":
+      return typeof data.id === "string" && data.id.length > 0;
+    case "job_match":
       return typeof data.id === "string" && data.id.length > 0;
     default: {
       // Exhaustiveness guard: if a new ChatTile kind is added without

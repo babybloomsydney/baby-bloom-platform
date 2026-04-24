@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-04-24T07:27:04.571Z",
+  "generated_at": "2026-04-24T07:32:40.723Z",
   "summary": {
-    "route_count": 46,
+    "route_count": 48,
     "page_count": 96,
     "cron_count": 6,
     "migration_count": 12,
@@ -79,9 +79,19 @@
       "file": "src/app/api/chat/bot-info/route.ts"
     },
     {
+      "path": "/api/chat/bsr/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/bsr/[id]/route.ts"
+    },
+    {
       "path": "/api/chat/connections/[id]",
       "methods": ["GET"],
       "file": "src/app/api/chat/connections/[id]/route.ts"
+    },
+    {
+      "path": "/api/chat/job-matches/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/job-matches/[id]/route.ts"
     },
     {
       "path": "/api/chat/mark-read",

@@ -239,7 +239,7 @@ describe("bsr module — read_my_requests (parent)", () => {
 describe("bsr module — read_job_detail", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("nanny: returns detail for their own invitation", async () => {
+  it("nanny: returns detail for their own invitation + emits bsr_job tile", async () => {
     vi.mocked(getNannyBabysittingJobs).mockResolvedValue({
       data: [buildNannyJob({ id: "j1" })],
       error: null,
@@ -257,6 +257,10 @@ describe("bsr module — read_job_detail", () => {
     expect(data.id).toBe("j1");
     expect(data.distance).toMatch(/3\.4 km/);
     expect(data.slots[0]).toMatch(/6pm to 10pm/);
+    expect(r.tile?.kind).toBe("bsr_job");
+    if (r.tile?.kind === "bsr_job") {
+      expect(r.tile.data.id).toBe("j1");
+    }
   });
 
   it("nanny: rejects id not in their invitations (ownership gate)", async () => {

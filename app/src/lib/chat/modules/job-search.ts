@@ -151,6 +151,7 @@ async function readJobMatchDetail(
       level_of_support: match.position.levelOfSupport ?? [],
       placement_length: match.position.placementLength,
     },
+    tile: { kind: "job_match", data: { id: match.id } },
   };
 }
 

@@ -137,7 +137,11 @@ async function readJobDetail(
         error: `No babysitting job found with id "${jobId}" in your invitations.`,
       };
     }
-    return { success: true, data: summariseNannyJob(job) };
+    return {
+      success: true,
+      data: summariseNannyJob(job),
+      tile: { kind: "bsr_job", data: { id: job.id } },
+    };
   }
 
   // parent
@@ -151,7 +155,11 @@ async function readJobDetail(
       error: `No babysitting request found with id "${jobId}" on your account.`,
     };
   }
-  return { success: true, data: summariseParentRequest(row) };
+  return {
+    success: true,
+    data: summariseParentRequest(row),
+    tile: { kind: "bsr_job", data: { id: row.id } },
+  };
 }
 
 // ── Exports ──────────────────────────────────────────────────────────────

@@ -196,7 +196,7 @@ describe("job-search module — read_job_match_detail", () => {
     expect(r.error).toMatch(/No open match found/);
   });
 
-  it("returns full detail including description + reasons", async () => {
+  it("returns full detail including description + reasons + emits job_match tile", async () => {
     vi.mocked(getDfyNotificationsForNanny).mockResolvedValue({
       data: [buildNotification({ id: "n1" })],
       error: null,
@@ -211,5 +211,9 @@ describe("job-search module — read_job_match_detail", () => {
     const data = r.data as any;
     expect(data.description).toContain("kind, experienced nanny");
     expect(data.reason_for_nanny).toContain("returning_to_work");
+    expect(r.tile?.kind).toBe("job_match");
+    if (r.tile?.kind === "job_match") {
+      expect(r.tile.data.id).toBe("n1");
+    }
   });
 });
