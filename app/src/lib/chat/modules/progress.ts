@@ -14,7 +14,10 @@
 
 import type { BloomBotModule, ToolResult } from "./types";
 import { resolveChild } from "./utils";
-import { recalculateProgress } from "@/lib/actions/bapp/progress";
+import {
+  recalculateProgress,
+  writeHistorySnapshot,
+} from "@/lib/actions/bapp/progress";
 
 interface MilestoneRow {
   id: string;
@@ -259,22 +262,86 @@ async function updateProgress(
     cleaned.push({ id, score });
   }
 
-  try {
-    await recalculateProgress(child.id, cleaned);
-  } catch (err) {
+  const note =
+    typeof args.note === "string" && args.note.trim().length > 0
+      ? args.note.trim()
+      : null;
+  const imageUrl =
+    typeof args.image_url === "string" && args.image_url.trim().length > 0
+      ? args.image_url.trim()
+      : null;
+
+  // Mirror logBulkProgress from the main-page wizard: write the
+  // progress row first so the child's feed shows this update, then
+  // recalc + snapshot. Shape matches ProgressData in src/types/bapp.ts
+  // so the same row renders identically on the child's development
+  // page.
+  const progressData: Record<string, unknown> = {
+    updates: cleaned,
+    title: "Progress Update",
+    image_url: imageUrl,
+    note,
+  };
+
+  const { data: inserted, error: insertError } = await ctx.supabase
+    .from("bapp_logs")
+    .insert({
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "progress",
+      status: "completed",
+      context: "adhoc",
+      data: progressData,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) {
     return {
       success: false,
-      error: `Failed to update progress: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Failed to write progress row: ${insertError?.message ?? "unknown"}`,
     };
   }
 
+  const logId = (inserted as { id: string }).id;
+
+  try {
+    await recalculateProgress(child.id, cleaned);
+    await writeHistorySnapshot(child.id, logId);
+  } catch (err) {
+    return {
+      success: false,
+      error: `Wrote progress row but recalculation failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+
+  const nowIso = new Date().toISOString();
   return {
     success: true,
-    feedEntry: false,
+    feedEntry: true,
     data: {
+      log_id: logId,
       child_name: child.firstName,
       updated_count: cleaned.length,
       updates: cleaned,
+    },
+    tile: {
+      kind: "progress",
+      data: {
+        item: {
+          id: logId,
+          child_client_id: child.id,
+          author_id: ctx.userId,
+          author_name: "Katie",
+          type: "progress",
+          status: "completed",
+          context: "adhoc",
+          parent_log_id: null,
+          data: progressData,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      },
     },
   };
 }
@@ -348,7 +415,7 @@ export const progressModule: BloomBotModule = {
     {
       name: "update_progress",
       description:
-        "Directly set a child's observed scores against specific milestones. Scores go up only (recalculateProgress takes max with existing). Use this for bulk corrections or quick updates; for single observations prefer log_observation via the observations module so the evidence is captured.",
+        "Directly set a child's observed scores against specific milestones. Scores go up only (recalculateProgress takes max with existing). Writes a progress entry to the child's feed so both the main development page and Katie's chat show the same update. Use this for bulk corrections or quick updates; for single observations prefer log_observation via the observations module so the evidence is captured.",
       parameters: {
         type: "object",
         properties: {
@@ -377,6 +444,15 @@ export const progressModule: BloomBotModule = {
               required: ["milestone_id", "score"],
             },
             minItems: 1,
+          },
+          note: {
+            type: "string",
+            description:
+              "Optional note attached to the progress entry (e.g. 'catching up after a quiet week').",
+          },
+          image_url: {
+            type: "string",
+            description: "Optional image URL if the user attached a photo.",
           },
         },
         required: ["updates"],

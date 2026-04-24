@@ -90,6 +90,57 @@ describe("isChatTile", () => {
     ).toBe(false);
   });
 
+  it("accepts a valid progress tile", () => {
+    expect(
+      isChatTile({
+        kind: "progress",
+        data: {
+          item: {
+            id: "p1",
+            child_client_id: "c1",
+            author_id: "u-1",
+            author_name: "Katie",
+            type: "progress",
+            status: "completed",
+            context: "adhoc",
+            parent_log_id: null,
+            data: {
+              updates: [{ id: "CL_12_18_1", score: 4 }],
+              title: "Progress Update",
+              image_url: null,
+              note: null,
+            },
+            created_at: "2026-04-24T00:00:00Z",
+            updated_at: "2026-04-24T00:00:00Z",
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects progress tile whose inner type isn't 'progress'", () => {
+    expect(
+      isChatTile({
+        kind: "progress",
+        data: {
+          item: {
+            id: "x",
+            child_client_id: "c1",
+            author_id: "u",
+            author_name: "Katie",
+            type: "observation",
+            status: "completed",
+            context: "adhoc",
+            parent_log_id: null,
+            data: {},
+            created_at: "",
+            updated_at: "",
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("rejects katie_note with empty body", () => {
     expect(isChatTile({ kind: "katie_note", data: { body: "" } })).toBe(false);
   });

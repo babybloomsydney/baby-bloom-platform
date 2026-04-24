@@ -4,9 +4,13 @@ import type { ChildSummary, ModuleContext } from "./types";
 
 vi.mock("@/lib/actions/bapp/progress", () => ({
   recalculateProgress: vi.fn().mockResolvedValue(undefined),
+  writeHistorySnapshot: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { recalculateProgress } from "@/lib/actions/bapp/progress";
+import {
+  recalculateProgress,
+  writeHistorySnapshot,
+} from "@/lib/actions/bapp/progress";
 
 const oliver: ChildSummary = {
   id: "c1",
@@ -38,6 +42,7 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
   mocks: {
     milestoneSelect: ReturnType<typeof vi.fn>;
     progressSelect: ReturnType<typeof vi.fn>;
+    insertMock: ReturnType<typeof vi.fn>;
   };
 } {
   const milestoneSelect = vi.fn().mockResolvedValue({
@@ -53,6 +58,10 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
         updated_at: "2026-04-01T00:00:00Z",
       },
     ],
+    error: null,
+  });
+  const insertMock = vi.fn().mockResolvedValue({
+    data: { id: "progress-log-1" },
     error: null,
   });
 
@@ -76,6 +85,15 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
           }),
         };
       }
+      if (table === "bapp_logs") {
+        return {
+          insert: () => ({
+            select: () => ({
+              single: () => insertMock(),
+            }),
+          }),
+        };
+      }
       throw new Error(`Unexpected table: ${table}`);
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +108,7 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
     currentSurface: null,
     supabase,
   };
-  return { ctx, mocks: { milestoneSelect, progressSelect } };
+  return { ctx, mocks: { milestoneSelect, progressSelect, insertMock } };
 }
 
 describe("progress module — read_milestones", () => {
@@ -188,8 +206,8 @@ describe("progress module — update_progress", () => {
     expect(r.error).toMatch(/score/i);
   });
 
-  it("delegates to recalculateProgress with child id + updates", async () => {
-    const { ctx } = makeCtx();
+  it("writes a bapp_logs progress row + delegates to recalc + snapshot", async () => {
+    const { ctx, mocks } = makeCtx();
     const r = await progressModule.execute(
       "update_progress",
       {
@@ -201,10 +219,14 @@ describe("progress module — update_progress", () => {
       ctx,
     );
     expect(r.success).toBe(true);
+    // Row first, then recalc, then snapshot — so the feed row is the
+    // source of truth if any later step fails.
+    expect(mocks.insertMock).toHaveBeenCalled();
     expect(recalculateProgress).toHaveBeenCalledWith("c1", [
       { id: "CL_12_18_1", score: 4 },
       { id: "PD_12_18_1", score: 2 },
     ]);
+    expect(writeHistorySnapshot).toHaveBeenCalledWith("c1", "progress-log-1");
   });
 
   it("returns user-facing confirmation summary", async () => {
@@ -218,6 +240,35 @@ describe("progress module — update_progress", () => {
     const data = r.data as any;
     expect(data.updated_count).toBe(1);
     expect(data.child_name).toBe("Oliver");
+  });
+
+  it("emits a ProgressChatTile wrapping the existing ProgressTile", async () => {
+    // Same row shape the child feed renders, so there is zero drift
+    // between Katie's chat view and /nanny/development/<child>.
+    const { ctx } = makeCtx();
+    const r = await progressModule.execute(
+      "update_progress",
+      {
+        updates: [{ milestone_id: "CL_12_18_1", score: 4 }],
+        note: "Set from chat",
+      },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(r.feedEntry).toBe(true);
+    expect(r.tile?.kind).toBe("progress");
+    if (r.tile?.kind === "progress") {
+      const item = r.tile.data.item;
+      expect(item.id).toBe("progress-log-1");
+      expect(item.type).toBe("progress");
+      const data = item.data as Record<string, unknown>;
+      expect(data.title).toBe("Progress Update");
+      expect(data.note).toBe("Set from chat");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updates = data.updates as any[];
+      expect(updates).toHaveLength(1);
+      expect(updates[0]).toEqual({ id: "CL_12_18_1", score: 4 });
+    }
   });
 });
 

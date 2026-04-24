@@ -81,6 +81,12 @@ export interface DiaryChatTile {
   data: { item: FeedItemSnapshot<"diary"> };
 }
 
+/** Progress update — wraps the existing ProgressTile. */
+export interface ProgressChatTile {
+  kind: "progress";
+  data: { item: FeedItemSnapshot<"progress"> };
+}
+
 /**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
@@ -98,7 +104,8 @@ export type ChatTile =
   | KatieNoteTile
   | ActivityChatTile
   | ObservationChatTile
-  | DiaryChatTile;
+  | DiaryChatTile
+  | ProgressChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -126,6 +133,8 @@ export function isChatTile(value: unknown): value is ChatTile {
       return isFeedItemSnapshot(data.item, "observation");
     case "diary":
       return isFeedItemSnapshot(data.item, "diary");
+    case "progress":
+      return isFeedItemSnapshot(data.item, "progress");
     default:
       return false;
   }

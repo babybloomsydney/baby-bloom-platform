@@ -20,6 +20,7 @@ import { KatieNoteTile } from "./KatieNoteTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 import { DiaryTile } from "@/components/bapp/tiles/DiaryTile";
+import { ProgressTile } from "@/components/bapp/tiles/ProgressTile";
 
 export function RenderTile({ tile }: { tile: ChatTile }) {
   switch (tile.kind) {
@@ -35,6 +36,14 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       return <ObservationTile item={tile.data.item as FeedItem} />;
     case "diary":
       return <DiaryTile item={tile.data.item as FeedItem} />;
+    case "progress":
+      // ProgressTile accepts an optional milestoneMap for looking up
+      // milestone descriptions. Katie's inline version skips it — the
+      // compact form just renders the domain + mastery score per update,
+      // and the milestone id is still visible as a fallback. The full
+      // annotated version renders on the child's main-feed page where
+      // the milestoneMap is in scope.
+      return <ProgressTile item={tile.data.item as FeedItem} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":
