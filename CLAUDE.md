@@ -70,6 +70,140 @@
   that usually answers the question.
 - This ECC discipline supersedes anything else in this file if they conflict.
 
+### Agent catalogue — who to invoke, when
+
+Grouped by purpose so you can pick fast. Full one-line descriptions live at the top of every session system prompt; this is the quick-reference for *this* project.
+
+**Planning & exploration**
+- `planner` — complex features, architectural refactoring. PROACTIVE for feature requests.
+- `code-architect` — designing a new feature against existing codebase patterns (blueprints with concrete files + interfaces + data flow + build order).
+- `architect` — system-design trade-offs, scalability, big-picture decisions.
+- `code-explorer` — tracing execution paths through an existing feature.
+- `Explore` — fast codebase queries (`"where is X defined?"`, `"how do API endpoints work?"`). Specify thoroughness: quick / medium / very thorough.
+- `Plan` — software-architect planning agent for implementation strategy.
+
+**Test-first (MANDATORY for new code)**
+- `tdd-guide` — enforces write-tests-first loop. PROACTIVE on new features, bug fixes, refactoring.
+- `pr-test-analyzer` — reviews whether new tests cover real behaviour or are tautological.
+
+**Code review (MANDATORY after any TypeScript change)**
+- `code-reviewer` — general quality, patterns, best practices.
+- `typescript-reviewer` — type safety, async correctness, Node/web security, idioms.
+
+**Specialised review (invoke alongside the two above as warranted)**
+- `security-reviewer` — auth, user input, API endpoints, secrets, OWASP Top 10. PROACTIVE after any code that handles user input, authentication, sensitive data.
+- `silent-failure-hunter` — error handling paths: swallowed errors, bad fallbacks, missing error propagation.
+- `type-design-analyzer` — discriminated unions, narrowing, invariant expression, enforcement.
+- `database-reviewer` — SQL, migrations, RLS, query performance (Supabase-aware).
+- `a11y-architect` — WCAG 2.2 compliance on UI components. PROACTIVE for design-system work.
+- `performance-optimizer` — bottlenecks, bundle size, render perf, profiling.
+- `comment-analyzer` — comment accuracy, completeness, rot risk.
+- `healthcare-reviewer` — clinical safety, PHI compliance (not applicable here but exists).
+
+**Build repair**
+- `build-error-resolver` — TypeScript / build errors. Minimal-diff fixes, no architectural edits.
+
+**Cleanup**
+- `refactor-cleaner` — dead code removal via knip / depcheck / ts-prune.
+- `code-simplifier` — clarity + consistency without behaviour change.
+
+**E2E + UI verification**
+- `e2e-runner` — Playwright test generation, maintenance, flakiness triage.
+
+**Docs**
+- `doc-updater` — codemap + README + guide updates. Runs `/update-codemaps` and `/update-docs`.
+- `docs-lookup` — current library/framework docs via Context7 MCP.
+
+**Meta / tooling**
+- `harness-optimizer` — analyse + improve the local agent harness configuration.
+- `loop-operator` — operate autonomous agent loops, intervene when stalled.
+- `conversation-analyzer` — find behaviours worth preventing with hooks.
+- `opensource-forker` / `opensource-sanitizer` / `opensource-packager` — three-stage open-source release pipeline.
+- `claude-code-guide` — answers "how do I do X in Claude Code" questions.
+
+### Common workflow recipes
+
+**New feature (TDD loop)**
+```
+1. planner  → break into 15-min units, identify critical files
+2. tdd-guide → write failing test
+3. implement minimum to pass
+4. [code-reviewer + typescript-reviewer + silent-failure-hunter]  ← parallel
+5. apply HIGH + MEDIUM fixes
+6. npm run lint && npm run typecheck && npm test && npm run build
+7. commit with conventional-commit format
+```
+
+**Bug fix**
+```
+1. Reproduce with a failing test (tdd-guide)
+2. Fix the root cause (not the symptom — no --no-verify shortcuts)
+3. [code-reviewer + typescript-reviewer]  ← parallel
+4. Verify test now passes + no regressions in full suite
+5. Commit
+```
+
+**Security-sensitive path (auth, user input, API route)**
+```
+1. Implement with security-first mindset
+2. [code-reviewer + typescript-reviewer + security-reviewer]  ← parallel
+3. Address every CRITICAL + HIGH before commit
+```
+
+**Database / migration work**
+```
+1. [code-architect for schema design]
+2. Write migration SQL + rollback SQL
+3. [database-reviewer + code-reviewer]  ← parallel
+4. Apply to local Supabase first, verify RLS
+5. User applies to prod manually (never auto-apply production migrations)
+```
+
+**Build breakage**
+```
+1. build-error-resolver agent
+2. Apply minimal-diff fix
+3. Verify typecheck + build green
+4. Commit
+```
+
+### Parallel invocation — the rule
+
+Independent reviews run in a **single tool-call batch**, not one-after-another. Example from WU 8.7:
+
+```
+Agent({ subagent_type: "code-reviewer",           prompt: "..." })
+Agent({ subagent_type: "typescript-reviewer",     prompt: "..." })
+Agent({ subagent_type: "silent-failure-hunter",   prompt: "..." })
+```
+
+All three fire at once, return complementary findings. Applying them sequentially wastes parent-context tokens and review wall-clock time.
+
+### Skill invocation
+
+Skills are invoked via `Skill(<name>)` when the task matches the skill's description. Relevant for this project:
+
+- `agentic-engineering` — decompose into 15-min verifiable units, cost-aware routing.
+- `cost-aware-llm-pipeline` — Gemini budget tracking, prompt caching, fallback tiers.
+- `database-migrations` — safe Supabase schema changes with rollback plans.
+- `api-design` — RESTful + streaming API patterns, error envelopes.
+- `ai-regression-testing` — AI behaviour stability across prompt/model changes.
+- `frontend-design` — Katie's deck UI, anti-template discipline.
+
+Available skills are listed in every session's system prompt. If a skill name isn't listed, **don't guess** — either the skill isn't installed or it has a different name.
+
+### Research & reuse (before writing new code)
+
+Per `common/development-workflow.md` §0:
+
+1. **GitHub code search first** — `gh search repos`, `gh search code`. Find existing implementations / templates / patterns.
+2. **Library docs second** — Context7 MCP or primary vendor docs for API behaviour + version specifics.
+3. **Exa only when those two are insufficient** — broader web research.
+4. **Check package registries** — npm, crates, etc. before hand-rolling utility code.
+5. **Search for adaptable implementations** — open-source projects solving 80%+ of the problem.
+
+Prefer adopting or porting a proven approach over writing net-new.
+
 ## Verification system — canonical references
 
 > - Nanny: [`system/verification/nanny_verification/nanny_verification-data-systems.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/nanny_verification/nanny_verification-data-systems.md)
