@@ -76,26 +76,77 @@ async function loadConnections(
     role === "nanny"
       ? await getNannyConnectionRequests()
       : await getParentConnectionRequests();
-  return { list: result.data, error: result.error };
+  // Defensive `?? []`: the server action type says `data: Array`, but some
+  // Supabase shapes return `{ data: undefined, error: "…" }` under pressure.
+  // Callers do `.filter()` on the list; without this guard that throws a
+  // TypeError and never reaches the caller's error-check.
+  return { list: result.data ?? [], error: result.error };
 }
 
+/**
+ * Extract counterparty (nanny for the parent side, parent for the nanny
+ * side). Returns null when the enriched connection is missing the
+ * counterparty join — that's a data-integrity issue, not a
+ * legitimate anonymous connection, and callers should surface it as
+ * an error rather than narrate "Unknown" as if it were a real name.
+ */
 function counterpartyFromRequest(
   req: ConnectionRequestWithDetails,
   role: ConnectionRole,
-): { firstName: string; lastName: string; suburb: string | null } {
+): { firstName: string; lastName: string; suburb: string | null } | null {
   const party = role === "nanny" ? req.parent : req.nanny;
+  if (!party || !party.first_name) return null;
   return {
-    firstName: party?.first_name ?? "Unknown",
-    lastName: party?.last_name ?? "",
-    suburb: party?.suburb ?? null,
+    firstName: party.first_name,
+    lastName: party.last_name ?? "",
+    suburb: party.suburb ?? null,
+  };
+}
+
+/**
+ * Write-handler helper. Resolves counterparty name for use in previews
+ * + success messages; returns a ToolResult error when the join is
+ * missing so we never narrate a fake name back to the user.
+ */
+function requireCounterpartyDisplayName(
+  req: ConnectionRequestWithDetails,
+  role: ConnectionRole,
+): { ok: true; displayName: string } | { ok: false; error: string } {
+  const cp = counterpartyFromRequest(req, role);
+  if (!cp) {
+    console.error(
+      "[connections] write handler blocked on missing counterparty",
+      { id: req.id, role },
+    );
+    return {
+      ok: false,
+      error:
+        "We couldn't load the other party's details for this connection. Please refresh and try again.",
+    };
+  }
+  return {
+    ok: true,
+    displayName: counterpartyDisplayName(cp.firstName, cp.lastName),
   };
 }
 
 function summarise(
   req: ConnectionRequestWithDetails,
   role: ConnectionRole,
-): ConnectionSummary {
-  const { firstName, lastName, suburb } = counterpartyFromRequest(req, role);
+): ConnectionSummary | null {
+  // Bulk-read path: if the enriched row is missing the counterparty
+  // join, skip this entry rather than narrate a fake "Unknown" name.
+  // This keeps the list tidy and doesn't let partial data become
+  // something the LLM can speak out loud.
+  const cp = counterpartyFromRequest(req, role);
+  if (!cp) {
+    console.error("[connections] skipping row with missing counterparty", {
+      id: req.id,
+      role,
+    });
+    return null;
+  }
+  const { firstName, lastName, suburb } = cp;
   const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     id: req.id,
@@ -141,7 +192,9 @@ async function readConnectionInbox(
   if (error) return { success: false, error };
 
   const active = list.filter((r) => !isTerminal(r.connection_stage));
-  const summaries = active.map((r) => summarise(r, role));
+  const summaries = active
+    .map((r) => summarise(r, role))
+    .filter((s): s is ConnectionSummary => s !== null);
 
   return {
     success: true,
@@ -177,9 +230,10 @@ async function readConnectionByName(
   if (error) return { success: false, error };
 
   const matches = list.filter((r) => {
-    const { firstName, lastName } = counterpartyFromRequest(r, role);
-    const joined = `${firstName} ${lastName}`.toLowerCase();
-    return joined.includes(rawName) || firstName.toLowerCase() === rawName;
+    const cp = counterpartyFromRequest(r, role);
+    if (!cp) return false; // skip malformed rows during fuzzy match
+    const joined = `${cp.firstName} ${cp.lastName}`.toLowerCase();
+    return joined.includes(rawName) || cp.firstName.toLowerCase() === rawName;
   });
 
   if (matches.length === 0) {
@@ -193,11 +247,14 @@ async function readConnectionByName(
   }
 
   if (matches.length > 1) {
+    const disambiguation = matches
+      .map((r) => summarise(r, role))
+      .filter((s): s is ConnectionSummary => s !== null);
     return {
       success: true,
       data: {
-        match_count: matches.length,
-        disambiguation: matches.map((r) => summarise(r, role)),
+        match_count: disambiguation.length,
+        disambiguation,
         summary: `Multiple connections match "${args.counterparty_name}" — ask the user which one.`,
       },
     };
@@ -205,6 +262,15 @@ async function readConnectionByName(
 
   const only = matches[0];
   const summary = summarise(only, role);
+  if (!summary) {
+    // Match found but enrichment is incomplete — surface it rather than
+    // returning match_count=1 with a null body.
+    return {
+      success: false,
+      error:
+        "We found the connection but couldn't load its details. Please refresh and try again.",
+    };
+  }
   return {
     success: true,
     data: {
@@ -229,10 +295,18 @@ async function readUpcomingMeet(
   if (error) return { success: false, error };
 
   const now = Date.now();
+  // Type-safe narrowing instead of `as string` — if confirmed_time is
+  // ever `undefined` at runtime (e.g. schema drift), `new Date(undefined)`
+  // silently produces NaN and only gets caught by Number.isFinite downstream.
+  // The filter predicate does the narrowing the TypeScript compiler expects.
   const withFutureMeet = list
-    .filter((r) => r.confirmed_time)
-    .map((r) => ({ r, ts: new Date(r.confirmed_time as string).getTime() }))
-    .filter(({ ts }) => Number.isFinite(ts) && ts > now)
+    .flatMap<{ r: ConnectionRequestWithDetails; ts: number }>((r) => {
+      const time = r.confirmed_time;
+      if (time == null) return [];
+      const ts = new Date(time).getTime();
+      if (!Number.isFinite(ts) || ts <= now) return [];
+      return [{ r, ts }];
+    })
     .sort((a, b) => a.ts - b.ts);
 
   if (withFutureMeet.length === 0) {
@@ -247,6 +321,13 @@ async function readUpcomingMeet(
 
   const next = withFutureMeet[0].r;
   const summary = summarise(next, role);
+  if (!summary) {
+    return {
+      success: false,
+      error:
+        "Your upcoming meet and greet is booked but we couldn't load its details. Please refresh and try again.",
+    };
+  }
   return {
     success: true,
     data: {
@@ -273,7 +354,9 @@ async function readActionRequired(
   const needing = list.filter((r) =>
     isActionRequired(r.connection_stage, role, r.fill_initiated_by),
   );
-  const summaries = needing.map((r) => summarise(r, role));
+  const summaries = needing
+    .map((r) => summarise(r, role))
+    .filter((s): s is ConnectionSummary => s !== null);
 
   return {
     success: true,
@@ -366,8 +449,9 @@ async function proposeDeclineConnection(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
   const reason =
     typeof args.reason === "string" && args.reason.trim().length > 0
       ? args.reason.trim()
@@ -407,6 +491,30 @@ async function applyDeclineConnection(
     };
   }
 
+  // Re-validate stage at apply time: the propose step enforces this, but
+  // the state can drift between the two turns (auto-expiry, parent cancel,
+  // stage advance) and an LLM could skip propose entirely. Mirrors the
+  // check in proposeDeclineConnection — keep the two in sync.
+  const stage = connection.connection_stage;
+  if (
+    stage !== CONNECTION_STAGE.REQUEST_SENT &&
+    stage !== CONNECTION_STAGE.NANNY_APPLIED_PENDING &&
+    stage !== CONNECTION_STAGE.ACCEPTED_PENDING
+  ) {
+    return {
+      success: false,
+      error:
+        "This request is no longer in the pending stage — decline isn't available. If you want to step away, use cancel instead.",
+    };
+  }
+
+  // Counterparty-join check before the server action fires — if the
+  // enriched data is incomplete, fail fast rather than send a real
+  // email and then fail to narrate the name. Data-integrity issue.
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
+
   const reason =
     typeof args.reason === "string" && args.reason.trim().length > 0
       ? args.reason.trim()
@@ -420,8 +528,6 @@ async function applyDeclineConnection(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -465,8 +571,9 @@ async function proposeCancelConnection(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
   const otherPartyNotice =
     role === "parent"
       ? `${displayName} will be notified in their inbox.`
@@ -497,6 +604,27 @@ async function applyCancelConnection(
   if (!resolved.ok) return { success: false, error: resolved.error };
   const { role, connection } = resolved;
 
+  // Re-validate terminal state at apply time (propose already checked,
+  // but the connection could have auto-expired / been cancelled by the
+  // other side between the two turns).
+  if (connection.status === "cancelled") {
+    return {
+      success: false,
+      error: "This connection has already been cancelled.",
+    };
+  }
+  if (isTerminal(connection.connection_stage)) {
+    return {
+      success: false,
+      error:
+        "This connection is already closed — cancel isn't available any more.",
+    };
+  }
+
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
+
   const result = await cancelConnectionRequest(connection.id);
   if (!result.success) {
     return {
@@ -505,8 +633,6 @@ async function applyCancelConnection(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -610,8 +736,9 @@ async function proposeAcceptConnection(
   const parsed = parseSlots(args.slots);
   if (!parsed.ok) return { success: false, error: parsed.error };
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   // Group slots by day so the preview reads like a human would write it.
   const byDay: Record<string, BracketKey[]> = {};
@@ -660,8 +787,26 @@ async function applyAcceptConnection(
     };
   }
 
+  // Re-validate stage at apply time — auto-expiry or parent cancel could
+  // have shifted it since propose. Mirrors proposeAcceptConnection.
+  const stage = connection.connection_stage;
+  if (
+    stage !== CONNECTION_STAGE.REQUEST_SENT &&
+    stage !== CONNECTION_STAGE.NANNY_APPLIED_PENDING
+  ) {
+    return {
+      success: false,
+      error:
+        "This request isn't in the pending stage — it can't be accepted right now.",
+    };
+  }
+
   const parsed = parseSlots(args.slots);
   if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   const result = await acceptConnectionRequest(connection.id, parsed.slots);
   if (!result.success) {
@@ -671,8 +816,6 @@ async function applyAcceptConnection(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -764,10 +907,11 @@ async function proposeScheduleMeet(
     };
   }
 
-  if (
-    connection.connection_stage !== CONNECTION_STAGE.ACCEPTED &&
-    connection.status !== "accepted"
-  ) {
+  // Stage-only gate, matching every other propose handler. Previous
+  // version used `stage !== ACCEPTED && status !== 'accepted'` (AND)
+  // which read as "allow if EITHER stage or status says accepted" —
+  // too loose. Status mirrors stage, so stage is canonical.
+  if (connection.connection_stage !== CONNECTION_STAGE.ACCEPTED) {
     return {
       success: false,
       error:
@@ -790,8 +934,9 @@ async function proposeScheduleMeet(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
   const timeStr = formatTimeForPreview(
     parsed.t.date,
     parsed.t.hour,
@@ -828,8 +973,22 @@ async function applyScheduleMeet(
     };
   }
 
+  // Re-validate at apply time — mirrors proposeScheduleMeet. Catches
+  // races where the nanny cancelled or the connection auto-advanced.
+  if (connection.connection_stage !== CONNECTION_STAGE.ACCEPTED) {
+    return {
+      success: false,
+      error:
+        "This connection isn't ready to be scheduled — the nanny needs to accept first.",
+    };
+  }
+
   const parsed = parseMeetTime(args);
   if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   const result = await scheduleConnectionTime(
     connection.id,
@@ -844,8 +1003,6 @@ async function applyScheduleMeet(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -977,8 +1134,9 @@ async function proposeReportOutcome(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
   const description = outcomeDescription(outcome, role, displayName);
   const emailSideEffect =
     outcome === "hired" || (role === "parent" && outcome === "trial");
@@ -1012,10 +1170,31 @@ async function applyReportOutcome(
   if (!outcomeResult.ok) return { success: false, error: outcomeResult.error };
   const outcome = outcomeResult.outcome;
 
+  // Re-validate stage at apply time — matches proposeReportOutcome.
+  const stages = outcomeStagesFor(role);
+  if (!stages.includes(connection.connection_stage ?? -1)) {
+    return {
+      success: false,
+      error:
+        "This connection isn't at a stage where an outcome can be reported any more. It may have already advanced.",
+    };
+  }
+
   const extraDate =
     typeof args.date === "string" && args.date.trim().length > 0
       ? args.date.trim()
       : undefined;
+  if (extraDate && !/^\d{4}-\d{2}-\d{2}$/.test(extraDate)) {
+    return {
+      success: false,
+      error:
+        "If you pass a date for the outcome, it must be in YYYY-MM-DD format.",
+    };
+  }
+
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   const result =
     role === "nanny"
@@ -1036,9 +1215,6 @@ async function applyReportOutcome(
       error: result.error ?? "Failed to report outcome.",
     };
   }
-
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -1101,8 +1277,9 @@ async function proposeConfirmPlacement(
     };
   }
 
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   const preview =
     role === "parent"
@@ -1133,10 +1310,41 @@ async function applyConfirmPlacement(
   if (!resolved.ok) return { success: false, error: resolved.error };
   const { role, connection } = resolved;
 
+  // Re-validate stage + Path A/B direction at apply time. The propose
+  // step enforces these, but the state + role-path can drift between
+  // turns (other party cancelled, different role confirmed first). If
+  // this gate fires, something raced or the LLM called apply_ directly.
+  if (connection.connection_stage !== CONNECTION_STAGE.OFFERED) {
+    return {
+      success: false,
+      error:
+        "This connection isn't at the 'offered' stage any more — confirmation isn't available.",
+    };
+  }
+  const initiatedBy = connection.fill_initiated_by;
+  if (role === "parent" && initiatedBy !== "nanny") {
+    return {
+      success: false,
+      error:
+        "The family only confirms when the nanny has signalled they've been selected (Path A). This one is waiting on the nanny to confirm.",
+    };
+  }
+  if (role === "nanny" && initiatedBy !== "parent") {
+    return {
+      success: false,
+      error:
+        "The nanny only confirms when the family has selected them (Path B). This one is waiting on the family to confirm.",
+    };
+  }
+
   const startWeek =
     typeof args.start_week === "string" && args.start_week.trim().length > 0
       ? args.start_week.trim()
       : undefined;
+
+  const cpRes = requireCounterpartyDisplayName(connection, role);
+  if (!cpRes.ok) return { success: false, error: cpRes.error };
+  const displayName = cpRes.displayName;
 
   const result =
     role === "parent"
@@ -1149,9 +1357,6 @@ async function applyConfirmPlacement(
       error: result.error ?? "Failed to confirm placement.",
     };
   }
-
-  const { firstName, lastName } = counterpartyFromRequest(connection, role);
-  const displayName = counterpartyDisplayName(firstName, lastName);
   return {
     success: true,
     data: {
@@ -1206,8 +1411,13 @@ async function proposeSendConnectionRequest(
     };
   }
 
-  // Pre-check: are they already at the 5-pending cap?
-  const { list } = await loadConnections(role);
+  // Pre-check: are they already at the 5-pending cap? If loadConnections
+  // itself fails, surface that — don't silently pass the cap check against
+  // an empty list (previous bug: destructured `error` away, let the LLM
+  // proceed to apply_ on a guaranteed-to-fail request).
+  const { list, error } = await loadConnections(role);
+  if (error) return { success: false, error };
+
   const pending = list.filter(
     (r) => r.status === "pending" && !isTerminal(r.connection_stage),
   );
@@ -1273,6 +1483,45 @@ async function applySendConnectionRequest(
     typeof args.message === "string" && args.message.trim().length > 0
       ? args.message.trim()
       : undefined;
+  if (message && message.length > 1000) {
+    return {
+      success: false,
+      error: "Keep your message under 1000 characters.",
+    };
+  }
+
+  // Re-run the pending-cap + duplicate guards at apply time. The propose
+  // step already checked them, but the state can drift between the two
+  // turns (another request arrives, a stale one auto-expires). Trusting
+  // propose blindly here meant an LLM that skipped the propose step could
+  // reach createConnectionRequest without the Katie-layer guards. The
+  // underlying server action has its own checks; this is defence-in-depth
+  // so we fail earlier with a clearer message.
+  const { list, error: listError } = await loadConnections(role);
+  if (listError) return { success: false, error: listError };
+
+  const pending = list.filter(
+    (r) => r.status === "pending" && !isTerminal(r.connection_stage),
+  );
+  if (pending.length >= 5) {
+    return {
+      success: false,
+      error:
+        "You've hit the 5-open-request limit since we last checked. Cancel one or wait for a response before sending this.",
+    };
+  }
+  const duplicate = list.find(
+    (r) =>
+      r.nanny_id === nannyId &&
+      ["pending", "accepted", "confirmed"].includes(r.status),
+  );
+  if (duplicate) {
+    return {
+      success: false,
+      error:
+        "A connection with this nanny just became active — you can't send a new request while that one is open.",
+    };
+  }
 
   const result = await createConnectionRequest(nannyId, message);
   if (!result.success) {
@@ -1282,21 +1531,30 @@ async function applySendConnectionRequest(
     };
   }
 
+  // `requestId` missing after a successful create is a server bug, not a
+  // no-op success — treat it as a partial failure so the LLM doesn't
+  // confidently narrate "request sent" when the ID isn't there.
+  if (!result.requestId) {
+    return {
+      success: false,
+      error:
+        "The request may have been sent but we couldn't confirm it. Please refresh your inbox to check before retrying.",
+    };
+  }
+
   return {
     success: true,
     data: {
       action: "send_connection_request",
       nanny_id: nannyId,
-      request_id: result.requestId ?? null,
+      request_id: result.requestId,
       message:
         "Request sent. They've got 3 days to respond — I'll let you know when they do.",
     },
-    tile: result.requestId
-      ? {
-          kind: "connection_request",
-          data: { id: result.requestId },
-        }
-      : undefined,
+    tile: {
+      kind: "connection_request",
+      data: { id: result.requestId },
+    },
   };
 }
 

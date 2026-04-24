@@ -541,6 +541,58 @@ describe("connections module — apply_decline_connection", () => {
     expect(r.error).toBe("This request is no longer pending.");
   });
 
+  it("blocks when the counterparty join is missing rather than narrating a fake name", async () => {
+    // Data-integrity guard: enriched connection has no parent/nanny join.
+    // Previously: module would narrate "decline the connection request from
+    // Unknown" which reads as a real name. Now: surface the incomplete-data
+    // error so the user refreshes rather than acting on bad data.
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        {
+          ...buildConnection({
+            id: "c1",
+            connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+          }),
+          parent: undefined,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any,
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(declineConnectionRequest).not.toHaveBeenCalled();
+    expect(r.error).toMatch(/other party's details|refresh/i);
+  });
+
+  it("re-validates stage at apply time — rejects if stage shifted since propose", async () => {
+    // Simulates the race where the connection auto-advanced between the
+    // propose turn and the apply turn. Apply must re-check rather than
+    // trusting the propose step.
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_SCHEDULED,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(declineConnectionRequest).not.toHaveBeenCalled();
+    expect(r.error).toMatch(/no longer in the pending stage/i);
+  });
+
   it("is parent-gated — parent calling apply_decline returns error", async () => {
     vi.mocked(getParentConnectionRequests).mockResolvedValue({
       data: [
