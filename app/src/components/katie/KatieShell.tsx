@@ -14,11 +14,15 @@
  * is not true. In those cases children render full-width as before.
  */
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { KatieProvider, useKatie } from "@/contexts/KatieContext";
 import { KatieDeck } from "./KatieDeck";
 import { useAuth } from "@/contexts/AuthContext";
 import { useKatieRealtime } from "./use-katie-realtime";
+import {
+  useIsDesktop,
+  useMarkReadOnVisibility,
+} from "./use-mark-read-on-visibility";
 
 const KATIE_UI_ENABLED =
   (process.env.NEXT_PUBLIC_KATIE_ENABLED ?? "").toLowerCase() === "true";
@@ -47,27 +51,19 @@ export function KatieShell({ children }: { children: ReactNode }) {
 // ── Inner component that consumes the context ───────────────────────────
 
 function ShellInner({ children }: { children: ReactNode }) {
-  const { visibleDeck, setUnreadCount } = useKatie();
+  const { visibleDeck, unreadCount, setUnreadCount } = useKatie();
 
   // Realtime unread count + polling fallback
   useKatieRealtime();
 
-  // Mark-read when Katie becomes visible (carousel swap or side-by-side mount)
-  const prevDeckRef = useRef(visibleDeck);
-  useEffect(() => {
-    const justOpened =
-      prevDeckRef.current !== "katie" && visibleDeck === "katie";
-    prevDeckRef.current = visibleDeck;
-    if (!justOpened) return;
-
-    void fetch("/api/chat/mark-read", { method: "POST" })
-      .then((res) => {
-        if (res.ok) setUnreadCount(0);
-      })
-      .catch(() => {
-        // non-fatal
-      });
-  }, [visibleDeck, setUnreadCount]);
+  // Mark-read on carousel swap (immediate) + desktop 2s-in-viewport (delayed).
+  const isDesktop = useIsDesktop();
+  useMarkReadOnVisibility({
+    visibleDeck,
+    unreadCount,
+    setUnreadCount,
+    isDesktop,
+  });
 
   // Tailwind's JIT picks up arbitrary values in template strings at build time.
   // We need a fixed CSS custom property for the carousel width switch.
