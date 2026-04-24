@@ -33,8 +33,8 @@ interface AnalyticsData {
   signupTrend: number;
   signupTrendIsPositive: boolean;
   pendingVerifications: number;
-  idVerifiedNannies: number;
-  fullyVerifiedNannies: number;
+  tier2Nannies: number;
+  tier3Nannies: number;
   verificationRate: number;
   activeNannies: number;
   inactiveNannies: number;
@@ -296,16 +296,12 @@ export default function AdminAnalyticsPage() {
               <span className="font-medium">{data.activeNannies}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                ID Verified (level 2+)
-              </span>
-              <span className="font-medium">{data.idVerifiedNannies}</span>
+              <span className="text-sm text-slate-500">Tier 2 Verified</span>
+              <span className="font-medium">{data.tier2Nannies}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-slate-500">
-                Fully Verified (level 4)
-              </span>
-              <span className="font-medium">{data.fullyVerifiedNannies}</span>
+              <span className="text-sm text-slate-500">Tier 3 Verified</span>
+              <span className="font-medium">{data.tier3Nannies}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">Verification Rate</span>

@@ -22,8 +22,8 @@ export async function GET() {
     signupsThisWeekResult,
     signupsLastWeekResult,
     pendingVerificationsResult,
-    idVerifiedNanniesResult,
-    fullyVerifiedNanniesResult,
+    tier2NanniesResult,
+    tier3NanniesResult,
     activeNanniesResult,
     inactiveNanniesResult,
     activeParentsResult,
@@ -60,21 +60,19 @@ export async function GET() {
       .select("*", { count: "exact", head: true })
       .gte("created_at", twoWeeksAgo.toISOString())
       .lt("created_at", oneWeekAgo.toISOString()),
-    // Nanny admin-review queue: ID review (11), WWCC review (21), provisional awaiting OCG confirm (30).
     supabase
       .from("verifications")
       .select("*", { count: "exact", head: true })
-      .in("verification_status", [11, 21, 30]),
-    // ID Verified = verification_level >= 2.
+      .eq("verification_status", "pending"),
     supabase
       .from("nannies")
       .select("*", { count: "exact", head: true })
-      .gte("verification_level", 2),
-    // Fully Verified (OCG cleared) = verification_level >= 4.
+      .eq("wwcc_verified", true)
+      .eq("identity_verified", true),
     supabase
       .from("nannies")
       .select("*", { count: "exact", head: true })
-      .gte("verification_level", 4),
+      .eq("visible_in_bsr", true),
     supabase
       .from("nannies")
       .select("*", { count: "exact", head: true })
@@ -135,11 +133,9 @@ export async function GET() {
         : 0;
 
   const totalNannies = totalNanniesResult.count ?? 0;
-  const idVerifiedNannies = idVerifiedNanniesResult.count ?? 0;
-  const fullyVerifiedNannies = fullyVerifiedNanniesResult.count ?? 0;
-  // Verification rate: % of nannies who are at least ID-verified (level >= 2).
+  const tier2Nannies = tier2NanniesResult.count ?? 0;
   const verificationRate =
-    totalNannies > 0 ? Math.round((idVerifiedNannies / totalNannies) * 100) : 0;
+    totalNannies > 0 ? Math.round((tier2Nannies / totalNannies) * 100) : 0;
 
   const allVisitors = (allVisitorsResult.data ?? []).map(
     (r: { visitor_id: string }) => r.visitor_id,
@@ -165,8 +161,8 @@ export async function GET() {
     signupTrend,
     signupTrendIsPositive: signupTrend >= 0,
     pendingVerifications: pendingVerificationsResult.count ?? 0,
-    idVerifiedNannies,
-    fullyVerifiedNannies,
+    tier2Nannies,
+    tier3Nannies: tier3NanniesResult.count ?? 0,
     verificationRate,
     activeNannies: activeNanniesResult.count ?? 0,
     inactiveNannies: inactiveNanniesResult.count ?? 0,

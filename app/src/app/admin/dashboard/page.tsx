@@ -52,9 +52,7 @@ async function getDashboardStats() {
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-  // Fetch counts in parallel. Verification counts use the current
-  // level/status schema — see app/src/lib/verification.ts + canonical
-  // docs under system/verification/.
+  // Fetch counts in parallel
   const [
     nannyCountResult,
     parentCountResult,
@@ -62,7 +60,7 @@ async function getDashboardStats() {
     activePlacementsResult,
     newNanniesThisWeekResult,
     newParentsThisWeekResult,
-    verifiedNanniesResult,
+    tier2NanniesResult,
   ] = await Promise.all([
     supabase
       .from("user_roles")
@@ -72,12 +70,10 @@ async function getDashboardStats() {
       .from("user_roles")
       .select("*", { count: "exact", head: true })
       .eq("role", "parent"),
-    // Pending admin review: nanny ID review (11) + nanny WWCC review (21) + provisional awaiting confirm (30).
-    // Parent queue (parent_verifications) handled separately — this count is admin-review-on-nannies only.
     supabase
       .from("verifications")
       .select("*", { count: "exact", head: true })
-      .in("verification_status", [11, 21, 30]),
+      .eq("verification_status", "pending"),
     supabase
       .from("nanny_placements")
       .select("*", { count: "exact", head: true })
@@ -92,11 +88,11 @@ async function getDashboardStats() {
       .select("*", { count: "exact", head: true })
       .eq("role", "parent")
       .gte("created_at", oneWeekAgo.toISOString()),
-    // Fully verified nannies = verification_level >= 4.
     supabase
       .from("nannies")
       .select("*", { count: "exact", head: true })
-      .gte("verification_level", 4),
+      .eq("wwcc_verified", true)
+      .eq("identity_verified", true),
   ]);
 
   const nannyCount = nannyCountResult.count ?? 0;
@@ -105,11 +101,11 @@ async function getDashboardStats() {
   const activeCount = activePlacementsResult.count ?? 0;
   const newNanniesThisWeek = newNanniesThisWeekResult.count ?? 0;
   const newParentsThisWeek = newParentsThisWeekResult.count ?? 0;
-  const fullyVerifiedNannies = verifiedNanniesResult.count ?? 0;
+  const tier2Nannies = tier2NanniesResult.count ?? 0;
 
-  // Conversion rate: % of nannies fully verified (level >= 4).
+  // Calculate conversion rate (tier2 / total nannies)
   const conversionRate =
-    nannyCount > 0 ? Math.round((fullyVerifiedNannies / nannyCount) * 100) : 0;
+    nannyCount > 0 ? Math.round((tier2Nannies / nannyCount) * 100) : 0;
 
   return {
     nannyCount,
@@ -266,9 +262,7 @@ export default async function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.conversionRate}%</p>
-                <p className="text-xs text-slate-500">
-                  Fully Verified Rate (level 4)
-                </p>
+                <p className="text-xs text-slate-500">Tier 2 Conversion Rate</p>
               </div>
             </div>
           </CardContent>
