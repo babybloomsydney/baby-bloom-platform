@@ -27,6 +27,7 @@ import { katieAdminModule } from "./katie-admin";
 import { verificationModule } from "./verification";
 import { connectionsModule } from "./connections";
 import { profileModule } from "./profile";
+import { bsrModule } from "./bsr";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -45,8 +46,9 @@ const ALL_MODULES: BloomBotModule[] = [
   verificationModule,
   connectionsModule,
   profileModule,
+  bsrModule,
   // Future:
-  //   insightsModule, jobSearchModule, bsrModule
+  //   insightsModule, jobSearchModule
 ];
 
 // ── Role filtering ──────────────────────────────────────────────────────
