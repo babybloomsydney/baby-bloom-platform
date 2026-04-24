@@ -2,9 +2,24 @@
 
 ## ECC Discipline (READ FIRST — NON-NEGOTIABLE)
 
-> **ECC = Everything Claude Code** — the full set of skills, agents, and rules
-> available to Claude Code for effective engineering work (not just design or
-> frontend). This discipline applies to ALL work on this project — backend
+> **ECC = Everything Claude Code** — the full set of skills, agents, rules,
+> hooks, and MCP configs built into a production system for AI agent harnesses.
+> Source: **https://github.com/affaan-m/everything-claude-code** (Anthropic
+> hackathon winner; 140K+ stars). The local installs of ECC rules live at
+> `~/.claude/rules/` and ECC skills at `~/.claude/skills/` — those directories
+> are what `~/.claude/agents/` and the skill/agent invocation machinery actually
+> consult.
+>
+> **After every compaction**, re-orient on ECC by: (a) re-reading this section,
+> (b) if context is fuzzy, re-fetching the repo README with
+> `gh api repos/affaan-m/everything-claude-code/readme --jq '.content' | base64 -d`
+> to refresh on what the system covers, and (c) checking the agent list at the
+> top of the session system prompt for what's currently loaded.
+>
+> **ECC is NOT design/frontend only.** It covers token optimization, memory
+> persistence, continuous learning, verification loops, parallelization,
+> security, TDD discipline, code review, architecture — the full engineering
+> toolchain. This discipline applies to ALL work on this project — backend
 > modules, API routes, tests, refactors, migrations, UI, everything.
 
 ### Before starting any non-trivial task
