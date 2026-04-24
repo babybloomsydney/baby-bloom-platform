@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-04-24T04:41:25.005Z",
+  "generated_at": "2026-04-24T05:18:05.551Z",
   "summary": {
-    "route_count": 45,
+    "route_count": 46,
     "page_count": 96,
     "cron_count": 6,
     "migration_count": 12,
@@ -77,6 +77,11 @@
       "path": "/api/chat/bot-info",
       "methods": ["GET"],
       "file": "src/app/api/chat/bot-info/route.ts"
+    },
+    {
+      "path": "/api/chat/connections/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/connections/[id]/route.ts"
     },
     {
       "path": "/api/chat/mark-read",

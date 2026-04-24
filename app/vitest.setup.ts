@@ -5,3 +5,7 @@ import "@testing-library/jest-dom/vitest";
 // outright; this just lets transitive imports succeed.
 process.env.OPENAI_API_KEY ??= "test-openai-key";
 process.env.GOOGLE_GENAI_API_KEY ??= "test-gemini-key";
+// Resend client is new'd at top of lib/email/resend.ts; without a key
+// the constructor throws, which cascades into any module that
+// transitively imports a server action under @/lib/actions/*.
+process.env.RESEND_API_KEY ??= "re_test_key";

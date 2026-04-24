@@ -18,6 +18,7 @@ import type { ChatTile } from "@/lib/chat/tiles";
 import type { FeedItem } from "@/types/bapp";
 import { KatieNoteTile } from "./KatieNoteTile";
 import { VerificationStatusTile } from "./VerificationStatusTile";
+import { ConnectionRequestTile } from "./ConnectionRequestTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 import { DiaryTile } from "@/components/bapp/tiles/DiaryTile";
@@ -50,6 +51,11 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       // design system. Step derivation is server-side so Katie never
       // speaks raw verification_level / verification_status codes.
       return <VerificationStatusTile tile={tile} />;
+    case "connection_request":
+      // First interactive/id-only tile. Fetches live from
+      // /api/chat/connections/[id] so the chat view never drifts from
+      // the main-page view of the same connection.
+      return <ConnectionRequestTile tile={tile} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":

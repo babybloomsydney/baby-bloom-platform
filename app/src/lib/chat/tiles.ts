@@ -111,6 +111,25 @@ export interface VerificationStatusChatTile {
 }
 
 /**
+ * Connection request — id-only; the tile fetches live data itself.
+ *
+ * Connections change state over time (a parent schedules a time, a
+ * nanny reports an outcome, the position moves to offered). If we
+ * froze a snapshot at tile-creation time the chat view would drift
+ * from the live state on /nanny/positions or /parent/inbox.
+ *
+ * Instead the tile carries just the connection id. ConnectionRequestTile
+ * fetches fresh state via `/api/chat/connections/[id]` (role-aware,
+ * RLS-scoped). When the user acts on the main page the tile revalidates.
+ */
+export interface ConnectionRequestChatTile {
+  kind: "connection_request";
+  data: {
+    id: string;
+  };
+}
+
+/**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
  * page. e.g.
@@ -129,7 +148,8 @@ export type ChatTile =
   | ObservationChatTile
   | DiaryChatTile
   | ProgressChatTile
-  | VerificationStatusChatTile;
+  | VerificationStatusChatTile
+  | ConnectionRequestChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -172,6 +192,8 @@ export function isChatTile(value: unknown): value is ChatTile {
             typeof (s as { status: unknown }).status === "string",
         )
       );
+    case "connection_request":
+      return typeof data.id === "string" && data.id.length > 0;
     default:
       return false;
   }

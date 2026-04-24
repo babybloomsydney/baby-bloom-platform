@@ -191,6 +191,25 @@ describe("isChatTile", () => {
     ).toBe(false);
   });
 
+  it("accepts a valid connection_request tile (id-only)", () => {
+    expect(
+      isChatTile({
+        kind: "connection_request",
+        data: { id: "conn-abc" },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects connection_request tile with empty id", () => {
+    expect(isChatTile({ kind: "connection_request", data: { id: "" } })).toBe(
+      false,
+    );
+  });
+
+  it("rejects connection_request tile with missing id", () => {
+    expect(isChatTile({ kind: "connection_request", data: {} })).toBe(false);
+  });
+
   it("rejects katie_note with empty body", () => {
     expect(isChatTile({ kind: "katie_note", data: { body: "" } })).toBe(false);
   });
