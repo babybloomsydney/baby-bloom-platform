@@ -10,12 +10,16 @@ import type { ModuleContext } from "./types";
 vi.mock("@/lib/actions/connection", () => ({
   getNannyConnectionRequests: vi.fn(),
   getParentConnectionRequests: vi.fn(),
+  declineConnectionRequest: vi.fn(),
+  cancelConnectionRequest: vi.fn(),
 }));
 
 import { connectionsModule } from "./connections";
 import {
   getNannyConnectionRequests,
   getParentConnectionRequests,
+  declineConnectionRequest,
+  cancelConnectionRequest,
 } from "@/lib/actions/connection";
 
 function makeCtx(role: "nanny" | "parent" = "nanny"): ModuleContext {
@@ -373,5 +377,290 @@ describe("connections module — read_action_required", () => {
     expect(data.count).toBe(1);
     expect(data.connections[0].id).toBe("needsMe");
     expect(data.connections[0].next_step).toBeTruthy();
+  });
+});
+
+describe("connections module — propose_decline_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects parent role — only nanny can decline", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [buildConnection({ id: "c1" })],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error?.toLowerCase()).toContain("only nannies");
+  });
+
+  it("rejects missing connection_id", async () => {
+    const r = await connectionsModule.execute(
+      "propose_decline_connection",
+      {},
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/connection_id/);
+  });
+
+  it("rejects when connection is not in user's list (wrong id)", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [buildConnection({ id: "c1" })],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_decline_connection",
+      { connection_id: "does-not-exist" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/No connection found/);
+  });
+
+  it("rejects when stage is no longer pending", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_SCHEDULED,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/no longer.+pending|use cancel/i);
+  });
+
+  it("returns a preview + does NOT hit the server action", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(declineConnectionRequest).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.action).toBe("decline");
+    expect(data.email_side_effect).toBe(true);
+    expect(data.preview.toLowerCase()).toContain("decline");
+    expect(data.preview.toLowerCase()).toContain("neutral notification");
+    // Reason is kept private — propose must flag that it's not shared.
+    expect(data.preview.toLowerCase()).toContain("never share");
+  });
+});
+
+describe("connections module — apply_decline_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("hits the server action when inputs valid", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(declineConnectionRequest).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+
+    const r = await connectionsModule.execute(
+      "apply_decline_connection",
+      { connection_id: "c1", reason: "private note" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(declineConnectionRequest).toHaveBeenCalledWith("c1", "private note");
+    expect(r.tile?.kind).toBe("connection_request");
+    if (r.tile?.kind === "connection_request") {
+      expect(r.tile.data.id).toBe("c1");
+    }
+  });
+
+  it("surfaces server-action error verbatim on failure (stage shifted)", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(declineConnectionRequest).mockResolvedValue({
+      success: false,
+      error: "This request is no longer pending.",
+    });
+    const r = await connectionsModule.execute(
+      "apply_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toBe("This request is no longer pending.");
+  });
+
+  it("is parent-gated — parent calling apply_decline returns error", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_decline_connection",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(declineConnectionRequest).not.toHaveBeenCalled();
+  });
+});
+
+describe("connections module — propose_cancel_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("previews cancel for a parent-side active connection", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+          nanny: {
+            id: "n1",
+            user_id: "u1",
+            first_name: "Jessica",
+            last_name: "Mahoney",
+            suburb: "Bondi",
+            hourly_rate_min: 30,
+            profile_picture_url: null,
+          },
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_cancel_connection",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    expect(cancelConnectionRequest).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.action).toBe("cancel");
+    expect(data.email_side_effect).toBe(false);
+    expect(data.preview.toLowerCase()).toContain("cancel");
+    expect(data.preview).toContain("Jessica M.");
+  });
+
+  it("rejects cancel on a terminal stage", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.DECLINED,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_cancel_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/already closed/i);
+  });
+
+  it("rejects cancel when status is already 'cancelled'", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          status: "cancelled" as const,
+          connection_stage: CONNECTION_STAGE.CANCELLED_BY_PARENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_cancel_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/already.+cancelled/i);
+  });
+});
+
+describe("connections module — apply_cancel_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("hits the server action + emits live tile on success", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(cancelConnectionRequest).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_cancel_connection",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(cancelConnectionRequest).toHaveBeenCalledWith("c1");
+    expect(r.tile?.kind).toBe("connection_request");
+  });
+
+  it("surfaces server-action permission error verbatim", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [buildConnection({ id: "c1" })],
+      error: null,
+    });
+    vi.mocked(cancelConnectionRequest).mockResolvedValue({
+      success: false,
+      error: "You do not have permission to cancel this request.",
+    });
+    const r = await connectionsModule.execute(
+      "apply_cancel_connection",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toBe("You do not have permission to cancel this request.");
   });
 });

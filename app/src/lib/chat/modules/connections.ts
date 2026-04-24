@@ -29,8 +29,11 @@ import type { BloomBotModule, ToolResult } from "./types";
 import {
   getNannyConnectionRequests,
   getParentConnectionRequests,
+  declineConnectionRequest,
+  cancelConnectionRequest,
   type ConnectionRequestWithDetails,
 } from "@/lib/actions/connection";
+import { CONNECTION_STAGE } from "@/lib/position/constants";
 import {
   stageHeadline,
   nextStepForUser,
@@ -267,6 +270,243 @@ async function readActionRequired(
   };
 }
 
+// ── Writes — two-turn confirm (propose → apply) ──────────────────────────
+
+/**
+ * Shared resolver — load the caller's connections, find the one by id,
+ * return { connection, role } or an error. All write handlers start
+ * here so the role gate + ownership check are consistent and the
+ * failure modes produce the same user-safe error text.
+ */
+async function resolveConnectionForWrite(
+  connectionId: unknown,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<
+  | { ok: true; role: ConnectionRole; connection: ConnectionRequestWithDetails }
+  | { ok: false; error: string }
+> {
+  if (typeof connectionId !== "string" || connectionId.trim().length === 0) {
+    return {
+      ok: false,
+      error: "Pass the `connection_id` of the connection to act on.",
+    };
+  }
+
+  const role = resolveRole(ctx.effectiveRole);
+  if (!role) {
+    return {
+      ok: false,
+      error:
+        "Connections are only available for nanny and parent accounts. Admin views use the admin inspection tools.",
+    };
+  }
+
+  const { list, error } = await loadConnections(role);
+  if (error) return { ok: false, error };
+
+  const connection = list.find((r) => r.id === connectionId.trim());
+  if (!connection) {
+    return {
+      ok: false,
+      error: `No connection found with id "${connectionId}". Use read_connection_by_name or read_connection_inbox to find the right id.`,
+    };
+  }
+
+  return { ok: true, role, connection };
+}
+
+/**
+ * Decline — propose.
+ * Nanny-only; only valid while the request is still pending (stages
+ * REQUEST_SENT / NANNY_APPLIED_PENDING / ACCEPTED_PENDING). Does NOT
+ * hit the server action — just previews what would happen so Katie can
+ * read it back to the user and wait for explicit confirmation.
+ */
+async function proposeDeclineConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "nanny") {
+    return {
+      success: false,
+      error:
+        "Only nannies can decline a connection. As the parent, use cancel if you want to withdraw the request instead.",
+    };
+  }
+
+  const stage = connection.connection_stage;
+  const declinable =
+    stage === CONNECTION_STAGE.REQUEST_SENT ||
+    stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING ||
+    stage === CONNECTION_STAGE.ACCEPTED_PENDING;
+  if (!declinable) {
+    return {
+      success: false,
+      error:
+        "This request is no longer in the pending stage — decline isn't available. If you want to step away, use cancel instead.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  const reason =
+    typeof args.reason === "string" && args.reason.trim().length > 0
+      ? args.reason.trim()
+      : null;
+
+  return {
+    success: true,
+    data: {
+      action: "decline",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      has_reason: reason !== null,
+      email_side_effect: true,
+      preview: `You're about to decline the connection request from ${displayName}. The family will get a neutral notification — we never share the reason you give us (it's kept in our records only).`,
+      next_call:
+        "Read this back to the user and ask 'yes / cancel'. When they confirm, call apply_decline_connection with the same connection_id (and reason if they provided one).",
+    },
+  };
+}
+
+/**
+ * Decline — apply. Wraps declineConnectionRequest().
+ */
+async function applyDeclineConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "nanny") {
+    return {
+      success: false,
+      error:
+        "Only nannies can decline a connection. This shouldn't have been called — re-check the propose step.",
+    };
+  }
+
+  const reason =
+    typeof args.reason === "string" && args.reason.trim().length > 0
+      ? args.reason.trim()
+      : undefined;
+
+  const result = await declineConnectionRequest(connection.id, reason);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to decline connection.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "decline",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      message: `Declined. ${displayName} will get a neutral notification — nothing about a specific reason.`,
+    },
+    // Emit the live tile so the UI reflects the new terminal state.
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
+/**
+ * Cancel — propose.
+ * Either side can cancel any active (non-terminal, non-cancelled)
+ * connection. Previews the action without hitting the server.
+ */
+async function proposeCancelConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (connection.status === "cancelled") {
+    return {
+      success: false,
+      error: "This connection has already been cancelled.",
+    };
+  }
+  if (isTerminal(connection.connection_stage)) {
+    return {
+      success: false,
+      error:
+        "This connection is already closed — cancel isn't available. If you want to start something new, send a fresh request.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  const otherPartyNotice =
+    role === "parent"
+      ? `${displayName} will be notified in their inbox.`
+      : `The family will be notified in their inbox.`;
+
+  return {
+    success: true,
+    data: {
+      action: "cancel",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      email_side_effect: false,
+      preview: `You're about to cancel your connection with ${displayName}. ${otherPartyNotice} You can send a new request later if you change your mind.`,
+      next_call:
+        "Read this back to the user and ask 'yes / cancel'. When they confirm, call apply_cancel_connection with the same connection_id.",
+    },
+  };
+}
+
+/**
+ * Cancel — apply. Wraps cancelConnectionRequest().
+ */
+async function applyCancelConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  const result = await cancelConnectionRequest(connection.id);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to cancel connection.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "cancel",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      message: `Cancelled. ${displayName} will see this in their inbox.`,
+    },
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
 // ── Module export ─────────────────────────────────────────────────────────
 
 export const connectionsModule: BloomBotModule = {
@@ -316,6 +556,79 @@ export const connectionsModule: BloomBotModule = {
         "List every connection where the user specifically needs to do something next (not waiting on the other party). Each entry includes the counterparty name + plain-English action. Use for 'what do I need to do?', 'outstanding actions', 'anything needing my attention?'.",
       parameters: { type: "object", properties: {}, required: [] },
     },
+    {
+      name: "propose_decline_connection",
+      description:
+        "Preview declining a connection request (nanny only; request must still be pending). Returns the user-facing wording to read back to the user and wait for yes/cancel. Does NOT hit the server. Always call this first, never apply_decline_connection directly.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: {
+            type: "string",
+            description:
+              "The connection id (returned by read_connection_by_name / read_connection_inbox).",
+          },
+          reason: {
+            type: "string",
+            description:
+              "Optional private reason — stored in our records, never shared with the family.",
+          },
+        },
+        required: ["connection_id"],
+      },
+    },
+    {
+      name: "apply_decline_connection",
+      description:
+        "Actually decline the connection request. Only call after propose_decline_connection and after the user has explicitly confirmed. Sends a neutral notification email to the family (INT-004) — no reason shared with them.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: {
+            type: "string",
+            description:
+              "Same connection id passed to propose_decline_connection.",
+          },
+          reason: {
+            type: "string",
+            description:
+              "Same optional reason passed to propose_decline_connection (stored internally only).",
+          },
+        },
+        required: ["connection_id"],
+      },
+    },
+    {
+      name: "propose_cancel_connection",
+      description:
+        "Preview cancelling a connection (either side can cancel an active connection). Returns the user-facing wording to read back plus a note that the other party will be notified. Does NOT hit the server.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: {
+            type: "string",
+            description: "The connection id to cancel.",
+          },
+        },
+        required: ["connection_id"],
+      },
+    },
+    {
+      name: "apply_cancel_connection",
+      description:
+        "Actually cancel the connection. Only call after propose_cancel_connection and explicit user confirmation. Sends an inbox notification to the other party (no email).",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: {
+            type: "string",
+            description:
+              "Same connection id passed to propose_cancel_connection.",
+          },
+        },
+        required: ["connection_id"],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
@@ -326,17 +639,31 @@ export const connectionsModule: BloomBotModule = {
     if (toolName === "read_upcoming_meet") return readUpcomingMeet(args, ctx);
     if (toolName === "read_action_required")
       return readActionRequired(args, ctx);
+    if (toolName === "propose_decline_connection")
+      return proposeDeclineConnection(args, ctx);
+    if (toolName === "apply_decline_connection")
+      return applyDeclineConnection(args, ctx);
+    if (toolName === "propose_cancel_connection")
+      return proposeCancelConnection(args, ctx);
+    if (toolName === "apply_cancel_connection")
+      return applyCancelConnection(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
     "For anything about the user's connections / meet-and-greet pipeline / who they're talking to, call the read tools below. Hard rules:\n\n" +
     "• NEVER say 'intro', 'intro call', or 'interview' — always 'meet and greet'. The legacy 'interview request' label has been renamed; it's a 'connection' or 'request' now.\n" +
-    "• NEVER speak the words 'connection_request', 'connection_stage', stage numbers, 'fill_initiated_by', 'proposed_times', or any other internal field. The read tools already return plain English — surface their output directly.\n" +
-    "• When a user asks 'who wants to interview me?' or similar, call `read_connection_inbox`. Narrate the active list — do NOT emit a tile per connection; one tile per reply max to avoid swamping the deck. If the user picks one, follow up with `read_connection_by_name` which will emit an interactive tile for just that one.\n" +
-    "• When the user names a specific counterparty, call `read_connection_by_name`. If match_count > 1, ask which one before proceeding.\n" +
-    "• When they ask 'when is my meet / interview?', call `read_upcoming_meet` and read the `confirmed_time` in Sydney time, plus the nanny phone (only if the tool returned one — don't paraphrase if absent).\n" +
-    "• When they ask 'what do I need to do?' or 'anything outstanding?', call `read_action_required`.\n" +
-    "• Phase 4B.1 is READ-ONLY. If the user asks Katie to accept, decline, schedule, or cancel a connection, tell them the action has to happen on their inbox page for now and offer to open the tile so they can act from there (the tile already includes a 'Open to respond' link).\n" +
-    "• Never fabricate a counterparty name — only use names returned by the tools.",
+    "• NEVER speak the words 'connection_request', 'connection_stage', stage numbers, 'fill_initiated_by', 'proposed_times', or any other internal field. The read tools already return plain English — surface their output directly.\n\n" +
+    "Reads:\n" +
+    "• 'Who wants to interview me?' / 'who have I reached out to?' → `read_connection_inbox`. Narrate the active list — do NOT emit a tile per connection; one tile per reply max. If the user picks one, follow up with `read_connection_by_name` which emits an interactive tile for just that one.\n" +
+    "• User names a specific counterparty → `read_connection_by_name`. If match_count > 1, ask which one before proceeding.\n" +
+    "• 'When is my meet?' → `read_upcoming_meet` and read the `confirmed_time` in Sydney time plus the nanny phone (only if the tool returned one — don't paraphrase if absent).\n" +
+    "• 'What do I need to do?' / 'anything outstanding?' → `read_action_required`.\n" +
+    "• Never fabricate a counterparty name — only use names returned by the tools.\n\n" +
+    "Writes (available: decline, cancel — accept/schedule/outcome reporting not yet wired):\n" +
+    "• Every write is TWO TURNS. Turn 1: call `propose_<action>`, read the returned `preview` back to the user verbatim, ask yes/cancel. Turn 2: only if the user says yes, call `apply_<action>` with the same args. NEVER call apply_ directly without a propose_ preceding it in the same conversation.\n" +
+    "• If the user says anything other than a clear affirmative (yes, confirm, go ahead, do it, proceed), DO NOT call apply_. Ask once more for a clear yes/cancel.\n" +
+    "• If a write returns an error, surface the error text verbatim — it is already user-safe. Do not silently retry.\n" +
+    "• If the user asks to accept, schedule, or report an outcome (actions not yet wired), tell them that flow still lives on the main inbox page and offer to open the connection tile so they can act from there.\n" +
+    "• Decline is nanny-only and only while the request is still pending. Cancel is available to either side for any active (non-terminal) connection. The propose step enforces those gates with a user-safe error if the action isn't allowed.",
 };
