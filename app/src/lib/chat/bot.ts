@@ -5,6 +5,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import type { ChildSummary } from "@/lib/chat/context";
+import { seedDefaultSchedules } from "@/lib/chat/proactive/seed-defaults";
 
 export interface BotRecord {
   id: string;
@@ -82,6 +83,20 @@ export async function getOrCreateBot(
     });
   } catch (e) {
     console.warn("[bloombot] first-visit intro insert failed", e);
+  }
+
+  // Seed default proactive schedules (weekly_overview per child). Best-
+  // effort: any failure is logged + swallowed, never blocks bot creation.
+  // Idempotent inside seedDefaultSchedules itself, so a racy second
+  // caller is safe.
+  try {
+    const children = await getUserChildren(userId);
+    const tz =
+      (created.settings as { waking_hours?: { timezone?: string } } | null)
+        ?.waking_hours?.timezone ?? "Australia/Sydney";
+    await seedDefaultSchedules(admin, created.id, children, tz);
+  } catch (e) {
+    console.warn("[bloombot] seed default schedules failed", e);
   }
 
   return created as BotRecord;
