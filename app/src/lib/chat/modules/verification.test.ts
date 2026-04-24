@@ -1,0 +1,468 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  verificationModule,
+  summariseNannyState,
+  summariseParentState,
+  type VerificationSummary,
+} from "./verification";
+import type { ModuleContext } from "./types";
+
+// Every internal token that MUST NOT leak into Gemini's view.
+const FORBIDDEN_TOKENS = [
+  "verification_level",
+  "verification_status",
+  "verification_tier",
+  "identity_status",
+  "wwcc_status",
+  "cross_check_status",
+  "tier 1",
+  "tier 2",
+  "tier 3",
+  "level 0",
+  "level 1",
+  "level 2",
+  "level 3",
+  "level 4",
+  "status 0",
+  "status 10",
+  "status 11",
+  "status 12",
+  "status 20",
+  "status 21",
+  "status 30",
+  "status 40",
+];
+
+function assertNoLeaks(summary: VerificationSummary) {
+  const blob = JSON.stringify(summary).toLowerCase();
+  for (const t of FORBIDDEN_TOKENS) {
+    expect(blob, `found forbidden token: "${t}"`).not.toContain(t);
+  }
+}
+
+describe("summariseNannyState — no-row (fresh signup)", () => {
+  it("tells the user to finish registration and start verification", () => {
+    const s = summariseNannyState(null, null);
+    expect(s.headline).toMatch(/start/i);
+    expect(s.whats_still_needed.some((x) => /registration/i.test(x))).toBe(
+      true,
+    );
+    expect(s.how_to_continue?.url).toBe("/nanny/verification");
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — registered, verification not submitted", () => {
+  it("profile done, asks for verification form", () => {
+    const s = summariseNannyState(
+      { verification_level: 1 },
+      {
+        verification_status: 0,
+        identity_status: "not_started",
+        wwcc_status: "not_started",
+        cross_check_status: "not_started",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.whats_complete.some((x) => /profile/i.test(x))).toBe(true);
+    expect(s.whats_still_needed.some((x) => /verification form/i.test(x))).toBe(
+      true,
+    );
+    expect(s.how_to_continue?.url).toBe("/nanny/verification");
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — pending AI ID check", () => {
+  it("marks ID as in progress, nothing for user to do", () => {
+    const s = summariseNannyState(
+      { verification_level: 1 },
+      {
+        verification_status: 10,
+        identity_status: "processing",
+        wwcc_status: "not_started",
+        cross_check_status: "not_started",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.whats_in_progress.some((x) => /checking/i.test(x))).toBe(true);
+    expect(s.how_to_continue).toBeNull();
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — ID rejected", () => {
+  it("surfaces the rejection reason and asks for resubmit", () => {
+    const s = summariseNannyState(
+      { verification_level: 1 },
+      {
+        verification_status: 12,
+        identity_status: "rejected",
+        wwcc_status: "not_started",
+        cross_check_status: "not_started",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: "passport photo was blurry",
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.whats_still_needed.some((x) => /blurry/i.test(x))).toBe(true);
+    expect(s.how_to_continue?.url).toBe("/nanny/verification");
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — ID done, WWCC pending", () => {
+  it("headline reflects WWCC-in-progress", () => {
+    const s = summariseNannyState(
+      { verification_level: 2 },
+      {
+        verification_status: 20,
+        identity_status: "verified",
+        wwcc_status: "pending",
+        cross_check_status: "passed",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.whats_complete.some((x) => /identity/i.test(x))).toBe(true);
+    expect(
+      s.whats_in_progress.some((x) => /working with children/i.test(x)),
+    ).toBe(true);
+    // Not visible to parents yet
+    expect(s.cannot_do_yet.some((x) => /search results/i.test(x.what))).toBe(
+      true,
+    );
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — provisionally verified (level 3)", () => {
+  it("is visible in search, final WWCC still in progress", () => {
+    const s = summariseNannyState(
+      { verification_level: 3 },
+      {
+        verification_status: 30,
+        identity_status: "verified",
+        wwcc_status: "verified",
+        cross_check_status: "passed",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.can_do_now.some((x) => /visible to parents/i.test(x))).toBe(true);
+    expect(s.cannot_do_yet.some((x) => /accept interview/i.test(x.what))).toBe(
+      true,
+    );
+    expect(s.whats_in_progress.some((x) => /final check/i.test(x))).toBe(true);
+    expect(s.how_to_continue).toBeNull();
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — fully verified (level 4)", () => {
+  it("everything complete, full access", () => {
+    const s = summariseNannyState(
+      { verification_level: 4 },
+      {
+        verification_status: 40,
+        identity_status: "verified",
+        wwcc_status: "verified",
+        cross_check_status: "passed",
+        identity_user_guidance: null,
+        wwcc_user_guidance: null,
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.headline).toMatch(/fully verified/i);
+    expect(s.whats_still_needed).toHaveLength(0);
+    expect(s.how_to_continue).toBeNull();
+    expect(s.can_do_now.some((x) => /interview/i.test(x))).toBe(true);
+    expect(s.cannot_do_yet).toHaveLength(0);
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseParentState — not started", () => {
+  it("prompts to verify identity", () => {
+    const s = summariseParentState({ verification_level: 0 }, null);
+    expect(s.headline).toMatch(/verify your identity/i);
+    expect(s.whats_still_needed[0]).toMatch(/selfie/i);
+    expect(s.cannot_do_yet.some((x) => /connection/i.test(x.what))).toBe(true);
+    expect(s.how_to_continue?.url).toBe("/parent/verification");
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseParentState — pending admin review", () => {
+  it("tells them to wait — no action needed", () => {
+    const s = summariseParentState(
+      { verification_level: 0 },
+      {
+        verification_status: 11,
+        identity_status: "review",
+        cross_check_status: "passed",
+        identity_user_guidance: null,
+        identity_rejection_reason: null,
+      },
+    );
+    expect(s.whats_in_progress.some((x) => /review/i.test(x))).toBe(true);
+    // Nothing for the user to actively do.
+    expect(s.how_to_continue).toBeNull();
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseParentState — AI-failed (12) vs admin-rejected (13)", () => {
+  it("status 12 offers manual review option in copy", () => {
+    const s = summariseParentState(
+      { verification_level: 0 },
+      {
+        verification_status: 12,
+        identity_status: "failed",
+        cross_check_status: "not_started",
+        identity_user_guidance: null,
+        identity_rejection_reason: "selfie blurry",
+      },
+    );
+    expect(s.whats_still_needed.some((x) => /manual review/i.test(x))).toBe(
+      true,
+    );
+    assertNoLeaks(s);
+  });
+
+  it("status 13 does not offer manual review option (loop prevention)", () => {
+    const s = summariseParentState(
+      { verification_level: 0 },
+      {
+        verification_status: 13,
+        identity_status: "rejected",
+        cross_check_status: "not_started",
+        identity_user_guidance: null,
+        identity_rejection_reason: "mismatch",
+      },
+    );
+    expect(s.whats_still_needed.some((x) => /manual review/i.test(x))).toBe(
+      false,
+    );
+    expect(s.whats_still_needed.some((x) => /new id/i.test(x))).toBe(true);
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseParentState — fully verified", () => {
+  it("full access", () => {
+    const s = summariseParentState(
+      { verification_level: 1 },
+      {
+        verification_status: 20,
+        identity_status: "verified",
+        cross_check_status: "passed",
+        identity_user_guidance: null,
+        identity_rejection_reason: null,
+      },
+    );
+    expect(s.headline).toMatch(/fully verified/i);
+    expect(s.can_do_now.some((x) => /connection/i.test(x))).toBe(true);
+    expect(s.cannot_do_yet).toHaveLength(0);
+    expect(s.how_to_continue).toBeNull();
+    assertNoLeaks(s);
+  });
+});
+
+describe("summariseNannyState — system_guidance pass-through", () => {
+  it("appends identity + wwcc guidance", () => {
+    const s = summariseNannyState(
+      { verification_level: 2 },
+      {
+        verification_status: 20,
+        identity_status: "verified",
+        wwcc_status: "pending",
+        cross_check_status: "passed",
+        identity_user_guidance: "Your ID looked good.",
+        wwcc_user_guidance: "WWCC auto-check may take up to 24 hours.",
+        identity_rejection_reason: null,
+        wwcc_rejection_reason: null,
+      },
+    );
+    expect(s.system_guidance).toContain("looked good");
+    expect(s.system_guidance).toContain("24 hours");
+    assertNoLeaks(s);
+  });
+});
+
+// ── Handler-level tests (role gating) ────────────────────────────────────
+
+function makeCtx(
+  role: "nanny" | "parent" | "admin",
+  rows: {
+    nanny?: { verification_level?: number };
+    verifications?: Partial<{
+      verification_status: number;
+      identity_status: string;
+      wwcc_status: string;
+      cross_check_status: string;
+      identity_user_guidance: string | null;
+      wwcc_user_guidance: string | null;
+      identity_rejection_reason: string | null;
+      wwcc_rejection_reason: string | null;
+    }>;
+    parent?: { verification_level?: number };
+    parent_verifications?: Partial<{
+      verification_status: number;
+      identity_status: string;
+      cross_check_status: string;
+      identity_user_guidance: string | null;
+      identity_rejection_reason: string | null;
+    }>;
+  },
+): ModuleContext {
+  const supabase = {
+    from: vi.fn((t: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => {
+            if (t === "nannies")
+              return { data: rows.nanny ?? null, error: null };
+            if (t === "verifications")
+              return { data: rows.verifications ?? null, error: null };
+            if (t === "parents")
+              return { data: rows.parent ?? null, error: null };
+            if (t === "parent_verifications")
+              return { data: rows.parent_verifications ?? null, error: null };
+            return { data: null, error: null };
+          },
+        }),
+      }),
+    })),
+  };
+  return {
+    botId: "b",
+    userId: "u",
+    userRole: role,
+    effectiveRole: role,
+    children: [],
+    currentSurface: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    supabase: supabase as any,
+  };
+}
+
+describe("verification module — read_verification_status", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns nanny summary for nanny role", async () => {
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 2 },
+      verifications: {
+        verification_status: 20,
+        identity_status: "verified",
+        wwcc_status: "pending",
+        cross_check_status: "passed",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    const data = r.data as VerificationSummary;
+    expect(data.headline).toBeDefined();
+    assertNoLeaks(data);
+  });
+
+  it("returns parent summary for parent role", async () => {
+    const ctx = makeCtx("parent", {
+      parent: { verification_level: 1 },
+      parent_verifications: {
+        verification_status: 20,
+        identity_status: "verified",
+        cross_check_status: "passed",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    const data = r.data as VerificationSummary;
+    expect(data.can_do_now.some((x) => /connection/i.test(x))).toBe(true);
+    assertNoLeaks(data);
+  });
+
+  it("refuses for admin role", async () => {
+    const ctx = makeCtx("admin", {});
+    const r = await verificationModule.execute(
+      "read_verification_status",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("verification module — read_verification_next_steps", () => {
+  it("returns empty with nothing_to_do=true when fully verified", async () => {
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 4 },
+      verifications: {
+        verification_status: 40,
+        identity_status: "verified",
+        wwcc_status: "verified",
+        cross_check_status: "passed",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_next_steps",
+      {},
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.count).toBe(0);
+    expect(data.nothing_to_do).toBe(true);
+  });
+
+  it("returns actionable steps with link when user has work", async () => {
+    const ctx = makeCtx("nanny", {
+      nanny: { verification_level: 1 },
+      verifications: {
+        verification_status: 12,
+        identity_status: "rejected",
+        wwcc_status: "not_started",
+        cross_check_status: "not_started",
+        identity_rejection_reason: "blurry",
+      },
+    });
+    const r = await verificationModule.execute(
+      "read_verification_next_steps",
+      {},
+      ctx,
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.count).toBeGreaterThan(0);
+    expect(data.steps[0].url).toBe("/nanny/verification");
+    expect(data.nothing_to_do).toBe(false);
+  });
+});
+
+describe("verification module — rolesAllowed gate", () => {
+  it("admin role blocked from the module via rolesAllowed", () => {
+    expect(verificationModule.rolesAllowed).toEqual(["nanny", "parent"]);
+  });
+});

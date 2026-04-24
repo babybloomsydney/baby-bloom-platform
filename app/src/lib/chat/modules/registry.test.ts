@@ -21,6 +21,7 @@ describe("module registry", () => {
       expect(ids).toContain("agent-memory");
       expect(ids).toContain("history");
       expect(ids).toContain("katie-scheduling");
+      expect(ids).toContain("verification");
     });
 
     it("returns modules for nanny role", () => {
@@ -65,6 +66,8 @@ describe("module registry", () => {
       expect(names).toContain("update_schedule");
       expect(names).toContain("cancel_schedule");
       expect(names).toContain("set_waking_hours");
+      expect(names).toContain("read_verification_status");
+      expect(names).toContain("read_verification_next_steps");
     });
 
     it("tool names are globally unique", () => {

@@ -1,0 +1,463 @@
+/**
+ * `verification` module — read-only view of the user's verification state,
+ * translated to plain English before Katie ever sees it.
+ *
+ * Hard constraints — do not break:
+ *   1. Katie never reads from `nannies.verification_tier` (deprecated
+ *      legacy column that parallels the current system). This module
+ *      does not SELECT it.
+ *   2. Katie never sees numeric status or level codes, never sees
+ *      internal field names (verification_status, verification_level,
+ *      identity_status, wwcc_status, cross_check_status), and never
+ *      speaks "Tier 1/2/3" language. The mappers below convert internal
+ *      state into plain-English strings before return.
+ *   3. This module is READ-ONLY. No document collection, no waiver
+ *      signing, no tool that writes to the verification tables. The
+ *      traditional form at /nanny/verification or /parent/verification
+ *      remains the source of truth for submissions + consent.
+ *
+ * Schema reference:
+ *   - system/verification/nanny_verification/nanny_verification-data-systems.md
+ *   - system/verification/parent_verification/parent_verification_status_codes.md
+ *   - src/lib/verification.ts (constants)
+ */
+
+import type { BloomBotModule, ToolResult } from "./types";
+
+// ── Internal row shapes (what we query from DB) ────────────────────────────
+
+interface NannyRow {
+  verification_level: number | null;
+}
+
+interface NannyVerificationRow {
+  verification_status: number | null;
+  identity_status: string | null;
+  wwcc_status: string | null;
+  cross_check_status: string | null;
+  identity_user_guidance: string | null;
+  wwcc_user_guidance: string | null;
+  identity_rejection_reason: string | null;
+  wwcc_rejection_reason: string | null;
+}
+
+interface ParentRow {
+  verification_level: number | null;
+}
+
+interface ParentVerificationRow {
+  verification_status: number | null;
+  identity_status: string | null;
+  cross_check_status: string | null;
+  identity_user_guidance: string | null;
+  identity_rejection_reason: string | null;
+}
+
+// ── Plain-English shapes that Katie sees ───────────────────────────────────
+
+export interface VerificationSummary {
+  /** One-line human-readable headline. */
+  headline: string;
+  /** Completed milestones, phrased as facts. */
+  whats_complete: string[];
+  /** Currently in progress (waiting on system/admin, not on the user). */
+  whats_in_progress: string[];
+  /** Actions the user still needs to take. */
+  whats_still_needed: string[];
+  /** What the user CAN do on the platform right now. */
+  can_do_now: string[];
+  /** What they can't yet, with a plain-English reason. */
+  cannot_do_yet: Array<{ what: string; why: string }>;
+  /** Where to go if there's a next action. Null when nothing for the user to do. */
+  how_to_continue: { label: string; url: string } | null;
+  /** Copy-through of the guidance the verification pipeline has already generated. */
+  system_guidance: string | null;
+}
+
+export interface VerificationNextStep {
+  summary: string;
+  url: string;
+}
+
+// ── Nanny translator ───────────────────────────────────────────────────────
+
+/**
+ * Translate a nanny's internal verification state into plain English.
+ * Never outputs codes, level numbers, or internal field names.
+ */
+export function summariseNannyState(
+  nanny: NannyRow | null,
+  ver: NannyVerificationRow | null,
+): VerificationSummary {
+  const level = nanny?.verification_level ?? 0;
+  const status = ver?.verification_status ?? 0;
+  const identityStatus = ver?.identity_status ?? "not_started";
+  const wwccStatus = ver?.wwcc_status ?? "not_started";
+  const identityGuidance = ver?.identity_user_guidance?.trim() || null;
+  const wwccGuidance = ver?.wwcc_user_guidance?.trim() || null;
+  const identityReason = ver?.identity_rejection_reason?.trim() || null;
+  const wwccReason = ver?.wwcc_rejection_reason?.trim() || null;
+
+  const url = "/nanny/verification";
+  const out: VerificationSummary = {
+    headline: "",
+    whats_complete: [],
+    whats_in_progress: [],
+    whats_still_needed: [],
+    can_do_now: [],
+    cannot_do_yet: [],
+    how_to_continue: null,
+    system_guidance: null,
+  };
+
+  // Profile signal — level 1+ means the registration form is done.
+  if (level >= 1) {
+    out.whats_complete.push("Your nanny profile is complete.");
+  } else {
+    out.whats_still_needed.push("Finish the registration form.");
+  }
+
+  // Verification form submission — status 10+ means they've submitted.
+  const hasSubmittedVerification = status >= 10;
+
+  // ── Identity stage ───────────────────────────────────────────────────
+  if (level >= 2) {
+    out.whats_complete.push(
+      "Your identity has been confirmed (passport + selfie).",
+    );
+  } else if (status === 10 || identityStatus === "processing") {
+    out.whats_in_progress.push(
+      "We're automatically checking your passport and selfie.",
+    );
+  } else if (status === 11 || identityStatus === "review") {
+    out.whats_in_progress.push("Your ID documents are in our review queue.");
+  } else if (
+    status === 12 ||
+    identityStatus === "rejected" ||
+    identityStatus === "failed"
+  ) {
+    out.whats_still_needed.push(
+      identityReason
+        ? `Resubmit your ID — previous attempt failed: ${identityReason}.`
+        : "Resubmit your ID documents.",
+    );
+  } else if (!hasSubmittedVerification) {
+    out.whats_still_needed.push(
+      "Submit your verification form (passport, selfie, WWCC).",
+    );
+  }
+
+  // ── WWCC stage ───────────────────────────────────────────────────────
+  if (level >= 4) {
+    out.whats_complete.push(
+      "Your Working With Children Check has been fully confirmed.",
+    );
+  } else if (level === 3) {
+    // Provisional — auto-passed, silent admin check in progress.
+    out.whats_in_progress.push(
+      "A final check of your Working With Children Check is in progress with our team.",
+    );
+  } else if (level === 2) {
+    if (
+      status === 20 ||
+      wwccStatus === "processing" ||
+      wwccStatus === "pending"
+    ) {
+      out.whats_in_progress.push(
+        "We're checking your Working With Children Check.",
+      );
+    } else if (status === 21 || wwccStatus === "review") {
+      out.whats_in_progress.push(
+        "Your Working With Children Check is in our review queue.",
+      );
+    } else if (
+      status === 22 ||
+      wwccStatus === "rejected" ||
+      wwccStatus === "failed"
+    ) {
+      out.whats_still_needed.push(
+        wwccReason
+          ? `Resubmit your WWCC — previous attempt failed: ${wwccReason}.`
+          : "Resubmit your Working With Children Check.",
+      );
+    } else if (status === 23) {
+      out.whats_still_needed.push(
+        "Renew your Working With Children Check — it has expired.",
+      );
+    }
+  }
+
+  // ── Capabilities ──
+  if (level >= 3) {
+    out.can_do_now.push("Your profile is visible to parents in search.");
+  } else {
+    out.cannot_do_yet.push({
+      what: "Appear in parents' search results",
+      why: "your WWCC has not yet passed the initial check",
+    });
+  }
+
+  if (level >= 4) {
+    out.can_do_now.push("You can accept interview requests from parents.");
+    out.can_do_now.push(
+      "You can accept babysitting jobs (subject to being eligible for babysitting).",
+    );
+  } else {
+    out.cannot_do_yet.push({
+      what: "Accept interview requests",
+      why: "your Working With Children Check is not yet fully confirmed",
+    });
+    out.cannot_do_yet.push({
+      what: "Accept babysitting jobs",
+      why: "your Working With Children Check is not yet fully confirmed",
+    });
+  }
+
+  // ── Headline + next-step URL ──
+  if (level >= 4) {
+    out.headline = "You're fully verified.";
+    out.how_to_continue = null;
+  } else if (level === 3) {
+    out.headline =
+      "You're verified enough to appear in search. Our team is finalising your WWCC check.";
+    out.how_to_continue = null;
+  } else if (level === 0) {
+    // Brand-new signup — haven't completed the profile form yet.
+    out.headline = "Start by finishing your profile to unlock verification.";
+    out.how_to_continue = { label: "Start verification", url };
+  } else if (level === 1 && !hasSubmittedVerification) {
+    out.headline =
+      "Start verification to unlock interviews and babysitting jobs.";
+    out.how_to_continue = { label: "Start verification", url };
+  } else if (out.whats_still_needed.length > 0) {
+    out.headline = "There are still a couple of steps for you to finish.";
+    out.how_to_continue = { label: "Continue verification", url };
+  } else if (out.whats_in_progress.length > 0) {
+    out.headline =
+      "Your verification is in progress — nothing you need to do right now.";
+    out.how_to_continue = null;
+  } else {
+    out.headline = "Start your verification to unlock interviews and jobs.";
+    out.how_to_continue = { label: "Start verification", url };
+  }
+
+  // ── System-generated guidance (pass through unchanged — already prose) ──
+  const guidanceParts = [identityGuidance, wwccGuidance].filter(
+    (g): g is string => Boolean(g),
+  );
+  out.system_guidance =
+    guidanceParts.length > 0 ? guidanceParts.join(" ") : null;
+
+  return out;
+}
+
+// ── Parent translator ──────────────────────────────────────────────────────
+
+export function summariseParentState(
+  parent: ParentRow | null,
+  ver: ParentVerificationRow | null,
+): VerificationSummary {
+  const level = parent?.verification_level ?? 0;
+  const status = ver?.verification_status ?? 0;
+  const identityStatus = ver?.identity_status ?? "not_started";
+  const identityGuidance = ver?.identity_user_guidance?.trim() || null;
+  const identityReason = ver?.identity_rejection_reason?.trim() || null;
+
+  const url = "/parent/verification";
+  const out: VerificationSummary = {
+    headline: "",
+    whats_complete: [],
+    whats_in_progress: [],
+    whats_still_needed: [],
+    can_do_now: [
+      "Browse nanny profiles.",
+      "View nanny availability.",
+      "Manage your position preferences.",
+    ],
+    cannot_do_yet: [],
+    how_to_continue: null,
+    system_guidance: null,
+  };
+
+  if (level >= 1) {
+    out.whats_complete.push("Your identity has been confirmed.");
+    out.headline = "You're fully verified.";
+    out.can_do_now.push("You can send connection requests to nannies.");
+    out.can_do_now.push("You can request babysitters.");
+    out.how_to_continue = null;
+  } else {
+    out.cannot_do_yet.push({
+      what: "Send connection requests",
+      why: "your identity hasn't been verified yet",
+    });
+    out.cannot_do_yet.push({
+      what: "Request a babysitter",
+      why: "your identity hasn't been verified yet",
+    });
+
+    if (status === 10 || identityStatus === "processing") {
+      out.whats_in_progress.push(
+        "We're automatically checking your ID and selfie.",
+      );
+      out.headline =
+        "Your verification is being processed — nothing you need to do right now.";
+    } else if (status === 11 || identityStatus === "review") {
+      out.whats_in_progress.push("Your ID is in our review queue.");
+      out.headline =
+        "Your verification is under manual review — we'll let you know as soon as it's done.";
+    } else if (status === 12 || identityStatus === "failed") {
+      out.whats_still_needed.push(
+        identityReason
+          ? `Resubmit your ID — previous attempt failed: ${identityReason}. You can also ask for a manual review instead.`
+          : "Resubmit your ID — you can also ask for a manual review instead.",
+      );
+      out.headline = "Your ID verification needs another attempt.";
+      out.how_to_continue = { label: "Retry verification", url };
+    } else if (status === 13 || identityStatus === "rejected") {
+      out.whats_still_needed.push(
+        identityReason
+          ? `Upload a new ID document — previous one was rejected: ${identityReason}.`
+          : "Upload a new ID document.",
+      );
+      out.headline = "Your ID needs to be resubmitted with a new document.";
+      out.how_to_continue = { label: "Resubmit ID", url };
+    } else {
+      // status 0
+      out.whats_still_needed.push(
+        "Verify your identity (upload ID + take a selfie).",
+      );
+      out.headline = "Verify your identity to start connecting with nannies.";
+      out.how_to_continue = { label: "Verify your identity", url };
+    }
+  }
+
+  out.system_guidance = identityGuidance;
+
+  return out;
+}
+
+// ── Handlers ───────────────────────────────────────────────────────────────
+
+async function readVerificationStatus(
+  _args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  if (ctx.effectiveRole === "parent") {
+    const { data: parent } = await ctx.supabase
+      .from("parents")
+      .select("verification_level")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    const { data: ver } = await ctx.supabase
+      .from("parent_verifications")
+      .select(
+        "verification_status, identity_status, cross_check_status, identity_user_guidance, identity_rejection_reason",
+      )
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    return {
+      success: true,
+      data: summariseParentState(
+        parent as ParentRow | null,
+        ver as ParentVerificationRow | null,
+      ),
+    };
+  }
+
+  if (ctx.effectiveRole === "nanny") {
+    const { data: nanny } = await ctx.supabase
+      .from("nannies")
+      .select("verification_level")
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    const { data: ver } = await ctx.supabase
+      .from("verifications")
+      .select(
+        "verification_status, identity_status, wwcc_status, cross_check_status, identity_user_guidance, wwcc_user_guidance, identity_rejection_reason, wwcc_rejection_reason",
+      )
+      .eq("user_id", ctx.userId)
+      .maybeSingle();
+    return {
+      success: true,
+      data: summariseNannyState(
+        nanny as NannyRow | null,
+        ver as NannyVerificationRow | null,
+      ),
+    };
+  }
+
+  return {
+    success: false,
+    error:
+      "Verification is only available for nanny and parent accounts. Admin views use the admin inspection tools.",
+  };
+}
+
+async function readVerificationNextSteps(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = await readVerificationStatus(args, ctx);
+  if (!r.success) return r;
+  const summary = r.data as VerificationSummary;
+
+  const steps: VerificationNextStep[] = [];
+  const url =
+    ctx.effectiveRole === "parent"
+      ? "/parent/verification"
+      : "/nanny/verification";
+  for (const item of summary.whats_still_needed) {
+    steps.push({ summary: item, url });
+  }
+
+  return {
+    success: true,
+    data: {
+      count: steps.length,
+      steps,
+      nothing_to_do: steps.length === 0,
+      headline: summary.headline,
+    },
+  };
+}
+
+// ── Module export ──────────────────────────────────────────────────────────
+
+export const verificationModule: BloomBotModule = {
+  id: "verification",
+  name: "Verification",
+  description:
+    "Read-only view of the user's verification progress. Translates internal state into plain English so Katie can narrate what's done, what's in progress, what's still needed, and what the user can/can't do on the platform yet.",
+
+  rolesAllowed: ["nanny", "parent"],
+
+  tools: [
+    {
+      name: "read_verification_status",
+      description:
+        "Get the current verification summary for the signed-in user — what's done, what's in progress, what's still needed, what they can and can't do yet, and a link if there's a next action. All fields are already phrased in natural language; surface them directly to the user without paraphrasing more than necessary.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+    {
+      name: "read_verification_next_steps",
+      description:
+        "Get just the ordered list of actions the user still needs to take, each with a link to the verification page. If the list is empty, tell the user they have nothing to do right now.",
+      parameters: { type: "object", properties: {}, required: [] },
+    },
+  ],
+
+  async execute(toolName, args, ctx) {
+    if (toolName === "read_verification_status")
+      return readVerificationStatus(args, ctx);
+    if (toolName === "read_verification_next_steps")
+      return readVerificationNextSteps(args, ctx);
+    return { success: false, error: `Unknown tool: ${toolName}` };
+  },
+
+  systemPromptFragment:
+    "For anything about the user's verification, call `read_verification_status` or `read_verification_next_steps`. Hard rules when talking about verification:\n\n" +
+    "• NEVER mention 'level 1/2/3/4', 'status 10/11/20/30/40', 'tier 1/2/3', 'verification_level', 'verification_status', 'verification_tier', 'identity_status', 'wwcc_status', or any other internal field or code. Just describe what's happened and what's next in natural English.\n" +
+    "• NEVER offer to collect documents, take passport/WWCC numbers, tick the consent/waiver checkbox, or submit anything on the user's behalf. Verification is a legal process — it happens on the traditional form at /nanny/verification or /parent/verification. Always redirect there with the `how_to_continue` link when there's something to do.\n" +
+    "• If the user asks for a status update, lead with the `headline`, mention what's `in_progress` if anything, then tell them what they can/can't do. If they ask 'what's next', use `read_verification_next_steps`.\n" +
+    "• If `system_guidance` is present, the verification pipeline has already chosen the exact wording to show the user — prefer that text over your own paraphrase.",
+};

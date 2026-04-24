@@ -24,6 +24,7 @@ import { agentMemoryModule } from "./agent-memory";
 import { historyModule } from "./history";
 import { katieSchedulingModule } from "./katie-scheduling";
 import { katieAdminModule } from "./katie-admin";
+import { verificationModule } from "./verification";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -39,9 +40,10 @@ const ALL_MODULES: BloomBotModule[] = [
   historyModule,
   katieSchedulingModule,
   katieAdminModule,
+  verificationModule,
   // Future:
   //   insightsModule, jobSearchModule, bsrModule,
-  //   verificationModule, profileModule, connectionsModule
+  //   profileModule, connectionsModule
 ];
 
 // ── Role filtering ──────────────────────────────────────────────────────
