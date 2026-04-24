@@ -1,6 +1,62 @@
 # CLAUDE.md - Baby Bloom Sydney
 
-> **Verification system — canonical references:**
+## ECC Discipline (READ FIRST — NON-NEGOTIABLE)
+
+> **ECC = Everything Claude Code** — the full set of skills, agents, and rules
+> available to Claude Code for effective engineering work (not just design or
+> frontend). This discipline applies to ALL work on this project — backend
+> modules, API routes, tests, refactors, migrations, UI, everything.
+
+### Before starting any non-trivial task
+1. **Check the relevant ECC rules** under `~/.claude/rules/` — at minimum:
+>   - `common/coding-style.md` · `common/testing.md` · `common/code-review.md` ·
+>     `common/development-workflow.md` · `common/security.md`
+>   - Language-specific overlays: `typescript/*.md` for this repo.
+>   - For UI work: `web/design-quality.md` + `web/performance.md` +
+>     `web/coding-style.md`.
+2. **Pick the right ECC skill/agent** for the job rather than defaulting to
+>   general-purpose coding. Examples:
+>   - Planning a feature → `planner` or `code-architect` agent, not ad-hoc.
+>   - After writing code → `code-reviewer` + `typescript-reviewer` agents
+>     (MANDATORY for any TypeScript change per `code-review.md`).
+>   - New feature → TDD loop using `tdd-guide` guidance.
+>   - Type-heavy design (unions, narrowing, invariants) →
+>     `type-design-analyzer`.
+>   - Error handling paths → `silent-failure-hunter`.
+>   - Build breakage → `build-error-resolver`.
+>   - Database/SQL work → `database-reviewer`.
+>   - Security-sensitive paths (auth, user input, API endpoints) →
+>     `security-reviewer` (also MANDATORY per `security.md`).
+3. **Run agents in parallel where they don't conflict.** Independent reviews
+>   (code-reviewer + typescript-reviewer + silent-failure-hunter on the same
+>   module) should go out in a single tool-call batch.
+
+### Hard rules that come from the ECC rule set
+- **80% test coverage minimum** for new code (`common/testing.md`).
+- **TDD workflow:** test first, then minimum implementation, then refactor
+  (`common/testing.md`). Writing code first without a test is a deviation
+  that needs justification.
+- **Files ≤ 800 lines, functions ≤ 50 lines** (`common/coding-style.md`).
+  If a file is growing past this, split it before continuing.
+- **No `any` in application code** — use `unknown` + narrow
+  (`typescript/coding-style.md`).
+- **Immutable updates** — never mutate, always return new objects
+  (`common/coding-style.md`). Language-specific exceptions (e.g. Go pointer
+  receivers) don't apply here — this is TypeScript.
+- **`code-reviewer` agent run is MANDATORY after any code change**
+  (`common/code-review.md`). Not optional, not "when I feel like it".
+
+### Enforcement
+- If a PR-sized unit of work lands without at least `code-reviewer` +
+  `typescript-reviewer` having run on the new code, that's a process
+  violation worth calling out.
+- When in doubt about which skill/agent fits, check the agent list at the
+  top of the session system prompt — every agent has a one-line description
+  that usually answers the question.
+- This ECC discipline supersedes anything else in this file if they conflict.
+
+## Verification system — canonical references
+
 > - Nanny: [`system/verification/nanny_verification/nanny_verification-data-systems.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/nanny_verification/nanny_verification-data-systems.md)
 > - Parent: [`system/verification/parent_verification/parent_verification_status_codes.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/parent_verification/parent_verification_status_codes.md)
 > - Code constants: `app/src/lib/verification.ts`
