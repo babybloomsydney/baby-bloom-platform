@@ -55,6 +55,17 @@ describe("diary module — log_food", () => {
     expect(r.success).toBe(true);
     expect(r.feedEntry).toBe(true);
     expect(insertMock).toHaveBeenCalled();
+    // Tile emission — wraps the existing DiaryTile / FoodTile. Must
+    // use the canonical FoodData shape so the SAME bapp_logs row also
+    // renders correctly in the main feed at /nanny/development/<child>.
+    expect(r.tile?.kind).toBe("diary");
+    if (r.tile?.kind === "diary") {
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.subtype).toBe("meal");
+      expect(d.title).toBe("Food Log");
+      expect(d.details).toContain("banana");
+      expect(d.details).toContain("breakfast");
+    }
   });
 
   it("rejects unknown meal_type", async () => {
@@ -109,6 +120,15 @@ describe("diary module — log_sleep", () => {
     expect(r.success).toBe(true);
     expect(r.feedEntry).toBe(true);
     expect(insertMock).toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("diary");
+    if (r.tile?.kind === "diary") {
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.subtype).toBe("sleep");
+      expect(d.title).toBe("Sleep Log");
+      // duration_minutes=90 → humanDuration → "1h 30m"
+      expect(d.duration).toBe("1h 30m");
+      expect(String(d.notes)).toContain("cot");
+    }
   });
 
   it("rejects negative or zero duration", async () => {

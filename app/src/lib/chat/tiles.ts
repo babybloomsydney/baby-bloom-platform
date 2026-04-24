@@ -75,6 +75,12 @@ export interface ObservationChatTile {
   data: { item: FeedItemSnapshot<"observation"> };
 }
 
+/** Diary (food or sleep — the inner DiaryTile branches by subtype). */
+export interface DiaryChatTile {
+  kind: "diary";
+  data: { item: FeedItemSnapshot<"diary"> };
+}
+
 /**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
@@ -88,7 +94,11 @@ export interface ObservationChatTile {
  * component actually ship.
  */
 
-export type ChatTile = KatieNoteTile | ActivityChatTile | ObservationChatTile;
+export type ChatTile =
+  | KatieNoteTile
+  | ActivityChatTile
+  | ObservationChatTile
+  | DiaryChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -114,6 +124,8 @@ export function isChatTile(value: unknown): value is ChatTile {
       return isFeedItemSnapshot(data.item, "activity");
     case "observation":
       return isFeedItemSnapshot(data.item, "observation");
+    case "diary":
+      return isFeedItemSnapshot(data.item, "diary");
     default:
       return false;
   }

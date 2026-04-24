@@ -36,6 +36,32 @@ async function insertLog(
   return data as { id: string };
 }
 
+// ── Shape mappers ──────────────────────────────────────────────────────────
+// Canonical JSONB shapes the existing main-page DiaryTile renders:
+//   food:  { subtype: "meal"|"snack"|"bottle", details|null, quantity|null,
+//            time, title: "Food Log", image_url|null }
+//   sleep: { subtype: "sleep", start, end, duration|null, notes|null,
+//            title: "Sleep Log", image_url|null }
+// (See src/types/bapp.ts FoodData + SleepData, and DiarySheet's submit
+// payload which is the reference writer.)
+// Previous implementation wrote a custom shape (entry_type / meal_type /
+// items[] / duration_minutes) that DiaryTile didn't understand, so
+// Katie-written diary rows silently failed to render in the main feed.
+// This rewrite aligns on the canonical shape so the same row renders
+// identically in both surfaces.
+
+function mealTypeToFoodSubtype(mealType: string): "meal" | "snack" {
+  return mealType === "snack" ? "snack" : "meal";
+}
+
+function humanDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 async function logFood(
   args: Record<string, unknown>,
   ctx: Parameters<BloomBotModule["execute"]>[2],
@@ -63,17 +89,34 @@ async function logFood(
     };
   }
 
-  const data: Record<string, unknown> = {
-    entry_type: "food",
-    meal_type: mealType,
-    items,
+  const rawTime =
+    typeof args.time === "string" && args.time.trim().length > 0
+      ? args.time.trim()
+      : "";
+  const rawNotes =
+    typeof args.notes === "string" && args.notes.trim().length > 0
+      ? args.notes.trim()
+      : null;
+  const imageUrl =
+    typeof args.image_url === "string" && args.image_url.trim().length > 0
+      ? args.image_url.trim()
+      : null;
+
+  // Meal intent (breakfast/lunch/dinner/snack) is part of the details
+  // line so it's not lost when the canonical shape only carries
+  // meal|snack|bottle in `subtype`.
+  const detailsLine = [`${mealType}: ${items.join(", ")}`, rawNotes]
+    .filter(Boolean)
+    .join(" — ");
+
+  const foodData: Record<string, unknown> = {
+    subtype: mealTypeToFoodSubtype(mealType),
+    details: detailsLine,
+    quantity: null,
+    time: rawTime,
+    title: "Food Log",
+    image_url: imageUrl,
   };
-  if (typeof args.time === "string" && args.time.trim().length > 0) {
-    data.time = args.time;
-  }
-  if (typeof args.notes === "string" && args.notes.trim().length > 0) {
-    data.notes = args.notes;
-  }
 
   const inserted = await insertLog(ctx, {
     child_client_id: child.id,
@@ -81,12 +124,13 @@ async function logFood(
     type: "diary",
     status: "completed",
     context: "adhoc",
-    data,
+    data: foodData,
   });
   if (!inserted) {
     return { success: false, error: "Failed to log food entry." };
   }
 
+  const nowIso = new Date().toISOString();
   return {
     success: true,
     feedEntry: true,
@@ -95,6 +139,24 @@ async function logFood(
       child_name: child.firstName,
       meal_type: mealType,
       items,
+    },
+    tile: {
+      kind: "diary",
+      data: {
+        item: {
+          id: inserted.id,
+          child_client_id: child.id,
+          author_id: ctx.userId,
+          author_name: "Katie",
+          type: "diary",
+          status: "completed",
+          context: "adhoc",
+          parent_log_id: null,
+          data: foodData,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      },
     },
   };
 }
@@ -122,25 +184,42 @@ async function logSleep(
     };
   }
 
-  const data: Record<string, unknown> = {
-    entry_type: "sleep",
-    duration_minutes: duration,
+  const start =
+    typeof args.start_time === "string" && args.start_time.trim().length > 0
+      ? args.start_time.trim()
+      : "";
+  const end =
+    typeof args.end_time === "string" && args.end_time.trim().length > 0
+      ? args.end_time.trim()
+      : "";
+  const notesText =
+    typeof args.notes === "string" && args.notes.trim().length > 0
+      ? args.notes.trim()
+      : null;
+  const location =
+    typeof args.location === "string" && args.location.trim().length > 0
+      ? args.location.trim()
+      : null;
+  const imageUrl =
+    typeof args.image_url === "string" && args.image_url.trim().length > 0
+      ? args.image_url.trim()
+      : null;
+
+  // Location + user notes combine into the canonical `notes` slot — no
+  // separate field in SleepData.
+  const combinedNotes = [notesText, location ? `at ${location}` : null]
+    .filter(Boolean)
+    .join(" · ");
+
+  const sleepData: Record<string, unknown> = {
+    subtype: "sleep",
+    start,
+    end,
+    duration: humanDuration(duration),
+    notes: combinedNotes.length > 0 ? combinedNotes : null,
+    title: "Sleep Log",
+    image_url: imageUrl,
   };
-  if (typeof args.location === "string" && args.location.trim().length > 0) {
-    data.location = args.location;
-  }
-  if (
-    typeof args.start_time === "string" &&
-    args.start_time.trim().length > 0
-  ) {
-    data.start_time = args.start_time;
-  }
-  if (typeof args.end_time === "string" && args.end_time.trim().length > 0) {
-    data.end_time = args.end_time;
-  }
-  if (typeof args.notes === "string" && args.notes.trim().length > 0) {
-    data.notes = args.notes;
-  }
 
   const inserted = await insertLog(ctx, {
     child_client_id: child.id,
@@ -148,12 +227,13 @@ async function logSleep(
     type: "diary",
     status: "completed",
     context: "adhoc",
-    data,
+    data: sleepData,
   });
   if (!inserted) {
     return { success: false, error: "Failed to log sleep entry." };
   }
 
+  const nowIso = new Date().toISOString();
   return {
     success: true,
     feedEntry: true,
@@ -161,6 +241,24 @@ async function logSleep(
       log_id: inserted.id,
       child_name: child.firstName,
       duration_minutes: duration,
+    },
+    tile: {
+      kind: "diary",
+      data: {
+        item: {
+          id: inserted.id,
+          child_client_id: child.id,
+          author_id: ctx.userId,
+          author_name: "Katie",
+          type: "diary",
+          status: "completed",
+          context: "adhoc",
+          parent_log_id: null,
+          data: sleepData,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      },
     },
   };
 }
