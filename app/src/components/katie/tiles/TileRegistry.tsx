@@ -18,6 +18,7 @@ import type { ChatTile } from "@/lib/chat/tiles";
 import type { FeedItem } from "@/types/bapp";
 import { KatieNoteTile } from "./KatieNoteTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
+import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 
 export function RenderTile({ tile }: { tile: ChatTile }) {
   switch (tile.kind) {
@@ -29,6 +30,8 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       // is supplied, so Katie's inline version stays compact. Users who
       // want the full sheet can open the child's development page.
       return <ActivityTile item={tile.data.item as FeedItem} />;
+    case "observation":
+      return <ObservationTile item={tile.data.item as FeedItem} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":

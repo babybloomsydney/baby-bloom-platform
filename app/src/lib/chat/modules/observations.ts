@@ -77,6 +77,14 @@ async function logObservation(
       ? args.image_url.trim()
       : null;
 
+  const observationData = {
+    title,
+    domain,
+    milestone_id: milestoneId,
+    score,
+    note,
+    image_url: imageUrl,
+  };
   const { data: inserted, error: insertError } = await ctx.supabase
     .from("bapp_logs")
     .insert({
@@ -85,14 +93,7 @@ async function logObservation(
       type: "observation",
       status: "completed",
       context: "adhoc",
-      data: {
-        title,
-        domain,
-        milestone_id: milestoneId,
-        score,
-        note,
-        image_url: imageUrl,
-      },
+      data: observationData,
     })
     .select("id")
     .single();
@@ -119,6 +120,7 @@ async function logObservation(
     }
   }
 
+  const nowIso = new Date().toISOString();
   return {
     success: true,
     feedEntry: true,
@@ -129,6 +131,24 @@ async function logObservation(
       milestone_id: milestoneId,
       score,
       progress_updated: Boolean(milestoneId && score),
+    },
+    tile: {
+      kind: "observation",
+      data: {
+        item: {
+          id: logId,
+          child_client_id: child.id,
+          author_id: ctx.userId,
+          author_name: "Katie",
+          type: "observation",
+          status: "completed",
+          context: "adhoc",
+          parent_log_id: null,
+          data: observationData,
+          created_at: nowIso,
+          updated_at: nowIso,
+        },
+      },
     },
   };
 }

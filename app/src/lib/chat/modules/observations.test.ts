@@ -67,6 +67,17 @@ describe("observations module — log_observation", () => {
     expect(insertMock).toHaveBeenCalled();
     expect(recalculateProgress).not.toHaveBeenCalled();
     expect(writeHistorySnapshot).not.toHaveBeenCalled();
+    // Inline chat tile — wraps the existing ObservationTile component
+    // so Katie renders the same visual the child feed shows.
+    expect(r.tile?.kind).toBe("observation");
+    if (r.tile?.kind === "observation") {
+      expect(r.tile.data.item.id).toBe("obs-1");
+      expect(r.tile.data.item.type).toBe("observation");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((r.tile.data.item.data as any).note).toBe(
+        "Shared toys with the cat nicely",
+      );
+    }
   });
 
   it("requires a note", async () => {

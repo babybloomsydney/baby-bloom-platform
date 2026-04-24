@@ -37,35 +37,42 @@ export interface KatieNoteTile {
 }
 
 /**
- * Activity plan — renders the same ActivityTile component the child
- * feed uses at /nanny/development/<childId>. Payload carries a snapshot
- * of the FeedItem at tile-creation time; bapp_logs of type='activity'
- * are effectively append-only (status transitions pending → ready once
- * during the OpenAI call and stays there), so a snapshot is safe and
- * avoids an extra DB fetch on render.
+ * FeedItem-shaped snapshot used by every "bapp_logs tile" kind.
+ *
+ * Matches @/types/bapp#FeedItem but duplicated here to keep
+ * @/lib/chat/tiles browser + server safe and dependency-light. The
+ * TileRegistry branch casts back to FeedItem on render.
+ *
+ * Snapshot-style payload (not id-based) is safe for types that are
+ * effectively append-only (`activity` goes pending → ready once during
+ * OpenAI; `observation`, `diary`, `progress` never change after write).
+ * When we get to interactive kinds (connections, BSR), those use an
+ * id-only payload so the component subscribes to live updates.
  */
+interface FeedItemSnapshot<T extends string> {
+  id: string;
+  child_client_id: string;
+  author_id: string;
+  author_name: string;
+  type: T;
+  status: "pending" | "ready" | "completed";
+  context: string;
+  parent_log_id: string | null;
+  data: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Activity plan — wraps the existing ActivityTile. */
 export interface ActivityChatTile {
   kind: "activity";
-  data: {
-    /**
-     * FeedItem-shaped. Matches @/types/bapp#FeedItem but duplicated
-     * here to keep @/lib/chat/tiles browser + server safe and
-     * dependency-light. The TileRegistry branch casts back on render.
-     */
-    item: {
-      id: string;
-      child_client_id: string;
-      author_id: string;
-      author_name: string;
-      type: "activity";
-      status: "pending" | "ready" | "completed";
-      context: string;
-      parent_log_id: string | null;
-      data: Record<string, unknown>;
-      created_at: string;
-      updated_at: string;
-    };
-  };
+  data: { item: FeedItemSnapshot<"activity"> };
+}
+
+/** Observation — wraps the existing ObservationTile. */
+export interface ObservationChatTile {
+  kind: "observation";
+  data: { item: FeedItemSnapshot<"observation"> };
 }
 
 /**
@@ -81,7 +88,7 @@ export interface ActivityChatTile {
  * component actually ship.
  */
 
-export type ChatTile = KatieNoteTile | ActivityChatTile;
+export type ChatTile = KatieNoteTile | ActivityChatTile | ObservationChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -103,21 +110,26 @@ export function isChatTile(value: unknown): value is ChatTile {
   switch (obj.kind) {
     case "katie_note":
       return typeof data.body === "string" && data.body.length > 0;
-    case "activity": {
-      const item = data.item as Record<string, unknown> | undefined;
-      if (!item || typeof item !== "object") return false;
-      return (
-        typeof item.id === "string" &&
-        typeof item.child_client_id === "string" &&
-        item.type === "activity" &&
-        typeof item.status === "string" &&
-        item.data != null &&
-        typeof item.data === "object"
-      );
-    }
+    case "activity":
+      return isFeedItemSnapshot(data.item, "activity");
+    case "observation":
+      return isFeedItemSnapshot(data.item, "observation");
     default:
       return false;
   }
+}
+
+function isFeedItemSnapshot(raw: unknown, expectedType: string): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const item = raw as Record<string, unknown>;
+  return (
+    typeof item.id === "string" &&
+    typeof item.child_client_id === "string" &&
+    item.type === expectedType &&
+    typeof item.status === "string" &&
+    item.data != null &&
+    typeof item.data === "object"
+  );
 }
 
 /**
