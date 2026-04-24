@@ -45,6 +45,7 @@ import {
   tryExecuteWrite,
   writeSystemPromptFragment,
 } from "./connections-writes";
+import { connectionsTriggers } from "./connections-triggers";
 
 // Persona + language rules that apply to both reads and writes. The
 // read / write fragments add their own action-specific guidance.
@@ -60,6 +61,8 @@ export const connectionsModule: BloomBotModule = {
     "Read + write surface for the user's connections with nannies / families — their meet-and-greet pipeline, what each side is waiting on, what's scheduled, and what the user needs to do next. Translates all internal stages and fields into plain English.",
 
   rolesAllowed: ["nanny", "parent"],
+
+  proactiveTriggers: connectionsTriggers,
 
   tools: [...readTools, ...writeTools],
 

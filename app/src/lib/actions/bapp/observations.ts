@@ -7,6 +7,7 @@ import { recalculateProgress, writeHistorySnapshot } from "./progress";
 import { generateTileInsight, getChildContext } from "./insights";
 import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
+import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
 
 // ---------------------------------------------------------------------------
 // Helper: transition child to active_nanny on first action
@@ -49,7 +50,7 @@ export async function logObservation(
     note: string | null;
     image_url: string | null;
     title: string;
-  }
+  },
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -116,7 +117,7 @@ export async function logObservation(
         if (ms) milestoneDescs = [ms.description];
       }
       const level = data.score
-        ? MASTERY_LABELS[data.score as MasteryScore] ?? null
+        ? (MASTERY_LABELS[data.score as MasteryScore] ?? null)
         : null;
 
       await generateTileInsight(logRow.id, childId, {
@@ -126,6 +127,31 @@ export async function logObservation(
         note: data.note,
         milestoneDescriptions: milestoneDescs,
         masteryLevel: level,
+      });
+    }
+
+    // Proactive: narrate milestone-scored observations to the nanny's
+    // Katie. Only fires when both milestone_id AND score are present —
+    // "general" observations are too frequent to narrate each one.
+    if (data.milestone_id && data.score) {
+      const { data: childRow } = await admin
+        .from("child_client")
+        .select("first_name")
+        .eq("id", childId)
+        .maybeSingle();
+      const { data: milestoneRow } = await admin
+        .from("bapp_milestones")
+        .select("description")
+        .eq("id", data.milestone_id)
+        .maybeSingle();
+      dispatchActionTriggeredInBackground({
+        triggerId: "observations.milestone_scored",
+        recipientUserId: user.id,
+        payload: {
+          child_name: childRow?.first_name ?? "your child",
+          score: data.score,
+          milestone_label: milestoneRow?.description ?? "that milestone",
+        },
       });
     }
 
@@ -146,7 +172,7 @@ export async function logBulkProgress(
   childId: string,
   updates: { id: string; score: number }[],
   note: string | null,
-  imageUrl: string | null
+  imageUrl: string | null,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -207,9 +233,9 @@ export async function logBulkProgress(
         .select("description, domain")
         .in("id", milestoneIds);
       const descriptions = milestones?.map((m) => m.description) ?? [];
-      const domains = [
-        ...new Set(milestones?.map((m) => m.domain) ?? []),
-      ].join(", ");
+      const domains = [...new Set(milestones?.map((m) => m.domain) ?? [])].join(
+        ", ",
+      );
 
       // Summarise mastery levels for context
       const levels = updates

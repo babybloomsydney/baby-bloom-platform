@@ -159,6 +159,41 @@ export const observationsModule: BloomBotModule = {
   description:
     "Captures observations about a child. Passing a milestone_id + score (1-4) cascades into a progress recalculation and a history snapshot.",
 
+  proactiveTriggers: [
+    {
+      id: "observations.milestone_scored",
+      description:
+        "Nanny logged an observation tied to a milestone with a score — acknowledge + nudge toward next one.",
+      event: "observation.milestone_scored",
+      mode: "template",
+      template:
+        "Nice — logged that {child_name} is at {score}/4 on {milestone_label}. I'll pull up next steps if you want.",
+      resolvePayload: async (event) => {
+        const childName =
+          typeof event.payload.child_name === "string" &&
+          event.payload.child_name.length > 0
+            ? event.payload.child_name
+            : "your child";
+        const score =
+          typeof event.payload.score === "number"
+            ? String(event.payload.score)
+            : typeof event.payload.score === "string"
+              ? event.payload.score
+              : "";
+        const milestoneLabel =
+          typeof event.payload.milestone_label === "string" &&
+          event.payload.milestone_label.length > 0
+            ? event.payload.milestone_label
+            : "that milestone";
+        return {
+          child_name: childName,
+          score,
+          milestone_label: milestoneLabel,
+        };
+      },
+    },
+  ],
+
   tools: [
     {
       name: "log_observation",

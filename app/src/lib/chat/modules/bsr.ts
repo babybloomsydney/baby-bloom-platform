@@ -39,6 +39,7 @@ import {
 } from "./bsr-reads";
 import { nannyWriteTools, tryExecuteNannyWrite } from "./bsr-writes-nanny";
 import { parentWriteTools, tryExecuteParentWrite } from "./bsr-writes-parent";
+import { bsrTriggers } from "./bsr-triggers";
 
 const personaHeader =
   "For anything about babysitting requests (one-off jobs, BSRs, 'sitters'), call the bsr tools. Hard rules:\n\n" +
@@ -71,6 +72,8 @@ export const bsrModule: BloomBotModule = {
     "Full surface for the babysitting-request pipeline — nanny job invitations, parent requests, nanny request/decline/cancel, parent accept/decline/cancel. All state translated to plain English; phone and address never leak until the appropriate apply returns them.",
 
   rolesAllowed: ["nanny", "parent"],
+
+  proactiveTriggers: bsrTriggers,
 
   tools: [...readTools, ...nannyWriteTools, ...parentWriteTools],
 

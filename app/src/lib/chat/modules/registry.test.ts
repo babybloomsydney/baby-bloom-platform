@@ -90,8 +90,26 @@ describe("module registry", () => {
   });
 
   describe("collectProactiveTriggers", () => {
-    it("returns empty in Phase 1 (triggers added in Phase 2)", () => {
-      expect(collectProactiveTriggers()).toEqual([]);
+    it("returns every module's declared triggers", () => {
+      const triggers = collectProactiveTriggers();
+      // WU 8.6 onwards — modules register action triggers. Assert a
+      // non-empty set with the shape every trigger should expose.
+      expect(triggers.length).toBeGreaterThan(0);
+      for (const t of triggers) {
+        expect(typeof t.id).toBe("string");
+        expect(typeof t.description).toBe("string");
+        expect(typeof t.resolvePayload).toBe("function");
+      }
+    });
+
+    it("includes a known connections trigger id", () => {
+      const ids = collectProactiveTriggers().map((t) => t.id);
+      expect(ids).toContain("connections.request_received");
+    });
+
+    it("includes a known bsr trigger id", () => {
+      const ids = collectProactiveTriggers().map((t) => t.id);
+      expect(ids).toContain("bsr.accepted_by_parent");
     });
   });
 });
