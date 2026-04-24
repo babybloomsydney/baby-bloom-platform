@@ -146,6 +146,15 @@ async function proposeReportOutcome(
   const emailSideEffect =
     outcome === "hired" || (role === "parent" && outcome === "trial");
 
+  // The server accepts `hired` and `trial` without a date, but the user
+  // usually means "starting week X" or "trial date Y". Flag to Katie so
+  // she asks the user rather than logging a dateless outcome silently.
+  const needsDateAsk =
+    (outcome === "trial" || outcome === "hired") && !extraDate;
+  const next_call = needsDateAsk
+    ? `The user didn't include a ${outcome === "trial" ? "trial date" : "start week"}. Ask them for it in YYYY-MM-DD form before re-proposing — don't skip to apply_ without it.`
+    : "Read the preview back verbatim, then wait for explicit yes/cancel. On yes, call apply_report_outcome with the same connection_id, outcome, and date (if any).";
+
   return {
     success: true,
     data: {
@@ -154,11 +163,11 @@ async function proposeReportOutcome(
       role,
       outcome,
       date: extraDate,
+      date_missing: needsDateAsk,
       counterparty_name: displayName,
       email_side_effect: emailSideEffect,
       preview: `${description}${extraDate ? ` Date: ${extraDate}.` : ""}`,
-      next_call:
-        "Read the preview back verbatim, then wait for explicit yes/cancel. On yes, call apply_report_outcome with the same connection_id, outcome, and date (if any).",
+      next_call,
     },
   };
 }

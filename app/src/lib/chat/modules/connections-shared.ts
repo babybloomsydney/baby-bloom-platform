@@ -22,6 +22,7 @@ import {
   counterpartyDisplayName,
   type ConnectionRole,
 } from "./connections-translator";
+import { asUserFacingRole } from "./utils";
 
 export interface ConnectionSummary {
   id: string;
@@ -129,10 +130,7 @@ export function summarise(
 }
 
 export function resolveRole(effectiveRole: string): ConnectionRole | null {
-  if (effectiveRole === "nanny" || effectiveRole === "parent") {
-    return effectiveRole;
-  }
-  return null;
+  return asUserFacingRole(effectiveRole);
 }
 
 export function roleOnlyError(): ToolResult {

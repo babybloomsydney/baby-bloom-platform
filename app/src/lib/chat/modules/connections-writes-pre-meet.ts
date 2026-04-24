@@ -254,6 +254,10 @@ function parseSlots(
         "Pass `slots` as an array of strings like ['2026-05-01_morning', '2026-05-01_evening', ...].",
     };
   }
+  // Dedupe before counting — an LLM that sends the same slot 5× shouldn't
+  // pass the ≥5 check. Also silently normalises case-insensitive
+  // duplicates since the format is lowercase-locked by SLOT_REGEX.
+  const seen = new Set<string>();
   const slots: string[] = [];
   const brackets = new Set<BracketKey>();
   const days = new Set<string>();
@@ -264,13 +268,18 @@ function parseSlots(
         error: `Invalid slot "${String(s)}" — must look like "YYYY-MM-DD_morning" (bracket = morning/midday/afternoon/evening).`,
       };
     }
+    if (seen.has(s)) continue; // drop duplicates quietly
+    seen.add(s);
     const [date, bracket] = s.split("_");
     slots.push(s);
     brackets.add(bracket as BracketKey);
     days.add(date);
   }
   if (slots.length < 5) {
-    return { ok: false, error: `Need at least 5 slots — got ${slots.length}.` };
+    return {
+      ok: false,
+      error: `Need at least 5 unique slots — got ${slots.length}.`,
+    };
   }
   if (brackets.size < BRACKET_KEYS.length) {
     const missing = BRACKET_KEYS.filter((b) => !brackets.has(b));

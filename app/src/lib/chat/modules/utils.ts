@@ -6,6 +6,26 @@ import type { ChildSummary } from "@/lib/chat/context";
 import type { ToolResult } from "./types";
 
 /**
+ * A user-facing role that the connections + profile modules can
+ * operate on. Admin has its own surface (admin inspection tools) and
+ * is deliberately excluded here.
+ */
+export type UserFacingRole = "nanny" | "parent";
+
+/**
+ * Narrow the bot's effective role to nanny/parent. Used as the
+ * single gate for every module tool that only runs on user-facing
+ * accounts. Returns null when the role is admin or unrecognised, so
+ * the caller can surface a consistent error.
+ */
+export function asUserFacingRole(effectiveRole: string): UserFacingRole | null {
+  if (effectiveRole === "nanny" || effectiveRole === "parent") {
+    return effectiveRole;
+  }
+  return null;
+}
+
+/**
  * Resolves a child from an optional `child_name` tool argument.
  *
  * Single-child user → always returns that child.

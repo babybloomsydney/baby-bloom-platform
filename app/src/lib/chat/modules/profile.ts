@@ -46,8 +46,9 @@ import {
 } from "@/lib/actions/nanny";
 import { getPosition } from "@/lib/actions/parent";
 import { getParentPlacement } from "@/lib/actions/position-funnel";
+import { asUserFacingRole, type UserFacingRole } from "./utils";
 
-type ProfileRole = "nanny" | "parent";
+type ProfileRole = UserFacingRole;
 
 const RATE_MIN = 20;
 const RATE_MAX = 200;
@@ -55,9 +56,7 @@ const AGE_MIN = 0;
 const AGE_MAX = 180;
 
 function resolveRole(effectiveRole: string): ProfileRole | null {
-  if (effectiveRole === "nanny" || effectiveRole === "parent")
-    return effectiveRole;
-  return null;
+  return asUserFacingRole(effectiveRole);
 }
 
 function roleOnlyError(): ToolResult {
@@ -149,46 +148,48 @@ interface NannySnapshot {
   bio_last_updated: string | null;
 }
 
+/**
+ * Two fields live on the nanny row at runtime but aren't exposed on
+ * `NannyProfile` in `@/lib/actions/nanny`. Centralising the widened
+ * interface here keeps the `as` cast at one site — if another drift
+ * appears, it lands in this one spot rather than scattering inline.
+ */
+interface NannyProfileWithBsr extends NannyProfile {
+  visible_in_bsr?: boolean | null;
+}
+
 function nannySnapshot(profile: NannyProfile): NannySnapshot {
+  // Narrow once at the top so the field accesses below are all
+  // type-checked. `visible_in_bsr` is the single runtime-only field
+  // this module reads.
+  const p = profile as NannyProfileWithBsr;
+
   const rate =
-    profile.hourly_rate_min != null
-      ? `$${profile.hourly_rate_min}/hour`
-      : "Not set yet";
-  const age = ageRangeText(
-    profile.min_child_age_months,
-    profile.max_child_age_months,
-  );
+    p.hourly_rate_min != null ? `$${p.hourly_rate_min}/hour` : "Not set yet";
+  const age = ageRangeText(p.min_child_age_months, p.max_child_age_months);
 
   const photos = [
-    profile.profile_picture_url,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (profile as any).photo_1_url,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (profile as any).photo_2_url,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (profile as any).photo_3_url,
+    p.profile_picture_url,
+    p.photo_1_url,
+    p.photo_2_url,
+    p.photo_3_url,
   ].filter((url): url is string => typeof url === "string" && url.length > 0);
+
+  const generatedAt = p.ai_content?.["generated_at"];
 
   return {
     role: "nanny",
-    first_name: profile.first_name ?? "",
-    suburb: profile.suburb ?? null,
+    first_name: p.first_name ?? "",
+    suburb: p.suburb ?? null,
     hourly_rate: rate,
     age_range: age,
-    max_children: profile.max_children,
-    role_types: profile.role_types_preferred ?? [],
-    level_of_support: profile.level_of_support_offered ?? [],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    available_days: (profile as any).available_days ?? [],
+    max_children: p.max_children,
+    role_types: p.role_types_preferred ?? [],
+    level_of_support: p.level_of_support_offered ?? [],
+    available_days: p.availability?.days_available ?? [],
     photo_count: photos.length,
-    visibility: nannyVisibilityText(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (profile as any).verification_level,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (profile as any).visible_in_bsr,
-    ),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    bio_last_updated: (profile as any).ai_content?.generated_at ?? null,
+    visibility: nannyVisibilityText(p.verification_level, p.visible_in_bsr),
+    bio_last_updated: typeof generatedAt === "string" ? generatedAt : null,
   };
 }
 

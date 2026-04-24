@@ -784,6 +784,36 @@ describe("connections module — propose_accept_connection", () => {
     expect(r.error).toMatch(/at least 5/);
   });
 
+  it("dedupes identical slots before counting — 5× same slot is not 5 unique", async () => {
+    // Silent-trust-boundary guard: an LLM that sends the same slot 5
+    // times shouldn't sneak past the ≥5-unique-slot rule.
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      {
+        connection_id: "c1",
+        slots: [
+          "2026-05-01_morning",
+          "2026-05-01_morning",
+          "2026-05-01_morning",
+          "2026-05-01_morning",
+          "2026-05-01_morning",
+        ],
+      },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/5 unique slots/);
+  });
+
   it("rejects malformed slot strings", async () => {
     vi.mocked(getNannyConnectionRequests).mockResolvedValue({
       data: [
@@ -1221,6 +1251,55 @@ describe("connections module — propose_report_outcome", () => {
       "c2",
       "not_hired",
       undefined,
+    );
+  });
+
+  it("surfaces server-action error verbatim on apply failure", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(reportIntroOutcome).mockResolvedValue({
+      success: false,
+      error: "Position has been closed — outcome not logged.",
+    });
+    const r = await connectionsModule.execute(
+      "apply_report_outcome",
+      { connection_id: "c1", outcome: "not_hired" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toBe("Position has been closed — outcome not logged.");
+    // No tile emitted on failure.
+    expect(r.tile).toBeUndefined();
+  });
+
+  it("flags date_missing + rewrites next_call when trial has no date", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "trial" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.date_missing).toBe(true);
+    expect(String(data.next_call).toLowerCase()).toMatch(
+      /trial date|ask them/i,
     );
   });
 });

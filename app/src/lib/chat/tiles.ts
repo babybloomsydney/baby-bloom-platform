@@ -168,7 +168,11 @@ export function isChatTile(value: unknown): value is ChatTile {
 
   // Per-kind shape check. Add a branch when adding a new kind.
   const data = obj.data as Record<string, unknown>;
-  switch (obj.kind) {
+  // Cast to the union's `kind` literal so the exhaustiveness guard on
+  // the default branch catches missing cases at compile time. Runtime
+  // values that don't match any case land in default → false, as before.
+  const kind = obj.kind as ChatTile["kind"];
+  switch (kind) {
     case "katie_note":
       return typeof data.body === "string" && data.body.length > 0;
     case "activity":
@@ -179,23 +183,29 @@ export function isChatTile(value: unknown): value is ChatTile {
       return isFeedItemSnapshot(data.item, "diary");
     case "progress":
       return isFeedItemSnapshot(data.item, "progress");
-    case "verification_status":
-      return (
-        typeof data.headline === "string" &&
-        data.headline.length > 0 &&
-        Array.isArray(data.steps) &&
-        data.steps.every(
-          (s): s is { label: string; status: string } =>
-            Boolean(s) &&
-            typeof s === "object" &&
-            typeof (s as { label: unknown }).label === "string" &&
-            typeof (s as { status: unknown }).status === "string",
-        )
+    case "verification_status": {
+      if (typeof data.headline !== "string" || data.headline.length === 0)
+        return false;
+      if (!Array.isArray(data.steps)) return false;
+      return data.steps.every(
+        (raw): raw is { label: string; status: string } => {
+          if (!raw || typeof raw !== "object") return false;
+          const step = raw as Record<string, unknown>;
+          return (
+            typeof step.label === "string" && typeof step.status === "string"
+          );
+        },
       );
+    }
     case "connection_request":
       return typeof data.id === "string" && data.id.length > 0;
-    default:
+    default: {
+      // Exhaustiveness guard: if a new ChatTile kind is added without
+      // extending this switch, TS complains here at compile time.
+      const _exhaustive: never = kind;
+      void _exhaustive;
       return false;
+    }
   }
 }
 
