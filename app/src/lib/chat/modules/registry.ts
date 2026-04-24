@@ -28,6 +28,8 @@ import { verificationModule } from "./verification";
 import { connectionsModule } from "./connections";
 import { profileModule } from "./profile";
 import { bsrModule } from "./bsr";
+import { jobSearchModule } from "./job-search";
+import { onboardingModule } from "./onboarding";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -47,8 +49,10 @@ const ALL_MODULES: BloomBotModule[] = [
   connectionsModule,
   profileModule,
   bsrModule,
+  jobSearchModule,
+  onboardingModule,
   // Future:
-  //   insightsModule, jobSearchModule
+  //   insightsModule
 ];
 
 // ── Role filtering ──────────────────────────────────────────────────────
