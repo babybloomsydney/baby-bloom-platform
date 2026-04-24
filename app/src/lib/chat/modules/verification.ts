@@ -370,37 +370,53 @@ export function summariseParentState(
 
 /**
  * Builds the inline tile that rides with a verification-status tool
- * result. Renders the same headline Katie speaks, plus a single-tap
+ * result. Renders the same headline Katie speaks, plus a one-tap
  * action link to the traditional verification form when the user has
- * a next step to take. Keeps Katie's voice (narration) and the
- * operator's hand (form) visually co-located.
+ * a next step. Keeps Katie's voice (narration) and the operator's
+ * hand (form) visually co-located.
  *
- * Only emits a tile when `summary.how_to_continue` is set — when
- * there's nothing actionable (fully verified, or a "we're on it"
- * in-progress state) Katie speaks text only.
+ * Always emits a tile — the tile is Katie's visual answer to
+ * "how am I doing?" regardless of state:
+ *
+ *   - action state   → badge "Verification" + body describing the
+ *                      gap + link to the traditional form
+ *   - verified state → badge "Verified ✓" + short confirmation body,
+ *                      no link
+ *   - waiting state  → badge "Verification" + body describing what's
+ *                      in progress, no link
+ *
+ * For provisional (level 3), the UX rule still applies: the body
+ * must NOT mention the silent final check. summariseNannyState has
+ * already routed that string into `only_if_asked`, so the body
+ * selected here is safe.
  */
-function tileForVerification(
-  summary: VerificationSummary,
-): ChatTile | undefined {
-  if (!summary.how_to_continue) return undefined;
+function tileForVerification(summary: VerificationSummary): ChatTile {
   // Pick the most informative supporting line for the tile body.
   const body =
     summary.system_guidance?.trim() ||
     summary.whats_still_needed[0] ||
     summary.whats_in_progress[0] ||
+    summary.whats_complete[0] ||
     summary.headline;
+
+  const isVerified = /you'?re (fully )?verified/i.test(summary.headline);
+
   // VerificationSummary uses { label, url }; ChatTile action uses
   // { label, href }. Translate at the boundary.
+  const action = summary.how_to_continue
+    ? {
+        label: summary.how_to_continue.label,
+        href: summary.how_to_continue.url,
+      }
+    : undefined;
+
   return {
     kind: "katie_note",
     data: {
-      badge: "Verification",
+      badge: isVerified ? "Verified ✓" : "Verification",
       title: summary.headline,
       body,
-      action: {
-        label: summary.how_to_continue.label,
-        href: summary.how_to_continue.url,
-      },
+      action,
     },
   };
 }

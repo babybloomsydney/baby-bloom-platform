@@ -527,9 +527,7 @@ describe("verification module — read_verification_status", () => {
     }
   });
 
-  it("does NOT attach a tile when there's nothing for the user to do", async () => {
-    // Fully verified nanny — headline is "You're fully verified",
-    // how_to_continue is null, no tile.
+  it("attaches a 'Verified ✓' tile with no action when fully verified", async () => {
     const ctx = makeCtx("nanny", {
       nanny: { verification_level: 4 },
       verifications: {
@@ -545,13 +543,14 @@ describe("verification module — read_verification_status", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.tile).toBeUndefined();
+    expect(r.tile?.kind).toBe("katie_note");
+    if (r.tile?.kind === "katie_note") {
+      expect(r.tile.data.badge).toBe("Verified ✓");
+      expect(r.tile.data.action).toBeUndefined();
+    }
   });
 
-  it("does NOT attach a tile at level 3 (provisional — 'Verified' UX)", async () => {
-    // Provisional nanny sees "Verified" on their dashboard — Katie's
-    // behaviour mirrors that. No tile nudge, no unprompted mention of
-    // the silent final check.
+  it("attaches a 'Verified ✓' tile at level 3, body must NOT mention the silent final check", async () => {
     const ctx = makeCtx("nanny", {
       nanny: { verification_level: 3 },
       verifications: {
@@ -567,7 +566,17 @@ describe("verification module — read_verification_status", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.tile).toBeUndefined();
+    expect(r.tile?.kind).toBe("katie_note");
+    if (r.tile?.kind === "katie_note") {
+      expect(r.tile.data.badge).toBe("Verified ✓");
+      expect(r.tile.data.action).toBeUndefined();
+      // The provisional-state pending-check note lives in only_if_asked,
+      // not in the tile body. Assert that explicitly.
+      const body = r.tile.data.body.toLowerCase();
+      expect(body).not.toMatch(
+        /final (administrative )?check|still in progress|pending/,
+      );
+    }
   });
 });
 
