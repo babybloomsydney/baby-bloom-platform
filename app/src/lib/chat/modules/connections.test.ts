@@ -12,6 +12,16 @@ vi.mock("@/lib/actions/connection", () => ({
   getParentConnectionRequests: vi.fn(),
   declineConnectionRequest: vi.fn(),
   cancelConnectionRequest: vi.fn(),
+  acceptConnectionRequest: vi.fn(),
+  scheduleConnectionTime: vi.fn(),
+  createConnectionRequest: vi.fn(),
+}));
+
+vi.mock("@/lib/actions/position-funnel", () => ({
+  reportIntroOutcome: vi.fn(),
+  reportParentOutcome: vi.fn(),
+  confirmPlacement: vi.fn(),
+  nannyConfirmPosition: vi.fn(),
 }));
 
 import { connectionsModule } from "./connections";
@@ -20,7 +30,16 @@ import {
   getParentConnectionRequests,
   declineConnectionRequest,
   cancelConnectionRequest,
+  acceptConnectionRequest,
+  scheduleConnectionTime,
+  createConnectionRequest,
 } from "@/lib/actions/connection";
+import {
+  reportIntroOutcome,
+  reportParentOutcome,
+  confirmPlacement,
+  nannyConfirmPosition,
+} from "@/lib/actions/position-funnel";
 
 function makeCtx(role: "nanny" | "parent" = "nanny"): ModuleContext {
   return {
@@ -662,5 +681,750 @@ describe("connections module — apply_cancel_connection", () => {
     );
     expect(r.success).toBe(false);
     expect(r.error).toBe("You do not have permission to cancel this request.");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// 4B.3 — accept connection (slot collection)
+// ────────────────────────────────────────────────────────────────────────
+
+const VALID_SLOTS = [
+  "2026-05-01_morning",
+  "2026-05-02_midday",
+  "2026-05-03_afternoon",
+  "2026-05-04_evening",
+  "2026-05-05_morning",
+];
+
+describe("connections module — propose_accept_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects parent role", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [buildConnection({ id: "c1" })],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      { connection_id: "c1", slots: VALID_SLOTS },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error?.toLowerCase()).toContain("only nannies");
+  });
+
+  it("rejects fewer than 5 slots", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      { connection_id: "c1", slots: ["2026-05-01_morning"] },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/at least 5/);
+  });
+
+  it("rejects malformed slot strings", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      {
+        connection_id: "c1",
+        slots: ["2026-05-01", "2026-05-02_brunch", "bad"],
+      },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Invalid slot/);
+  });
+
+  it("rejects slots missing a bracket", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const allMorning = [
+      "2026-05-01_morning",
+      "2026-05-02_morning",
+      "2026-05-03_morning",
+      "2026-05-04_morning",
+      "2026-05-05_morning",
+    ];
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      { connection_id: "c1", slots: allMorning },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Missing: midday.*afternoon.*evening/);
+  });
+
+  it("rejects slots on fewer than 3 days", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const twoDays = [
+      "2026-05-01_morning",
+      "2026-05-01_midday",
+      "2026-05-01_afternoon",
+      "2026-05-01_evening",
+      "2026-05-02_morning",
+    ];
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      { connection_id: "c1", slots: twoDays },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/at least 3 different days/);
+  });
+
+  it("returns preview with slots grouped by day + does not hit server", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_accept_connection",
+      { connection_id: "c1", slots: VALID_SLOTS },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(acceptConnectionRequest).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.slot_count).toBe(5);
+    expect(data.bracket_count).toBe(4);
+    expect(data.day_count).toBe(5);
+    expect(Array.isArray(data.slots_by_day)).toBe(true);
+    expect(data.preview).toContain("5 availability slot");
+  });
+});
+
+describe("connections module — apply_accept_connection", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("calls the server action when inputs valid", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(acceptConnectionRequest).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_accept_connection",
+      { connection_id: "c1", slots: VALID_SLOTS },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(acceptConnectionRequest).toHaveBeenCalledWith("c1", VALID_SLOTS);
+    expect(r.tile?.kind).toBe("connection_request");
+  });
+
+  it("surfaces server verification-gate error verbatim", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(acceptConnectionRequest).mockResolvedValue({
+      success: false,
+      error: "Please complete verification to accept connections.",
+    });
+    const r = await connectionsModule.execute(
+      "apply_accept_connection",
+      { connection_id: "c1", slots: VALID_SLOTS },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toBe("Please complete verification to accept connections.");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// 4B.4 — schedule meet time (parent only)
+// ────────────────────────────────────────────────────────────────────────
+
+describe("connections module — propose_schedule_meet", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects nanny role", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+          status: "accepted" as const,
+          proposed_times: ["2026-05-10_morning"],
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 9, minute: 0 },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Only parents/);
+  });
+
+  it("rejects connection not in ACCEPTED stage", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 9, minute: 0 },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/nanny needs to accept/);
+  });
+
+  it("rejects slot outside nanny's proposed_times", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+          status: "accepted" as const,
+          proposed_times: ["2026-05-11_morning"],
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 9, minute: 0 },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/offered slots/i);
+  });
+
+  it("rejects hour outside 8am-8pm window", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+          status: "accepted" as const,
+          proposed_times: ["2026-05-10_morning"],
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 7, minute: 0 },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/outside.+window/i);
+  });
+
+  it("returns preview + calls server action on apply", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+          status: "accepted" as const,
+          proposed_times: ["2026-05-10_morning"],
+          nanny: {
+            id: "n1",
+            user_id: "u1",
+            first_name: "Jessica",
+            last_name: "Mahoney",
+            suburb: "Bondi",
+            hourly_rate_min: 30,
+            profile_picture_url: null,
+          },
+        }),
+      ],
+      error: null,
+    });
+
+    const propose = await connectionsModule.execute(
+      "propose_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 9, minute: 30 },
+      makeCtx("parent"),
+    );
+    expect(propose.success).toBe(true);
+    expect(scheduleConnectionTime).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdata = propose.data as any;
+    expect(pdata.preview).toContain("Jessica M.");
+    expect(pdata.preview.toLowerCase()).toContain(
+      "phone number will be shared",
+    );
+
+    vi.mocked(scheduleConnectionTime).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    const apply = await connectionsModule.execute(
+      "apply_schedule_meet",
+      { connection_id: "c1", date: "2026-05-10", hour: 9, minute: 30 },
+      makeCtx("parent"),
+    );
+    expect(apply.success).toBe(true);
+    expect(scheduleConnectionTime).toHaveBeenCalledWith(
+      "c1",
+      "2026-05-10",
+      9,
+      30,
+    );
+    expect(apply.tile?.kind).toBe("connection_request");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// 4B.5 — outcome reporting (both sides)
+// ────────────────────────────────────────────────────────────────────────
+
+describe("connections module — propose_report_outcome", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects invalid outcome for parent role ('incomplete' is nanny-only)", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "incomplete" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Invalid outcome.+parent/);
+  });
+
+  it("rejects outcome reporting from pre-meet stage", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.ACCEPTED,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "hired" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/isn't at a stage/);
+  });
+
+  it("rejects malformed date", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "hired", date: "tomorrow" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/YYYY-MM-DD format/);
+  });
+
+  it("flags email side effect only for hired / parent-trial", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    const hired = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "hired", date: "2026-06-01" },
+      makeCtx("nanny"),
+    );
+    expect(hired.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((hired.data as any).email_side_effect).toBe(true);
+
+    const awaiting = await connectionsModule.execute(
+      "propose_report_outcome",
+      { connection_id: "c1", outcome: "awaiting" },
+      makeCtx("nanny"),
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((awaiting.data as any).email_side_effect).toBe(false);
+  });
+
+  it("routes apply to reportIntroOutcome for nanny, reportParentOutcome for parent", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(reportIntroOutcome).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    await connectionsModule.execute(
+      "apply_report_outcome",
+      { connection_id: "c1", outcome: "hired", date: "2026-06-01" },
+      makeCtx("nanny"),
+    );
+    expect(reportIntroOutcome).toHaveBeenCalledWith(
+      "c1",
+      "hired",
+      "2026-06-01",
+    );
+    expect(reportParentOutcome).not.toHaveBeenCalled();
+
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c2",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(reportParentOutcome).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    await connectionsModule.execute(
+      "apply_report_outcome",
+      { connection_id: "c2", outcome: "not_hired" },
+      makeCtx("parent"),
+    );
+    expect(reportParentOutcome).toHaveBeenCalledWith(
+      "c2",
+      "not_hired",
+      undefined,
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// 4B.6 — placement confirmation (Path A parent / Path B nanny)
+// ────────────────────────────────────────────────────────────────────────
+
+describe("connections module — propose_confirm_placement", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects when stage != OFFERED", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.INTRO_COMPLETE,
+          fill_initiated_by: "nanny",
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_confirm_placement",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/offered/i);
+  });
+
+  it("Path A: parent can confirm when fill_initiated_by=nanny", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.OFFERED,
+          fill_initiated_by: "nanny",
+          nanny: {
+            id: "n1",
+            user_id: "u1",
+            first_name: "Jessica",
+            last_name: "Mahoney",
+            suburb: "Bondi",
+            hourly_rate_min: 30,
+            profile_picture_url: null,
+          },
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_confirm_placement",
+      { connection_id: "c1", start_week: "2026-06-01" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.role).toBe("parent");
+    expect(data.preview).toContain("Jessica M.");
+    expect(data.preview).toContain("2026-06-01");
+    expect(data.preview.toLowerCase()).toContain("hire-confirmation pdf");
+  });
+
+  it("Path A violation: parent confirming when fill_initiated_by=parent is rejected", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.OFFERED,
+          fill_initiated_by: "parent",
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_confirm_placement",
+      { connection_id: "c1" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Path A|waiting on the nanny/i);
+  });
+
+  it("Path B: nanny confirming calls nannyConfirmPosition", async () => {
+    vi.mocked(getNannyConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.OFFERED,
+          fill_initiated_by: "parent",
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(nannyConfirmPosition).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_confirm_placement",
+      { connection_id: "c1" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    expect(nannyConfirmPosition).toHaveBeenCalledWith("c1");
+    expect(confirmPlacement).not.toHaveBeenCalled();
+  });
+
+  it("Path A apply routes to confirmPlacement with startWeek", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          connection_stage: CONNECTION_STAGE.OFFERED,
+          fill_initiated_by: "nanny",
+        }),
+      ],
+      error: null,
+    });
+    vi.mocked(confirmPlacement).mockResolvedValue({
+      success: true,
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "apply_confirm_placement",
+      { connection_id: "c1", start_week: "2026-06-01" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    expect(confirmPlacement).toHaveBeenCalledWith("c1", "2026-06-01");
+    expect(nannyConfirmPosition).not.toHaveBeenCalled();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────
+// 4B.7 — send new connection request (parent)
+// ────────────────────────────────────────────────────────────────────────
+
+describe("connections module — propose_send_connection_request", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("rejects nanny role", async () => {
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      { nanny_id: "n-abc" },
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/Only parents/);
+  });
+
+  it("rejects missing nanny_id", async () => {
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      {},
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/nanny_id/);
+  });
+
+  it("rejects oversized message", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      { nanny_id: "n-abc", message: "x".repeat(1001) },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/under 1000/);
+  });
+
+  it("rejects when parent already has 5 pending", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: Array.from({ length: 5 }, (_, i) =>
+        buildConnection({
+          id: `c${i}`,
+          status: "pending" as const,
+          nanny_id: `other-${i}`,
+          connection_stage: CONNECTION_STAGE.REQUEST_SENT,
+        }),
+      ),
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      { nanny_id: "n-new" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/5 open connection requests/);
+  });
+
+  it("rejects when parent already has an active connection with this nanny", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [
+        buildConnection({
+          id: "c1",
+          nanny_id: "n-same",
+          status: "accepted" as const,
+        }),
+      ],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      { nanny_id: "n-same" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/active connection with this nanny/);
+  });
+
+  it("returns preview when pre-checks pass", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    const r = await connectionsModule.execute(
+      "propose_send_connection_request",
+      { nanny_id: "n-new", message: "Hi!" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    expect(createConnectionRequest).not.toHaveBeenCalled();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.preview.toLowerCase()).toContain("3 days");
+    expect(data.has_message).toBe(true);
+  });
+
+  it("apply calls server action and emits tile on success", async () => {
+    vi.mocked(getParentConnectionRequests).mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    vi.mocked(createConnectionRequest).mockResolvedValue({
+      success: true,
+      error: null,
+      requestId: "new-c1",
+    });
+    const r = await connectionsModule.execute(
+      "apply_send_connection_request",
+      { nanny_id: "n-new", message: "Hi!" },
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    expect(createConnectionRequest).toHaveBeenCalledWith("n-new", "Hi!");
+    expect(r.tile?.kind).toBe("connection_request");
+    if (r.tile?.kind === "connection_request") {
+      expect(r.tile.data.id).toBe("new-c1");
+    }
   });
 });

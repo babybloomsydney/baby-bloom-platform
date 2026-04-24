@@ -31,9 +31,24 @@ import {
   getParentConnectionRequests,
   declineConnectionRequest,
   cancelConnectionRequest,
+  acceptConnectionRequest,
+  scheduleConnectionTime,
+  createConnectionRequest,
   type ConnectionRequestWithDetails,
 } from "@/lib/actions/connection";
+import {
+  reportIntroOutcome,
+  reportParentOutcome,
+  confirmPlacement,
+  nannyConfirmPosition,
+} from "@/lib/actions/position-funnel";
 import { CONNECTION_STAGE } from "@/lib/position/constants";
+import {
+  BRACKET_KEYS,
+  TIME_BRACKETS,
+  getBracketForHour,
+  type BracketKey,
+} from "@/lib/timezone";
 import {
   stageHeadline,
   nextStepForUser,
@@ -507,6 +522,784 @@ async function applyCancelConnection(
   };
 }
 
+// ── Accept (nanny, requires 5+ slots across 3+ days and all 4 brackets) ──
+
+const SLOT_REGEX = /^\d{4}-\d{2}-\d{2}_(morning|midday|afternoon|evening)$/;
+
+/**
+ * Parses + validates the availability slot list. Returns the set of
+ * unique brackets + days so the preview can summarise what the user
+ * selected, plus a clear error if any rule is broken.
+ */
+function parseSlots(
+  raw: unknown,
+):
+  | { ok: true; slots: string[]; brackets: Set<BracketKey>; days: Set<string> }
+  | { ok: false; error: string } {
+  if (!Array.isArray(raw)) {
+    return {
+      ok: false,
+      error:
+        "Pass `slots` as an array of strings like ['2026-05-01_morning', '2026-05-01_evening', ...].",
+    };
+  }
+  const slots: string[] = [];
+  const brackets = new Set<BracketKey>();
+  const days = new Set<string>();
+  for (const s of raw) {
+    if (typeof s !== "string" || !SLOT_REGEX.test(s)) {
+      return {
+        ok: false,
+        error: `Invalid slot "${String(s)}" — must look like "YYYY-MM-DD_morning" (bracket = morning/midday/afternoon/evening).`,
+      };
+    }
+    const [date, bracket] = s.split("_");
+    slots.push(s);
+    brackets.add(bracket as BracketKey);
+    days.add(date);
+  }
+  if (slots.length < 5) {
+    return {
+      ok: false,
+      error: `Need at least 5 slots — got ${slots.length}.`,
+    };
+  }
+  if (brackets.size < BRACKET_KEYS.length) {
+    const missing = BRACKET_KEYS.filter((b) => !brackets.has(b));
+    return {
+      ok: false,
+      error: `Need at least one slot in every bracket (Morning / Midday / Afternoon / Evening). Missing: ${missing.join(", ")}.`,
+    };
+  }
+  if (days.size < 3) {
+    return {
+      ok: false,
+      error: `Need slots across at least 3 different days — got ${days.size}.`,
+    };
+  }
+  return { ok: true, slots, brackets, days };
+}
+
+async function proposeAcceptConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "nanny") {
+    return {
+      success: false,
+      error: "Only nannies can accept a connection request.",
+    };
+  }
+
+  const stage = connection.connection_stage;
+  if (
+    stage !== CONNECTION_STAGE.REQUEST_SENT &&
+    stage !== CONNECTION_STAGE.NANNY_APPLIED_PENDING
+  ) {
+    return {
+      success: false,
+      error:
+        "This request isn't in the pending stage — it can't be accepted right now.",
+    };
+  }
+
+  const parsed = parseSlots(args.slots);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+
+  // Group slots by day so the preview reads like a human would write it.
+  const byDay: Record<string, BracketKey[]> = {};
+  for (const slot of parsed.slots) {
+    const [date, bracket] = slot.split("_");
+    byDay[date] = byDay[date] ?? [];
+    byDay[date].push(bracket as BracketKey);
+  }
+  const dayLines = Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([date, bs]) =>
+        `${date}: ${bs.map((b) => TIME_BRACKETS[b].label).join(", ")}`,
+    );
+
+  return {
+    success: true,
+    data: {
+      action: "accept",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      slot_count: parsed.slots.length,
+      bracket_count: parsed.brackets.size,
+      day_count: parsed.days.size,
+      slots_by_day: dayLines,
+      email_side_effect: true,
+      preview: `You're about to accept the connection request from ${displayName} with ${parsed.slots.length} availability slot${parsed.slots.length === 1 ? "" : "s"} across ${parsed.days.size} days. Read these times back so they can double-check:\n${dayLines.map((l) => `- ${l}`).join("\n")}\nOnce accepted, ${displayName} gets a notification and has 3 days to pick one of these times.`,
+      next_call:
+        "Read the preview + slot list back to the user and wait for 'yes / cancel'. On confirmation, call apply_accept_connection with the SAME connection_id and slots array.",
+    },
+  };
+}
+
+async function applyAcceptConnection(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "nanny") {
+    return {
+      success: false,
+      error: "Only nannies can accept a connection request.",
+    };
+  }
+
+  const parsed = parseSlots(args.slots);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const result = await acceptConnectionRequest(connection.id, parsed.slots);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to accept connection.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "accept",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      slot_count: parsed.slots.length,
+      message: `Accepted. ${displayName} will be notified with your availability and has 3 days to pick a meet-and-greet time.`,
+    },
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
+// ── Schedule meet time (parent, picks from nanny's proposed_times) ───────
+
+interface ParsedMeetTime {
+  date: string;
+  hour: number;
+  minute: number;
+  bracket: BracketKey;
+}
+
+function parseMeetTime(
+  args: Record<string, unknown>,
+): { ok: true; t: ParsedMeetTime } | { ok: false; error: string } {
+  const date = typeof args.date === "string" ? args.date.trim() : "";
+  const hour = typeof args.hour === "number" ? args.hour : NaN;
+  const minute = typeof args.minute === "number" ? args.minute : NaN;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return {
+      ok: false,
+      error: "Pass `date` as an ISO date in Sydney time (YYYY-MM-DD).",
+    };
+  }
+  if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+    return { ok: false, error: "`hour` must be an integer 0–23." };
+  }
+  if (!Number.isInteger(minute) || minute < 0 || minute > 59) {
+    return { ok: false, error: "`minute` must be an integer 0–59." };
+  }
+  const bracket = getBracketForHour(hour);
+  if (!bracket) {
+    return {
+      ok: false,
+      error:
+        "Selected time is outside the available window (meet and greets run 8am–8pm Sydney time).",
+    };
+  }
+  const bracketDef = TIME_BRACKETS[bracket];
+  if (hour >= bracketDef.endHour) {
+    return {
+      ok: false,
+      error:
+        "Selected hour is at the boundary of a bracket — pick a time inside the bracket window (e.g. 8:30 or 10:00 for Morning, not 11:00).",
+    };
+  }
+  return { ok: true, t: { date, hour, minute, bracket } };
+}
+
+function formatTimeForPreview(
+  date: string,
+  hour: number,
+  minute: number,
+): string {
+  // Rough 12h format for preview. The authoritative label comes out of the
+  // server action via formatSydneyDate on the UTC-resolved timestamp; here
+  // we just need a human-readable preview string.
+  const h12 = ((hour + 11) % 12) + 1;
+  const am = hour < 12 ? "AM" : "PM";
+  const mm = minute.toString().padStart(2, "0");
+  return `${date} ${h12}:${mm} ${am} AEST`;
+}
+
+async function proposeScheduleMeet(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "parent") {
+    return {
+      success: false,
+      error: "Only parents schedule the meet-and-greet time.",
+    };
+  }
+
+  if (
+    connection.connection_stage !== CONNECTION_STAGE.ACCEPTED &&
+    connection.status !== "accepted"
+  ) {
+    return {
+      success: false,
+      error:
+        "This connection isn't ready to be scheduled — the nanny needs to accept first.",
+    };
+  }
+
+  const parsed = parseMeetTime(args);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const slotKey = `${parsed.t.date}_${parsed.t.bracket}`;
+  if (
+    !connection.proposed_times ||
+    !connection.proposed_times.includes(slotKey)
+  ) {
+    return {
+      success: false,
+      error:
+        "The chosen date + bracket isn't one of the nanny's offered slots. Read the nanny's proposed times back (from read_connection_by_name) and pick one that matches.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  const timeStr = formatTimeForPreview(
+    parsed.t.date,
+    parsed.t.hour,
+    parsed.t.minute,
+  );
+
+  return {
+    success: true,
+    data: {
+      action: "schedule_meet",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      scheduled_preview: timeStr,
+      email_side_effect: true,
+      preview: `You're about to book your meet and greet with ${displayName} for ${timeStr}. When this is confirmed, ${displayName}'s phone number will be shared with you so you can call them at the scheduled time.`,
+      next_call:
+        "Read the preview back to the user, confirming the date + time. On their 'yes', call apply_schedule_meet with the same connection_id, date, hour, minute.",
+    },
+  };
+}
+
+async function applyScheduleMeet(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (role !== "parent") {
+    return {
+      success: false,
+      error: "Only parents schedule the meet-and-greet time.",
+    };
+  }
+
+  const parsed = parseMeetTime(args);
+  if (!parsed.ok) return { success: false, error: parsed.error };
+
+  const result = await scheduleConnectionTime(
+    connection.id,
+    parsed.t.date,
+    parsed.t.hour,
+    parsed.t.minute,
+  );
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to schedule connection.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "schedule_meet",
+      connection_id: connection.id,
+      counterparty_name: displayName,
+      message: `Booked! Your meet and greet with ${displayName} is scheduled. Check the connection tile for the confirmed time in Sydney time and ${displayName}'s phone number.`,
+    },
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
+// ── Report outcome (nanny-side + parent-side) ──────────────────────────────
+
+type NannyOutcome = "hired" | "not_hired" | "awaiting" | "trial" | "incomplete";
+type ParentOutcome = "hired" | "not_hired" | "awaiting" | "trial";
+
+const NANNY_OUTCOMES: NannyOutcome[] = [
+  "hired",
+  "not_hired",
+  "awaiting",
+  "trial",
+  "incomplete",
+];
+const PARENT_OUTCOMES: ParentOutcome[] = [
+  "hired",
+  "not_hired",
+  "awaiting",
+  "trial",
+];
+
+function outcomeStagesFor(role: ConnectionRole): number[] {
+  return [
+    CONNECTION_STAGE.INTRO_SCHEDULED,
+    CONNECTION_STAGE.INTRO_COMPLETE,
+    CONNECTION_STAGE.AWAITING_RESPONSE,
+    CONNECTION_STAGE.TRIAL_ARRANGED,
+    CONNECTION_STAGE.TRIAL_COMPLETE,
+    ...(role === "nanny" ? [CONNECTION_STAGE.INTRO_INCOMPLETE] : []),
+  ];
+}
+
+function validateOutcome(
+  role: ConnectionRole,
+  raw: unknown,
+):
+  | { ok: true; outcome: NannyOutcome | ParentOutcome }
+  | { ok: false; error: string } {
+  if (typeof raw !== "string") {
+    return { ok: false, error: "Pass `outcome` as a string." };
+  }
+  if (role === "nanny" && NANNY_OUTCOMES.includes(raw as NannyOutcome)) {
+    return { ok: true, outcome: raw as NannyOutcome };
+  }
+  if (role === "parent" && PARENT_OUTCOMES.includes(raw as ParentOutcome)) {
+    return { ok: true, outcome: raw as ParentOutcome };
+  }
+  const allowed = role === "nanny" ? NANNY_OUTCOMES : PARENT_OUTCOMES;
+  return {
+    ok: false,
+    error: `Invalid outcome for ${role} — expected one of ${allowed.join(", ")}.`,
+  };
+}
+
+function outcomeDescription(
+  outcome: NannyOutcome | ParentOutcome,
+  role: ConnectionRole,
+  counterparty: string,
+): string {
+  switch (outcome) {
+    case "hired":
+      return role === "nanny"
+        ? `You're telling us ${counterparty} selected you. They'll be notified and asked to confirm, which locks in the placement.`
+        : `You're telling us you've chosen ${counterparty}. They'll be notified and asked to confirm — that locks in the placement and releases your other candidates.`;
+    case "not_hired":
+      return role === "nanny"
+        ? `You're logging that ${counterparty} went a different direction. No email — just keeps your pipeline tidy.`
+        : `You're logging that ${counterparty} isn't the one. No email sent — just keeps your pipeline tidy.`;
+    case "awaiting":
+      return `You're marking this as "still deciding". No notification; take your time.`;
+    case "trial":
+      return role === "nanny"
+        ? `You're telling us you've arranged a trial shift. The family will be notified in their inbox to confirm the date.`
+        : `You're telling us you've arranged a trial shift. ${counterparty} will be notified in their inbox to confirm.`;
+    case "incomplete":
+      return `You're logging that the meet and greet didn't happen. This is terminal — the connection closes.`;
+    default:
+      return "";
+  }
+}
+
+async function proposeReportOutcome(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  const outcomeResult = validateOutcome(role, args.outcome);
+  if (!outcomeResult.ok) return { success: false, error: outcomeResult.error };
+  const outcome = outcomeResult.outcome;
+
+  const stages = outcomeStagesFor(role);
+  if (!stages.includes(connection.connection_stage ?? -1)) {
+    return {
+      success: false,
+      error:
+        "This connection isn't at a stage where an outcome can be reported. Check what stage it's in first.",
+    };
+  }
+
+  const extraDate =
+    typeof args.date === "string" && args.date.trim().length > 0
+      ? args.date.trim()
+      : null;
+  if ((outcome === "trial" || outcome === "hired") && !extraDate) {
+    // trial needs trialDate; hired (nanny) benefits from startDate, (parent) benefits from startWeek.
+    // Server side treats it as optional though, so don't block — just flag.
+  }
+  if (extraDate && !/^\d{4}-\d{2}-\d{2}$/.test(extraDate)) {
+    return {
+      success: false,
+      error:
+        "If you pass a date for the outcome (trial date, start week), it must be in YYYY-MM-DD format.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  const description = outcomeDescription(outcome, role, displayName);
+  const emailSideEffect =
+    outcome === "hired" || (role === "parent" && outcome === "trial");
+
+  return {
+    success: true,
+    data: {
+      action: "report_outcome",
+      connection_id: connection.id,
+      role,
+      outcome,
+      date: extraDate,
+      counterparty_name: displayName,
+      email_side_effect: emailSideEffect,
+      preview: `${description}${extraDate ? ` Date: ${extraDate}.` : ""}`,
+      next_call:
+        "Read the preview back verbatim, then wait for explicit yes/cancel. On yes, call apply_report_outcome with the same connection_id, outcome, and date (if any).",
+    },
+  };
+}
+
+async function applyReportOutcome(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  const outcomeResult = validateOutcome(role, args.outcome);
+  if (!outcomeResult.ok) return { success: false, error: outcomeResult.error };
+  const outcome = outcomeResult.outcome;
+
+  const extraDate =
+    typeof args.date === "string" && args.date.trim().length > 0
+      ? args.date.trim()
+      : undefined;
+
+  const result =
+    role === "nanny"
+      ? await reportIntroOutcome(
+          connection.id,
+          outcome as NannyOutcome,
+          extraDate,
+        )
+      : await reportParentOutcome(
+          connection.id,
+          outcome as ParentOutcome,
+          extraDate,
+        );
+
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to report outcome.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "report_outcome",
+      connection_id: connection.id,
+      role,
+      outcome,
+      counterparty_name: displayName,
+      message: `Logged. ${displayName}'s status has been updated.`,
+    },
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
+// ── Placement confirmation (Path A parent / Path B nanny) ────────────────
+
+async function proposeConfirmPlacement(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  if (connection.connection_stage !== CONNECTION_STAGE.OFFERED) {
+    return {
+      success: false,
+      error:
+        "This connection isn't at the 'offered' stage — confirmation isn't available.",
+    };
+  }
+
+  const initiatedBy = connection.fill_initiated_by;
+  if (role === "parent" && initiatedBy !== "nanny") {
+    return {
+      success: false,
+      error:
+        "The family only confirms when the nanny has signalled they've been selected (Path A). This one is waiting on the nanny to confirm.",
+    };
+  }
+  if (role === "nanny" && initiatedBy !== "parent") {
+    return {
+      success: false,
+      error:
+        "The nanny only confirms when the family has selected them (Path B). This one is waiting on the family to confirm.",
+    };
+  }
+
+  const startDate =
+    typeof args.start_week === "string" && args.start_week.trim().length > 0
+      ? args.start_week.trim()
+      : null;
+  if (startDate && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    return {
+      success: false,
+      error: "If you pass `start_week`, it must be in YYYY-MM-DD format.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+
+  const preview =
+    role === "parent"
+      ? `You're about to confirm ${displayName} as your nanny. This is significant:\n- It creates an active placement starting${startDate ? ` the week of ${startDate}` : " soon (you can update the start week later)"}.\n- Your other candidates will be automatically released with a "position filled" notification.\n- You'll both receive a hire-confirmation PDF by email.\nThis can't be undone from here.`
+      : `You're about to confirm the position with the ${displayName} family. This is significant:\n- It creates an active placement starting${startDate ? ` the week of ${startDate}` : " soon"}.\n- Any other connections you have at an active stage will be closed.\n- You'll both receive a hire-confirmation PDF by email.\nThis can't be undone from here.`;
+
+  return {
+    success: true,
+    data: {
+      action: "confirm_placement",
+      connection_id: connection.id,
+      role,
+      counterparty_name: displayName,
+      start_week: startDate,
+      email_side_effect: true,
+      preview,
+      next_call:
+        "Read the preview back VERBATIM. This is a mandatory two-turn confirm — only proceed on an unambiguous affirmative. Call apply_confirm_placement with the same connection_id (and start_week if provided).",
+    },
+  };
+}
+
+async function applyConfirmPlacement(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const resolved = await resolveConnectionForWrite(args.connection_id, ctx);
+  if (!resolved.ok) return { success: false, error: resolved.error };
+  const { role, connection } = resolved;
+
+  const startWeek =
+    typeof args.start_week === "string" && args.start_week.trim().length > 0
+      ? args.start_week.trim()
+      : undefined;
+
+  const result =
+    role === "parent"
+      ? await confirmPlacement(connection.id, startWeek)
+      : await nannyConfirmPosition(connection.id);
+
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to confirm placement.",
+    };
+  }
+
+  const { firstName, lastName } = counterpartyFromRequest(connection, role);
+  const displayName = counterpartyDisplayName(firstName, lastName);
+  return {
+    success: true,
+    data: {
+      action: "confirm_placement",
+      connection_id: connection.id,
+      role,
+      counterparty_name: displayName,
+      message:
+        role === "parent"
+          ? `Confirmed! ${displayName} is your nanny. Hire PDFs are on the way to both of you, and your other candidates have been released.`
+          : `Confirmed! You're starting with the ${displayName} family. Hire PDFs are on the way.`,
+    },
+    tile: {
+      kind: "connection_request",
+      data: { id: connection.id },
+    },
+  };
+}
+
+// ── Send new connection request (parent-initiated) ───────────────────────
+
+async function proposeSendConnectionRequest(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const role = resolveRole(ctx.effectiveRole);
+  if (!role) return roleOnlyError();
+  if (role !== "parent") {
+    return {
+      success: false,
+      error: "Only parents send connection requests to nannies.",
+    };
+  }
+
+  const nannyId = typeof args.nanny_id === "string" ? args.nanny_id.trim() : "";
+  if (nannyId.length === 0) {
+    return {
+      success: false,
+      error:
+        "Pass `nanny_id` — the id of the nanny to connect with. Users can grab it from a nanny profile page.",
+    };
+  }
+
+  const message =
+    typeof args.message === "string" && args.message.trim().length > 0
+      ? args.message.trim()
+      : null;
+  if (message && message.length > 1000) {
+    return {
+      success: false,
+      error: "Keep your message under 1000 characters.",
+    };
+  }
+
+  // Pre-check: are they already at the 5-pending cap?
+  const { list } = await loadConnections(role);
+  const pending = list.filter(
+    (r) => r.status === "pending" && !isTerminal(r.connection_stage),
+  );
+  if (pending.length >= 5) {
+    return {
+      success: false,
+      error:
+        "You already have 5 open connection requests waiting for a response. Wait for one to resolve or cancel one before sending a new one.",
+    };
+  }
+
+  const duplicate = list.find(
+    (r) =>
+      r.nanny_id === nannyId &&
+      ["pending", "accepted", "confirmed"].includes(r.status),
+  );
+  if (duplicate) {
+    return {
+      success: false,
+      error:
+        "You already have an active connection with this nanny — you can't send a second request until that one closes.",
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      action: "send_connection_request",
+      nanny_id: nannyId,
+      has_message: message !== null,
+      message_preview: message ? message.slice(0, 200) : null,
+      email_side_effect: true,
+      preview: message
+        ? `You're about to send a connection request to this nanny with this message:\n"${message}"\nThey'll get an email and inbox notification and have 3 days to respond.`
+        : `You're about to send a connection request to this nanny (no personal message attached). They'll get an email and inbox notification and have 3 days to respond.`,
+      next_call:
+        "Read the preview back. On a clear yes, call apply_send_connection_request with the same nanny_id and message.",
+    },
+  };
+}
+
+async function applySendConnectionRequest(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const role = resolveRole(ctx.effectiveRole);
+  if (!role) return roleOnlyError();
+  if (role !== "parent") {
+    return {
+      success: false,
+      error: "Only parents send connection requests to nannies.",
+    };
+  }
+
+  const nannyId = typeof args.nanny_id === "string" ? args.nanny_id.trim() : "";
+  if (!nannyId) {
+    return {
+      success: false,
+      error: "Missing nanny_id — call propose_send_connection_request first.",
+    };
+  }
+  const message =
+    typeof args.message === "string" && args.message.trim().length > 0
+      ? args.message.trim()
+      : undefined;
+
+  const result = await createConnectionRequest(nannyId, message);
+  if (!result.success) {
+    return {
+      success: false,
+      error: result.error ?? "Failed to send connection request.",
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      action: "send_connection_request",
+      nanny_id: nannyId,
+      request_id: result.requestId ?? null,
+      message:
+        "Request sent. They've got 3 days to respond — I'll let you know when they do.",
+    },
+    tile: result.requestId
+      ? {
+          kind: "connection_request",
+          data: { id: result.requestId },
+        }
+      : undefined,
+  };
+}
+
 // ── Module export ─────────────────────────────────────────────────────────
 
 export const connectionsModule: BloomBotModule = {
@@ -629,6 +1422,174 @@ export const connectionsModule: BloomBotModule = {
         required: ["connection_id"],
       },
     },
+    {
+      name: "propose_accept_connection",
+      description:
+        "Preview accepting a connection request with an availability slot list (nanny only; request must be pending). Slots are strings of the form 'YYYY-MM-DD_bracket' where bracket = morning|midday|afternoon|evening. Requires ≥5 slots, ≥3 distinct days, and at least one slot in every one of the four brackets. Returns a per-day summary. Does NOT hit the server.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string", description: "The connection id." },
+          slots: {
+            type: "array",
+            description:
+              "Availability slots in 'YYYY-MM-DD_bracket' form. Bracket must be one of: morning, midday, afternoon, evening.",
+            items: { type: "string" },
+            minItems: 5,
+          },
+        },
+        required: ["connection_id", "slots"],
+      },
+    },
+    {
+      name: "apply_accept_connection",
+      description:
+        "Actually accept the connection request with the given slots. Only call after propose_accept_connection and explicit user confirmation. Sends an email (INT-002) to the family and advances the connection to the ACCEPTED stage.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          slots: { type: "array", items: { type: "string" }, minItems: 5 },
+        },
+        required: ["connection_id", "slots"],
+      },
+    },
+    {
+      name: "propose_schedule_meet",
+      description:
+        "Preview scheduling a meet-and-greet time for a connection (parent only; connection must be in ACCEPTED stage). Date is Sydney-local ISO (YYYY-MM-DD), hour is 24h (0-23), minute is 0-59. Must fall inside one of the nanny's proposed brackets (morning 8-11, midday 11-14, afternoon 14-17, evening 17-20). Does NOT hit the server.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          date: {
+            type: "string",
+            description: "Sydney-local date in YYYY-MM-DD format.",
+          },
+          hour: {
+            type: "number",
+            description: "Hour in 24-hour format, 0-23.",
+          },
+          minute: { type: "number", description: "Minute, 0-59." },
+        },
+        required: ["connection_id", "date", "hour", "minute"],
+      },
+    },
+    {
+      name: "apply_schedule_meet",
+      description:
+        "Actually schedule the meet-and-greet. Only after propose_schedule_meet + explicit confirmation. Sends INT-002 to parent (with nanny's phone) and INT-003 to nanny.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          date: { type: "string" },
+          hour: { type: "number" },
+          minute: { type: "number" },
+        },
+        required: ["connection_id", "date", "hour", "minute"],
+      },
+    },
+    {
+      name: "propose_report_outcome",
+      description:
+        "Preview reporting a meet-and-greet / trial outcome on a connection. Nanny outcomes: hired, not_hired, awaiting, trial, incomplete. Parent outcomes: hired, not_hired, awaiting, trial. Optional `date` (YYYY-MM-DD) for trial date or hire start week. Does NOT hit the server. Valid only when the connection is in a post-meet stage.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          outcome: {
+            type: "string",
+            description:
+              "Nanny: hired|not_hired|awaiting|trial|incomplete. Parent: hired|not_hired|awaiting|trial.",
+          },
+          date: {
+            type: "string",
+            description:
+              "Optional YYYY-MM-DD. For outcome='trial' this is the trial date; for outcome='hired' this is the start week.",
+          },
+        },
+        required: ["connection_id", "outcome"],
+      },
+    },
+    {
+      name: "apply_report_outcome",
+      description:
+        "Actually log the outcome. Routes to reportIntroOutcome (nanny) or reportParentOutcome (parent) based on role. For outcome='hired' this sends the hire-offer email and advances the connection toward placement. Only call after propose_report_outcome + explicit confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          outcome: { type: "string" },
+          date: { type: "string" },
+        },
+        required: ["connection_id", "outcome"],
+      },
+    },
+    {
+      name: "propose_confirm_placement",
+      description:
+        "Preview confirming a placement. Path A: parent confirms when nanny signalled 'hired' — creates placement, releases other candidates, emails hire PDFs. Path B: nanny confirms when parent signalled 'hired' — same outcome, initiated from the other side. Connection must be in OFFERED stage; Path is validated against fill_initiated_by. Does NOT hit the server. MANDATORY two-turn confirm — preview must be read back verbatim.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          start_week: {
+            type: "string",
+            description:
+              "Optional YYYY-MM-DD for the start-of-placement week. If omitted, the placement starts according to the server's default.",
+          },
+        },
+        required: ["connection_id"],
+      },
+    },
+    {
+      name: "apply_confirm_placement",
+      description:
+        "Actually confirm the placement. Parent path → confirmPlacement(requestId, startWeek?); nanny path → nannyConfirmPosition(requestId). Sends hire-confirmation PDFs to both parties. Only after propose_confirm_placement + unambiguous explicit confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          connection_id: { type: "string" },
+          start_week: { type: "string" },
+        },
+        required: ["connection_id"],
+      },
+    },
+    {
+      name: "propose_send_connection_request",
+      description:
+        "Preview sending a new connection request to a nanny (parent only). Validates: ≤5 open requests already pending, no existing active connection with this nanny, message ≤ 1000 chars. Does NOT hit the server.",
+      parameters: {
+        type: "object",
+        properties: {
+          nanny_id: {
+            type: "string",
+            description:
+              "The nanny's id (from a nanny profile page, not the auth user id).",
+          },
+          message: {
+            type: "string",
+            description:
+              "Optional personal message from the parent, ≤ 1000 characters.",
+          },
+        },
+        required: ["nanny_id"],
+      },
+    },
+    {
+      name: "apply_send_connection_request",
+      description:
+        "Actually send the request. Sends INT-001 to the nanny, creates the inbox message, and moves the parent's position Open→Connecting if it's the first request. Only after propose_send_connection_request + explicit confirmation.",
+      parameters: {
+        type: "object",
+        properties: {
+          nanny_id: { type: "string" },
+          message: { type: "string" },
+        },
+        required: ["nanny_id"],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
@@ -647,6 +1608,25 @@ export const connectionsModule: BloomBotModule = {
       return proposeCancelConnection(args, ctx);
     if (toolName === "apply_cancel_connection")
       return applyCancelConnection(args, ctx);
+    if (toolName === "propose_accept_connection")
+      return proposeAcceptConnection(args, ctx);
+    if (toolName === "apply_accept_connection")
+      return applyAcceptConnection(args, ctx);
+    if (toolName === "propose_schedule_meet")
+      return proposeScheduleMeet(args, ctx);
+    if (toolName === "apply_schedule_meet") return applyScheduleMeet(args, ctx);
+    if (toolName === "propose_report_outcome")
+      return proposeReportOutcome(args, ctx);
+    if (toolName === "apply_report_outcome")
+      return applyReportOutcome(args, ctx);
+    if (toolName === "propose_confirm_placement")
+      return proposeConfirmPlacement(args, ctx);
+    if (toolName === "apply_confirm_placement")
+      return applyConfirmPlacement(args, ctx);
+    if (toolName === "propose_send_connection_request")
+      return proposeSendConnectionRequest(args, ctx);
+    if (toolName === "apply_send_connection_request")
+      return applySendConnectionRequest(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
@@ -660,10 +1640,19 @@ export const connectionsModule: BloomBotModule = {
     "• 'When is my meet?' → `read_upcoming_meet` and read the `confirmed_time` in Sydney time plus the nanny phone (only if the tool returned one — don't paraphrase if absent).\n" +
     "• 'What do I need to do?' / 'anything outstanding?' → `read_action_required`.\n" +
     "• Never fabricate a counterparty name — only use names returned by the tools.\n\n" +
-    "Writes (available: decline, cancel — accept/schedule/outcome reporting not yet wired):\n" +
-    "• Every write is TWO TURNS. Turn 1: call `propose_<action>`, read the returned `preview` back to the user verbatim, ask yes/cancel. Turn 2: only if the user says yes, call `apply_<action>` with the same args. NEVER call apply_ directly without a propose_ preceding it in the same conversation.\n" +
-    "• If the user says anything other than a clear affirmative (yes, confirm, go ahead, do it, proceed), DO NOT call apply_. Ask once more for a clear yes/cancel.\n" +
-    "• If a write returns an error, surface the error text verbatim — it is already user-safe. Do not silently retry.\n" +
-    "• If the user asks to accept, schedule, or report an outcome (actions not yet wired), tell them that flow still lives on the main inbox page and offer to open the connection tile so they can act from there.\n" +
-    "• Decline is nanny-only and only while the request is still pending. Cancel is available to either side for any active (non-terminal) connection. The propose step enforces those gates with a user-safe error if the action isn't allowed.",
+    "Writes — every write is TWO TURNS:\n" +
+    "  Turn 1: call `propose_<action>`, read the returned `preview` back to the user VERBATIM (especially the preview line — it's the contract), ask for explicit yes/cancel.\n" +
+    "  Turn 2: only if the user says yes, call `apply_<action>` with the SAME args. NEVER call apply_ directly without a matching propose_ in the same conversation.\n" +
+    "  If the user says anything other than a clear affirmative (yes, confirm, go ahead, do it, proceed), DO NOT call apply_ — ask once more for a clear yes/cancel.\n" +
+    "  If a write returns an error, surface the error text verbatim (server messages are already user-safe) and do not silently retry.\n\n" +
+    "Available writes:\n" +
+    "• `propose_decline_connection` / `apply_decline_connection` — nanny-only; only while pending. Sends INT-004 (neutral, no reason shared).\n" +
+    "• `propose_cancel_connection` / `apply_cancel_connection` — either side; any active connection. Inbox notification only.\n" +
+    "• `propose_accept_connection` / `apply_accept_connection` — nanny-only; only while pending. Needs ≥5 slots in `YYYY-MM-DD_bracket` form spanning ≥3 days and all 4 brackets (morning/midday/afternoon/evening). The preview groups slots by day — read that back so the user can double-check. Sends the INT-002 acceptance email.\n" +
+    "• `propose_schedule_meet` / `apply_schedule_meet` — parent-only; connection must be at ACCEPTED. date is Sydney-local YYYY-MM-DD; hour 0-23, minute 0-59. The chosen date+bracket must match one of the nanny's proposed brackets. Scheduling SHARES the nanny's phone with the parent — always say that in the preview. Sends INT-002/INT-003.\n" +
+    "• `propose_report_outcome` / `apply_report_outcome` — either side; post-meet stages. Nanny outcomes: hired|not_hired|awaiting|trial|incomplete. Parent outcomes: hired|not_hired|awaiting|trial. For `hired` and `trial`, pass an optional `date` (YYYY-MM-DD). `hired` triggers the hire flow; read back the consequence ('family will be asked to confirm, your other candidates will be released') in the preview.\n" +
+    "• `propose_confirm_placement` / `apply_confirm_placement` — connection must be OFFERED. If the nanny initiated (Path A), only parent can confirm. If the parent initiated (Path B), only nanny can confirm. MANDATORY explicit restate of consequences (placement created, PDFs sent, other candidates released) — never skip.\n" +
+    "• `propose_send_connection_request` / `apply_send_connection_request` — parent-only. Needs the nanny_id (the nanny's nannies.id, not their user id — users pick this up from a profile page). Pre-checks the 5-pending cap + duplicate. Message is optional, ≤ 1000 chars. Sends INT-001.\n\n" +
+    "If a user asks for any write not listed here (end a position, update placement rate/hours, reject hired claim, schedule a trial from the parent side, confirm a trial, dismiss a stale tile, etc.), tell them that flow still lives on the main inbox / My Positions surface and offer to open the tile.\n" +
+    "All propose_ steps enforce role + stage gates with user-safe errors. If the user asks for something the stage doesn't allow, surface the error and explain what they can do instead — don't retry or silently switch to a different action.",
 };
