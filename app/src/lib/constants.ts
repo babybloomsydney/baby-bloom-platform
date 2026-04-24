@@ -4,11 +4,10 @@ export const SITE_DESCRIPTION =
 export const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-export const VERIFICATION_TIERS = {
-  TIER_1: "Profile Created",
-  TIER_2: "WWCC + Passport Verified",
-  TIER_3: "Facebook Post Verified",
-} as const;
+// VERIFICATION_TIERS was removed along with the deprecated Tier 1-2-3
+// system. Use `verification_level` + `verification_status` from
+// @/lib/verification instead. See system/verification/** for the
+// canonical docs.
 
 export const MATCHING_WEIGHTS = {
   RATE: 0.3,

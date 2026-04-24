@@ -328,8 +328,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 </p>
                 <p className="mb-2">
                   Semibold for emphasis, not bold. Bold is reserved for true
-                  anchors: page titles, names, key metrics. This restraint
-                  makes bold elements more impactful.
+                  anchors: page titles, names, key metrics. This restraint makes
+                  bold elements more impactful.
                 </p>
                 <p>
                   The constrained scale prevents visual noise. If everything is
@@ -341,25 +341,33 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
           >
             <div className="space-y-6">
               <div>
-                <p className="text-xs text-slate-400 mb-1">text-3xl / bold — Page titles</p>
+                <p className="text-xs text-slate-400 mb-1">
+                  text-3xl / bold — Page titles
+                </p>
                 <p className="text-3xl font-bold text-slate-900">
                   Find your perfect nanny
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">text-2xl / bold — Section headings</p>
+                <p className="text-xs text-slate-400 mb-1">
+                  text-2xl / bold — Section headings
+                </p>
                 <p className="text-2xl font-bold text-slate-900">
                   Your matches are ready
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">text-lg / semibold — Card titles</p>
+                <p className="text-xs text-slate-400 mb-1">
+                  text-lg / semibold — Card titles
+                </p>
                 <p className="text-lg font-semibold text-slate-900">
                   Bailey W.
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">text-sm / regular — Body text</p>
+                <p className="text-xs text-slate-400 mb-1">
+                  text-sm / regular — Body text
+                </p>
                 <p className="text-sm text-slate-600">
                   Experienced and warm nanny with a passion for early childhood
                   development. 4 years of dedicated nanny experience across
@@ -367,7 +375,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 </p>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">text-xs / medium — Labels, metadata</p>
+                <p className="text-xs text-slate-400 mb-1">
+                  text-xs / medium — Labels, metadata
+                </p>
                 <p className="text-xs font-medium text-slate-400">
                   Verified · Bondi · 3 km away · $35/hr
                 </p>
@@ -413,7 +423,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
           >
             <div className="space-y-6">
               <div>
-                <p className="text-xs text-slate-400 mb-3">Primary — the guru&rsquo;s CTA</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Primary — the guru&rsquo;s CTA
+                </p>
                 <div className="flex flex-wrap gap-3">
                   <Button>Request Interview</Button>
                   <Button size="sm">Connect</Button>
@@ -421,7 +433,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-3">Secondary — alternative actions</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Secondary — alternative actions
+                </p>
                 <div className="flex flex-wrap gap-3">
                   <Button variant="secondary">Save for Later</Button>
                   <Button variant="outline">
@@ -430,20 +444,26 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-3">Ghost & Link — subtle actions</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Ghost & Link — subtle actions
+                </p>
                 <div className="flex flex-wrap gap-3">
                   <Button variant="ghost">Skip for Now</Button>
                   <Button variant="link">Learn More</Button>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-3">Destructive — used sparingly</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Destructive — used sparingly
+                </p>
                 <div className="flex flex-wrap gap-3">
                   <Button variant="destructive">Cancel Interview</Button>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-3">Disabled — not yet available</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Disabled — not yet available
+                </p>
                 <div className="flex flex-wrap gap-3">
                   <Button disabled>Complete Verification First</Button>
                 </div>
@@ -469,14 +489,15 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                   visible, never hidden.
                 </p>
                 <p className="mb-2">
-                  StatusBadges use strict colour coding: green = active/verified,
-                  violet = earned tier, amber = pending, red = failed. Users
-                  learn this language quickly and can scan status at a glance.
+                  StatusBadges use strict colour coding: green =
+                  active/verified, violet = earned tier, amber = pending, red =
+                  failed. Users learn this language quickly and can scan status
+                  at a glance.
                 </p>
                 <p>
-                  Qualification badges (License, Languages) are secondary — slate
-                  background, smaller. They inform without competing with trust
-                  signals.
+                  Qualification badges (License, Languages) are secondary —
+                  slate background, smaller. They inform without competing with
+                  trust signals.
                 </p>
               </Rationale>
             }
@@ -488,24 +509,41 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                   <Badge className="bg-green-500 hover:bg-green-500">
                     <ShieldCheck className="mr-1 h-3 w-3" /> Verified
                   </Badge>
-                  <Badge variant="secondary" className="bg-violet-100 text-violet-700">
-                    Tier 3
+                  <Badge
+                    variant="secondary"
+                    className="bg-violet-100 text-violet-700"
+                  >
+                    Level 4
                   </Badge>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-3">Qualification badges</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Qualification badges
+                </p>
                 <div className="flex flex-wrap gap-2">
-                  <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs bg-slate-100 text-slate-600"
+                  >
                     <Car className="mr-1 h-3 w-3" /> License
                   </Badge>
-                  <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs bg-slate-100 text-slate-600"
+                  >
                     <Syringe className="mr-1 h-3 w-3" /> Vaccinated
                   </Badge>
-                  <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs bg-slate-100 text-slate-600"
+                  >
                     English
                   </Badge>
-                  <Badge variant="secondary" className="text-xs bg-slate-100 text-slate-600">
+                  <Badge
+                    variant="secondary"
+                    className="text-xs bg-slate-100 text-slate-600"
+                  >
                     French
                   </Badge>
                 </div>
@@ -538,13 +576,13 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p className="mb-2">
                   Forms are the &ldquo;flight&rdquo; — necessary but not the
                   reason users are here. The design makes forms feel as
-                  frictionless as possible: clean inputs, clear labels,
-                  generous touch targets.
+                  frictionless as possible: clean inputs, clear labels, generous
+                  touch targets.
                 </p>
                 <p className="mb-2">
-                  Focus rings use the violet brand colour — even in a form,
-                  the user feels Baby Bloom&rsquo;s presence guiding them
-                  through each field.
+                  Focus rings use the violet brand colour — even in a form, the
+                  user feels Baby Bloom&rsquo;s presence guiding them through
+                  each field.
                 </p>
                 <p>
                   In the V-shaped funnel, forms are broken into single-question
@@ -561,7 +599,11 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="bailey@example.com" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="bailey@example.com"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="suburb">Suburb</Label>
@@ -594,34 +636,40 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             rationale={
               <Rationale principle="Encourage, validate, gratify">
                 <p className="mb-2">
-                  Verification is Baby Bloom&rsquo;s trust engine. But it
-                  could feel like bureaucracy. The stepper design reframes
-                  it as progression — each green checkmark is an achievement,
-                  each violet dot is &ldquo;you are here,&rdquo; each grey
-                  circle is aspiration.
+                  Verification is Baby Bloom&rsquo;s trust engine. But it could
+                  feel like bureaucracy. The stepper design reframes it as
+                  progression — each green checkmark is an achievement, each
+                  violet dot is &ldquo;you are here,&rdquo; each grey circle is
+                  aspiration.
                 </p>
                 <p className="mb-2">
                   The current step is visually elevated (larger circle, ring
-                  glow, bolder text). Completed steps recede. Future steps
-                  are visible but clearly locked — creating anticipation
-                  without overwhelming.
+                  glow, bolder text). Completed steps recede. Future steps are
+                  visible but clearly locked — creating anticipation without
+                  overwhelming.
                 </p>
                 <p>
-                  This pattern maps directly to the funnel: the user sees
-                  how far they&rsquo;ve come and how close they are to
-                  &ldquo;fully verified&rdquo; status.
+                  This pattern maps directly to the funnel: the user sees how
+                  far they&rsquo;ve come and how close they are to &ldquo;fully
+                  verified&rdquo; status.
                 </p>
               </Rationale>
             }
           >
             <div className="space-y-8">
               <div>
-                <p className="text-xs text-slate-400 mb-4">In progress — step 2 of 4</p>
+                <p className="text-xs text-slate-400 mb-4">
+                  In progress — step 2 of 4
+                </p>
                 <VerificationProgress steps={MOCK_VERIFICATION_STEPS_PARTIAL} />
               </div>
               <div className="border-t border-slate-100 pt-6">
-                <p className="text-xs text-slate-400 mb-4">Complete — all verified</p>
-                <VerificationProgress steps={MOCK_VERIFICATION_STEPS_COMPLETE} />
+                <p className="text-xs text-slate-400 mb-4">
+                  Complete — all verified
+                </p>
+                <VerificationProgress
+                  steps={MOCK_VERIFICATION_STEPS_COMPLETE}
+                />
               </div>
             </div>
           </ComponentShowcase>
@@ -645,13 +693,13 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p className="mb-2">
                   Each card has one metric, one icon, one trend. The icon
                   background uses a muted version of the semantic colour —
-                  violet for platform metrics, green for positive states,
-                  amber for attention-needed.
+                  violet for platform metrics, green for positive states, amber
+                  for attention-needed.
                 </p>
                 <p>
                   Trend indicators (+12%, -3%) add temporal context. Users
-                  don&rsquo;t just see a number — they see momentum.
-                  This reinforces the progression philosophy.
+                  don&rsquo;t just see a number — they see momentum. This
+                  reinforces the progression philosophy.
                 </p>
               </Rationale>
             }
@@ -701,10 +749,10 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             rationale={
               <Rationale principle="The social platform paradigm">
                 <p className="mb-2">
-                  The NannyCard is the most-seen component on the platform.
-                  It mirrors the MatchCard&rsquo;s horizontal layout — photo
-                  and info side by side — but is shorter and lighter, designed
-                  for browsing rather than evaluating a match.
+                  The NannyCard is the most-seen component on the platform. It
+                  mirrors the MatchCard&rsquo;s horizontal layout — photo and
+                  info side by side — but is shorter and lighter, designed for
+                  browsing rather than evaluating a match.
                 </p>
                 <p className="mb-2">
                   No &ldquo;View Profile&rdquo; or &ldquo;Connect&rdquo;
@@ -743,9 +791,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
               <Rationale principle="The V-shaped funnel payoff">
                 <p className="mb-2">
                   The MatchCard appears at P5 — the parent&rsquo;s biggest
-                  payoff moment. After creating a position and waiting,
-                  they see real, verified nannies ranked by compatibility.
-                  This is THE moment the funnel exists to deliver.
+                  payoff moment. After creating a position and waiting, they see
+                  real, verified nannies ranked by compatibility. This is THE
+                  moment the funnel exists to deliver.
                 </p>
                 <p className="mb-2">
                   The card has three sliding views (overview, availability,
@@ -755,8 +803,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p className="mb-2">
                   Score bars provide transparency — the match isn&rsquo;t a
                   black box. Parents see exactly why someone matches:
-                  experience, schedule overlap, location proximity. This
-                  builds trust in the algorithm.
+                  experience, schedule overlap, location proximity. This builds
+                  trust in the algorithm.
                 </p>
                 <p>
                   The score badge (top-right) is the anchor — it&rsquo;s the
@@ -838,9 +886,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 </p>
                 <p>
                   Consistent padding (p-5 for content, p-6 for stats) and
-                  border-radius across all cards creates the visual
-                  language that says &ldquo;this is one thing, this is
-                  another.&rdquo; White space between cards is generous.
+                  border-radius across all cards creates the visual language
+                  that says &ldquo;this is one thing, this is another.&rdquo;
+                  White space between cards is generous.
                 </p>
               </Rationale>
             }
@@ -877,7 +925,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                         Verification Complete
                       </p>
                       <p className="text-xs text-slate-500">
-                        Your identity has been verified — you&rsquo;re now visible to families
+                        Your identity has been verified — you&rsquo;re now
+                        visible to families
                       </p>
                     </div>
                   </div>
@@ -918,19 +967,21 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             rationale={
               <Rationale principle="Profiles over listings">
                 <p className="mb-2">
-                  The profile page is the destination the entire platform funnels
-                  toward. When a parent clicks a NannyCard or MatchCard, this is
-                  where they land. It must convert curiosity into action.
+                  The profile page is the destination the entire platform
+                  funnels toward. When a parent clicks a NannyCard or MatchCard,
+                  this is where they land. It must convert curiosity into
+                  action.
                 </p>
                 <p className="mb-2">
                   The hero section mirrors the card layout — photo, name, age,
-                  location, verification badge — so the transition feels seamless.
-                  The tagline gives an immediate sense of personality.
+                  location, verification badge — so the transition feels
+                  seamless. The tagline gives an immediate sense of personality.
                 </p>
                 <p className="mb-2">
                   The tabbed interface (Profile, About, Checklist, Availability)
-                  uses progressive disclosure — dense information made digestible.
-                  The parent explores at their pace without feeling overwhelmed.
+                  uses progressive disclosure — dense information made
+                  digestible. The parent explores at their pace without feeling
+                  overwhelmed.
                 </p>
                 <p className="mb-2">
                   AI-generated content (bio, experience summary, skills) ensures
@@ -974,12 +1025,13 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p className="mb-2">
                   Pill-style select buttons use the same violet-fills-on-select
                   pattern as verification badges — violet means &ldquo;chosen,
-                  done, yours.&rdquo; The consistency reinforces learned behaviour.
+                  done, yours.&rdquo; The consistency reinforces learned
+                  behaviour.
                 </p>
                 <p>
                   Compound questions (children details, availability grid)
-                  progressively reveal — select &ldquo;2 children&rdquo; and
-                  two detail cards expand below. The form grows with the
+                  progressively reveal — select &ldquo;2 children&rdquo; and two
+                  detail cards expand below. The form grows with the
                   user&rsquo;s input, never overwhelming upfront.
                 </p>
               </Rationale>
@@ -988,14 +1040,22 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             <div className="space-y-8">
               {/* ── Demo 1: Question Shell + SingleSelect ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Question Shell — single select (auto-advance)</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Question Shell — single select (auto-advance)
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   {/* Progress bar */}
                   <div className="h-1 bg-slate-100">
-                    <div className="h-full bg-violet-600 rounded-r-full" style={{ width: "35%" }} />
+                    <div
+                      className="h-full bg-violet-600 rounded-r-full"
+                      style={{ width: "35%" }}
+                    />
                   </div>
 
-                  <div className="relative flex flex-col" style={{ height: "280px" }}>
+                  <div
+                    className="relative flex flex-col"
+                    style={{ height: "280px" }}
+                  >
                     {/* Back arrow */}
                     <button className="absolute top-3 left-3 p-1.5 text-slate-400">
                       <ChevronLeft className="h-5 w-5" />
@@ -1036,13 +1096,21 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 2: Two-column select ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Two-column select — binary questions</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Two-column select — binary questions
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="h-1 bg-slate-100">
-                    <div className="h-full bg-violet-600 rounded-r-full" style={{ width: "50%" }} />
+                    <div
+                      className="h-full bg-violet-600 rounded-r-full"
+                      style={{ width: "50%" }}
+                    />
                   </div>
 
-                  <div className="relative flex flex-col" style={{ height: "220px" }}>
+                  <div
+                    className="relative flex flex-col"
+                    style={{ height: "220px" }}
+                  >
                     <button className="absolute top-3 left-3 p-1.5 text-slate-400">
                       <ChevronLeft className="h-5 w-5" />
                     </button>
@@ -1078,10 +1146,15 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 3: Children Compound ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Compound question — progressive reveal</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Compound question — progressive reveal
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="h-1 bg-slate-100">
-                    <div className="h-full bg-violet-600 rounded-r-full" style={{ width: "20%" }} />
+                    <div
+                      className="h-full bg-violet-600 rounded-r-full"
+                      style={{ width: "20%" }}
+                    />
                   </div>
 
                   <div className="relative flex flex-col">
@@ -1115,24 +1188,34 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                       {/* Expanded child cards */}
                       <div className="flex flex-col gap-3">
                         {["First Child", "Second Child"].map((label, i) => (
-                          <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex flex-col gap-3">
-                            <p className="text-sm font-semibold text-slate-700">{label}</p>
+                          <div
+                            key={label}
+                            className="rounded-lg border border-slate-200 bg-slate-50 p-3 flex flex-col gap-3"
+                          >
+                            <p className="text-sm font-semibold text-slate-700">
+                              {label}
+                            </p>
 
                             <div className="flex flex-col gap-1">
-                              <label className="text-xs font-medium text-slate-500">Age</label>
+                              <label className="text-xs font-medium text-slate-500">
+                                Age
+                              </label>
                               <div className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
                                 {i === 0 ? "1–2 years" : "3–4 years"}
                               </div>
                             </div>
 
                             <div className="flex flex-col gap-1">
-                              <label className="text-xs font-medium text-slate-500">Gender</label>
+                              <label className="text-xs font-medium text-slate-500">
+                                Gender
+                              </label>
                               <div className="grid grid-cols-3 gap-1.5">
                                 {["Boy", "Girl", "Other"].map((g) => (
                                   <div
                                     key={g}
                                     className={`px-2 py-2 rounded-lg border text-xs font-medium text-center transition-colors ${
-                                      (i === 0 && g === "Girl") || (i === 1 && g === "Boy")
+                                      (i === 0 && g === "Girl") ||
+                                      (i === 1 && g === "Boy")
                                         ? "bg-violet-500 text-white border-violet-500"
                                         : "bg-white text-slate-600 border-slate-200"
                                     }`}
@@ -1157,13 +1240,21 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 4: Suburb Autocomplete ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Autocomplete — dropdown above input</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Autocomplete — dropdown above input
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
                   <div className="h-1 bg-slate-100">
-                    <div className="h-full bg-violet-600 rounded-r-full" style={{ width: "65%" }} />
+                    <div
+                      className="h-full bg-violet-600 rounded-r-full"
+                      style={{ width: "65%" }}
+                    />
                   </div>
 
-                  <div className="relative flex flex-col" style={{ height: "340px" }}>
+                  <div
+                    className="relative flex flex-col"
+                    style={{ height: "340px" }}
+                  >
                     <button className="absolute top-3 left-3 p-1.5 text-slate-400">
                       <ChevronLeft className="h-5 w-5" />
                     </button>
@@ -1222,8 +1313,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p className="mb-2">
                   Traditional datetime inputs are replaced with visual grids
                   wherever possible. Days &times; time brackets creates a
-                  heatmap mental model — users see their week at a glance
-                  rather than parsing dropdown menus.
+                  heatmap mental model — users see their week at a glance rather
+                  than parsing dropdown menus.
                 </p>
                 <p className="mb-2">
                   Time brackets (Morning, Midday, Afternoon, Evening) are Baby
@@ -1241,8 +1332,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                 <p>
                   Start week presets (This week, Next week, In 2 weeks) reduce
                   cognitive load — most placements start within 2 weeks. The
-                  &ldquo;Different date&rdquo; option exists but isn&rsquo;t
-                  the default path. The &ldquo;TBC&rdquo; option respects
+                  &ldquo;Different date&rdquo; option exists but isn&rsquo;t the
+                  default path. The &ldquo;TBC&rdquo; option respects
                   uncertainty without blocking progress.
                 </p>
               </Rationale>
@@ -1251,7 +1342,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
             <div className="space-y-8">
               {/* ── Demo 1: Days & Times Compound ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Weekly schedule — days + time brackets (position form)</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Weekly schedule — days + time brackets (position form)
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="flex flex-col gap-4 max-w-md mx-auto">
                     {/* Day selection — 2 rows: 4 + 3 */}
@@ -1302,8 +1395,12 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                             { label: "Evening", sub: "6pm–10pm" },
                           ].map((block) => (
                             <div key={block.label} className="text-center">
-                              <p className="text-[11px] font-semibold text-slate-600">{block.label}</p>
-                              <p className="text-[9px] text-slate-400">{block.sub}</p>
+                              <p className="text-[11px] font-semibold text-slate-600">
+                                {block.label}
+                              </p>
+                              <p className="text-[9px] text-slate-400">
+                                {block.sub}
+                              </p>
                             </div>
                           ))}
                         </div>
@@ -1315,9 +1412,14 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                           { day: "Wed", slots: [false, true, true, false] },
                           { day: "Fri", slots: [true, true, false, false] },
                         ].map((row) => (
-                          <div key={row.day} className="grid grid-cols-[80px_repeat(4,1fr)] gap-1 mb-1">
+                          <div
+                            key={row.day}
+                            className="grid grid-cols-[80px_repeat(4,1fr)] gap-1 mb-1"
+                          >
                             <div className="flex items-center">
-                              <p className="text-xs font-semibold text-slate-600">{row.day}</p>
+                              <p className="text-xs font-semibold text-slate-600">
+                                {row.day}
+                              </p>
                             </div>
                             {row.slots.map((on, i) => (
                               <div
@@ -1345,7 +1447,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 2: Availability Grid ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Interview availability — nanny proposes slots</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Interview availability — nanny proposes slots
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="space-y-4">
                     <div className="space-y-2">
@@ -1353,7 +1457,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                         When are you available for a meet and greet?
                       </p>
                       <p className="text-xs text-slate-500">
-                        Select at least 5 slots across all time brackets and 3+ days.
+                        Select at least 5 slots across all time brackets and 3+
+                        days.
                       </p>
                     </div>
 
@@ -1362,9 +1467,15 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                         Anytime
                       </div>
                       <div className="flex gap-x-3 ml-auto">
-                        <p className="text-xs text-green-600">{"\u2713"} 8/5 slots</p>
-                        <p className="text-xs text-green-600">{"\u2713"} 4/4 brackets</p>
-                        <p className="text-xs text-green-600">{"\u2713"} 5/3 days</p>
+                        <p className="text-xs text-green-600">
+                          {"\u2713"} 8/5 slots
+                        </p>
+                        <p className="text-xs text-green-600">
+                          {"\u2713"} 4/4 brackets
+                        </p>
+                        <p className="text-xs text-green-600">
+                          {"\u2713"} 5/3 days
+                        </p>
                       </div>
                     </div>
 
@@ -1372,28 +1483,65 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                     <div>
                       <div className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1">
                         <div />
-                        {["Morning", "Midday", "Afternoon", "Evening"].map((label) => (
-                          <div key={label} className="text-center">
-                            <p className="text-xs font-semibold text-slate-600">{label}</p>
-                            <p className="text-[10px] text-slate-400">
-                              {label === "Morning" ? "8–11am" : label === "Midday" ? "11–2pm" : label === "Afternoon" ? "2–5pm" : "5–8pm"}
-                            </p>
-                          </div>
-                        ))}
+                        {["Morning", "Midday", "Afternoon", "Evening"].map(
+                          (label) => (
+                            <div key={label} className="text-center">
+                              <p className="text-xs font-semibold text-slate-600">
+                                {label}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                {label === "Morning"
+                                  ? "8–11am"
+                                  : label === "Midday"
+                                    ? "11–2pm"
+                                    : label === "Afternoon"
+                                      ? "2–5pm"
+                                      : "5–8pm"}
+                              </p>
+                            </div>
+                          ),
+                        )}
                       </div>
 
                       {[
-                        { day: "Wed", date: "12 Mar", slots: [true, false, true, false] },
-                        { day: "Thu", date: "13 Mar", slots: [true, true, false, false] },
-                        { day: "Fri", date: "14 Mar", slots: [false, true, true, false] },
-                        { day: "Sat", date: "15 Mar", slots: [false, false, false, true] },
-                        { day: "Sun", date: "16 Mar", slots: [true, false, false, false] },
+                        {
+                          day: "Wed",
+                          date: "12 Mar",
+                          slots: [true, false, true, false],
+                        },
+                        {
+                          day: "Thu",
+                          date: "13 Mar",
+                          slots: [true, true, false, false],
+                        },
+                        {
+                          day: "Fri",
+                          date: "14 Mar",
+                          slots: [false, true, true, false],
+                        },
+                        {
+                          day: "Sat",
+                          date: "15 Mar",
+                          slots: [false, false, false, true],
+                        },
+                        {
+                          day: "Sun",
+                          date: "16 Mar",
+                          slots: [true, false, false, false],
+                        },
                       ].map((row) => (
-                        <div key={row.day} className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1">
+                        <div
+                          key={row.day}
+                          className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1"
+                        >
                           <div className="flex items-center">
                             <div>
-                              <p className="text-xs font-semibold text-slate-600">{row.day}</p>
-                              <p className="text-[10px] text-slate-400">{row.date}</p>
+                              <p className="text-xs font-semibold text-slate-600">
+                                {row.day}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                {row.date}
+                              </p>
                             </div>
                           </div>
                           {row.slots.map((on, i) => (
@@ -1413,8 +1561,12 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                     </div>
 
                     <div className="flex gap-3">
-                      <Button variant="outline" className="flex-1">Back</Button>
-                      <Button className="flex-1 bg-violet-500 hover:bg-violet-600">Confirm Availability</Button>
+                      <Button variant="outline" className="flex-1">
+                        Back
+                      </Button>
+                      <Button className="flex-1 bg-violet-500 hover:bg-violet-600">
+                        Confirm Availability
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -1422,7 +1574,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 3: Schedule Time Grid ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Time picker — parent selects from nanny&rsquo;s proposed slots</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Time picker — parent selects from nanny&rsquo;s proposed slots
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="space-y-4">
                     <p className="text-sm font-medium text-slate-700 flex items-center gap-1.5">
@@ -1434,26 +1588,58 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                     <div>
                       <div className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1">
                         <div />
-                        {["Morning", "Midday", "Afternoon", "Evening"].map((label) => (
-                          <div key={label} className="text-center">
-                            <p className="text-xs font-semibold text-slate-600">{label}</p>
-                            <p className="text-[10px] text-slate-400">
-                              {label === "Morning" ? "8–11am" : label === "Midday" ? "11–2pm" : label === "Afternoon" ? "2–5pm" : "5–8pm"}
-                            </p>
-                          </div>
-                        ))}
+                        {["Morning", "Midday", "Afternoon", "Evening"].map(
+                          (label) => (
+                            <div key={label} className="text-center">
+                              <p className="text-xs font-semibold text-slate-600">
+                                {label}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                {label === "Morning"
+                                  ? "8–11am"
+                                  : label === "Midday"
+                                    ? "11–2pm"
+                                    : label === "Afternoon"
+                                      ? "2–5pm"
+                                      : "5–8pm"}
+                              </p>
+                            </div>
+                          ),
+                        )}
                       </div>
 
                       {[
-                        { day: "Thu", date: "13 Mar", slots: [true, false, true, false], selectedIdx: 2 },
-                        { day: "Fri", date: "14 Mar", slots: [false, true, true, false], selectedIdx: -1 },
-                        { day: "Sat", date: "15 Mar", slots: [true, false, false, true], selectedIdx: -1 },
+                        {
+                          day: "Thu",
+                          date: "13 Mar",
+                          slots: [true, false, true, false],
+                          selectedIdx: 2,
+                        },
+                        {
+                          day: "Fri",
+                          date: "14 Mar",
+                          slots: [false, true, true, false],
+                          selectedIdx: -1,
+                        },
+                        {
+                          day: "Sat",
+                          date: "15 Mar",
+                          slots: [true, false, false, true],
+                          selectedIdx: -1,
+                        },
                       ].map((row) => (
-                        <div key={row.day} className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1">
+                        <div
+                          key={row.day}
+                          className="grid grid-cols-[90px_repeat(4,1fr)] gap-1 mb-1"
+                        >
                           <div className="flex items-center">
                             <div>
-                              <p className="text-xs font-semibold text-slate-600">{row.day}</p>
-                              <p className="text-[10px] text-slate-400">{row.date}</p>
+                              <p className="text-xs font-semibold text-slate-600">
+                                {row.day}
+                              </p>
+                              <p className="text-[10px] text-slate-400">
+                                {row.date}
+                              </p>
                             </div>
                           </div>
                           {row.slots.map((available, i) => (
@@ -1463,11 +1649,15 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                                 i === row.selectedIdx
                                   ? "bg-violet-600 text-white border-violet-600"
                                   : available
-                                  ? "bg-violet-50 text-violet-600 border-violet-200"
-                                  : "bg-slate-50 text-slate-200 border-slate-100"
+                                    ? "bg-violet-50 text-violet-600 border-violet-200"
+                                    : "bg-slate-50 text-slate-200 border-slate-100"
                               }`}
                             >
-                              {i === row.selectedIdx ? <Check className="h-3.5 w-3.5" /> : ""}
+                              {i === row.selectedIdx ? (
+                                <Check className="h-3.5 w-3.5" />
+                              ) : (
+                                ""
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1476,13 +1666,24 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
                     {/* 4×3 time picker — shown for selected bracket */}
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-slate-700">Select a time</p>
+                      <p className="text-sm font-medium text-slate-700">
+                        Select a time
+                      </p>
                       <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="grid grid-cols-4 gap-1.5">
                           {[
-                            "2:00pm", "2:15pm", "2:30pm", "2:45pm",
-                            "3:00pm", "3:15pm", "3:30pm", "3:45pm",
-                            "4:00pm", "4:15pm", "4:30pm", "4:45pm",
+                            "2:00pm",
+                            "2:15pm",
+                            "2:30pm",
+                            "2:45pm",
+                            "3:00pm",
+                            "3:15pm",
+                            "3:30pm",
+                            "3:45pm",
+                            "4:00pm",
+                            "4:15pm",
+                            "4:30pm",
+                            "4:45pm",
                           ].map((time) => (
                             <div
                               key={time}
@@ -1507,8 +1708,12 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                     </div>
 
                     <div className="flex gap-3">
-                      <Button variant="outline" className="flex-1">Back</Button>
-                      <Button className="flex-1 bg-violet-500 hover:bg-violet-600">Confirm Time</Button>
+                      <Button variant="outline" className="flex-1">
+                        Back
+                      </Button>
+                      <Button className="flex-1 bg-violet-500 hover:bg-violet-600">
+                        Confirm Time
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -1516,17 +1721,41 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 4: Start Week Picker ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Start week — preset options + custom date</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Start week — preset options + custom date
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="space-y-3 max-w-sm mx-auto">
-                    <p className="text-xs font-medium text-slate-500">When would you like them to start?</p>
+                    <p className="text-xs font-medium text-slate-500">
+                      When would you like them to start?
+                    </p>
                     <div className="grid grid-cols-2 gap-2">
                       {[
-                        { label: "This week", display: "Week of 10 March", selected: false },
-                        { label: "Next week", display: "Week of 17 March", selected: true },
-                        { label: "In 2 weeks", display: "Week of 24 March", selected: false },
-                        { label: "Different date", display: "", selected: false },
-                        { label: "To be confirmed", display: "", selected: false },
+                        {
+                          label: "This week",
+                          display: "Week of 10 March",
+                          selected: false,
+                        },
+                        {
+                          label: "Next week",
+                          display: "Week of 17 March",
+                          selected: true,
+                        },
+                        {
+                          label: "In 2 weeks",
+                          display: "Week of 24 March",
+                          selected: false,
+                        },
+                        {
+                          label: "Different date",
+                          display: "",
+                          selected: false,
+                        },
+                        {
+                          label: "To be confirmed",
+                          display: "",
+                          selected: false,
+                        },
                       ].map((opt) => (
                         <div
                           key={opt.label}
@@ -1537,7 +1766,11 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                           }`}
                         >
                           <span className="block">{opt.label}</span>
-                          {opt.display && <span className="block text-[10px] opacity-70">{opt.display}</span>}
+                          {opt.display && (
+                            <span className="block text-[10px] opacity-70">
+                              {opt.display}
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -1547,7 +1780,9 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
 
               {/* ── Demo 5: Proposed Times (read-only) ── */}
               <div>
-                <p className="text-xs text-slate-400 mb-3">Proposed times — compact read-only display</p>
+                <p className="text-xs text-slate-400 mb-3">
+                  Proposed times — compact read-only display
+                </p>
                 <div className="rounded-xl border border-slate-200 bg-white p-5">
                   <div className="max-w-sm mx-auto">
                     <div className="rounded-lg bg-violet-50 border border-violet-200 p-3 space-y-2">
@@ -1557,18 +1792,39 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
                       <div className="grid grid-cols-5 gap-1 text-xs">
                         <div />
                         {["Morn", "Mid", "Aftn", "Eve"].map((b) => (
-                          <div key={b} className="text-center text-violet-600 font-medium">{b}</div>
+                          <div
+                            key={b}
+                            className="text-center text-violet-600 font-medium"
+                          >
+                            {b}
+                          </div>
                         ))}
                         {[
-                          { label: "Thu, 13 Mar", slots: [true, false, true, false] },
-                          { label: "Fri, 14 Mar", slots: [false, true, true, false] },
-                          { label: "Sat, 15 Mar", slots: [true, false, false, true] },
+                          {
+                            label: "Thu, 13 Mar",
+                            slots: [true, false, true, false],
+                          },
+                          {
+                            label: "Fri, 14 Mar",
+                            slots: [false, true, true, false],
+                          },
+                          {
+                            label: "Sat, 15 Mar",
+                            slots: [true, false, false, true],
+                          },
                         ].map((row) => (
                           <div key={row.label} className="contents">
-                            <div className="text-violet-700 font-medium truncate pr-1">{row.label}</div>
+                            <div className="text-violet-700 font-medium truncate pr-1">
+                              {row.label}
+                            </div>
                             {row.slots.map((on, i) => (
-                              <div key={i} className="flex items-center justify-center">
-                                <div className={`h-3 w-3 rounded-full ${on ? "bg-violet-400" : "bg-violet-100"}`} />
+                              <div
+                                key={i}
+                                className="flex items-center justify-center"
+                              >
+                                <div
+                                  className={`h-3 w-3 rounded-full ${on ? "bg-violet-400" : "bg-violet-100"}`}
+                                />
                               </div>
                             ))}
                           </div>
@@ -1585,7 +1841,8 @@ export function BrandKitClient({ profilePicUrl }: BrandKitClientProps) {
         {/* ─── FOOTER ─── */}
         <footer className="border-t border-slate-100 pt-8 pb-4">
           <p className="text-xs text-slate-400 text-center">
-            Baby Bloom Sydney &mdash; Brand Kit v1 &mdash; Based on the Design Ethos document
+            Baby Bloom Sydney &mdash; Brand Kit v1 &mdash; Based on the Design
+            Ethos document
           </p>
         </footer>
       </main>

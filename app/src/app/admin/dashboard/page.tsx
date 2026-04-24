@@ -2,7 +2,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { formatRelativeTime } from "@/lib/utils";
 import {
@@ -14,7 +20,7 @@ import {
   BarChart3,
   Settings,
   TrendingUp,
-  UserPlus
+  UserPlus,
 } from "lucide-react";
 
 interface RecentUser {
@@ -27,20 +33,28 @@ interface RecentUser {
   role: string;
 }
 
-const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 async function getDashboardStats() {
   if (isDevMode) {
     return {
-      nannyCount: 24, parentCount: 18, pendingCount: 3, activeCount: 7,
-      newThisWeek: 5, newNanniesThisWeek: 3, newParentsThisWeek: 2, conversionRate: 42,
+      nannyCount: 24,
+      parentCount: 18,
+      pendingCount: 3,
+      activeCount: 7,
+      newThisWeek: 5,
+      newNanniesThisWeek: 3,
+      newParentsThisWeek: 2,
+      conversionRate: 42,
     };
   }
   const supabase = createClient();
   const oneWeekAgo = new Date();
   oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-  // Fetch counts in parallel
+  // Fetch counts in parallel. Verification counts use the current
+  // level/status schema — see app/src/lib/verification.ts + canonical
+  // docs under system/verification/.
   const [
     nannyCountResult,
     parentCountResult,
@@ -48,24 +62,41 @@ async function getDashboardStats() {
     activePlacementsResult,
     newNanniesThisWeekResult,
     newParentsThisWeekResult,
-    tier2NanniesResult,
+    verifiedNanniesResult,
   ] = await Promise.all([
-    supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'nanny'),
-    supabase.from('user_roles').select('*', { count: 'exact', head: true }).eq('role', 'parent'),
-    supabase.from('verifications').select('*', { count: 'exact', head: true }).eq('verification_status', 'pending'),
-    supabase.from('nanny_placements').select('*', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('user_roles')
-      .select('*', { count: 'exact', head: true })
-      .eq('role', 'nanny')
-      .gte('created_at', oneWeekAgo.toISOString()),
-    supabase.from('user_roles')
-      .select('*', { count: 'exact', head: true })
-      .eq('role', 'parent')
-      .gte('created_at', oneWeekAgo.toISOString()),
-    supabase.from('nannies')
-      .select('*', { count: 'exact', head: true })
-      .eq('wwcc_verified', true)
-      .eq('identity_verified', true),
+    supabase
+      .from("user_roles")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "nanny"),
+    supabase
+      .from("user_roles")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "parent"),
+    // Pending admin review: nanny ID review (11) + nanny WWCC review (21) + provisional awaiting confirm (30).
+    // Parent queue (parent_verifications) handled separately — this count is admin-review-on-nannies only.
+    supabase
+      .from("verifications")
+      .select("*", { count: "exact", head: true })
+      .in("verification_status", [11, 21, 30]),
+    supabase
+      .from("nanny_placements")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active"),
+    supabase
+      .from("user_roles")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "nanny")
+      .gte("created_at", oneWeekAgo.toISOString()),
+    supabase
+      .from("user_roles")
+      .select("*", { count: "exact", head: true })
+      .eq("role", "parent")
+      .gte("created_at", oneWeekAgo.toISOString()),
+    // Fully verified nannies = verification_level >= 4.
+    supabase
+      .from("nannies")
+      .select("*", { count: "exact", head: true })
+      .gte("verification_level", 4),
   ]);
 
   const nannyCount = nannyCountResult.count ?? 0;
@@ -74,10 +105,11 @@ async function getDashboardStats() {
   const activeCount = activePlacementsResult.count ?? 0;
   const newNanniesThisWeek = newNanniesThisWeekResult.count ?? 0;
   const newParentsThisWeek = newParentsThisWeekResult.count ?? 0;
-  const tier2Nannies = tier2NanniesResult.count ?? 0;
+  const fullyVerifiedNannies = verifiedNanniesResult.count ?? 0;
 
-  // Calculate conversion rate (tier2 / total nannies)
-  const conversionRate = nannyCount > 0 ? Math.round((tier2Nannies / nannyCount) * 100) : 0;
+  // Conversion rate: % of nannies fully verified (level >= 4).
+  const conversionRate =
+    nannyCount > 0 ? Math.round((fullyVerifiedNannies / nannyCount) * 100) : 0;
 
   return {
     nannyCount,
@@ -94,17 +126,42 @@ async function getDashboardStats() {
 async function getRecentActivity(): Promise<RecentUser[]> {
   if (isDevMode) {
     return [
-      { user_id: "d1", first_name: "Sophie", last_name: "Anderson", email: "sophie@test.com", profile_picture_url: null, created_at: new Date().toISOString(), role: "nanny" },
-      { user_id: "d2", first_name: "James", last_name: "Chen", email: "james@test.com", profile_picture_url: null, created_at: new Date(Date.now() - 86400000).toISOString(), role: "parent" },
-      { user_id: "d3", first_name: "Mia", last_name: "Lee", email: "mia@test.com", profile_picture_url: null, created_at: new Date(Date.now() - 172800000).toISOString(), role: "nanny" },
+      {
+        user_id: "d1",
+        first_name: "Sophie",
+        last_name: "Anderson",
+        email: "sophie@test.com",
+        profile_picture_url: null,
+        created_at: new Date().toISOString(),
+        role: "nanny",
+      },
+      {
+        user_id: "d2",
+        first_name: "James",
+        last_name: "Chen",
+        email: "james@test.com",
+        profile_picture_url: null,
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        role: "parent",
+      },
+      {
+        user_id: "d3",
+        first_name: "Mia",
+        last_name: "Lee",
+        email: "mia@test.com",
+        profile_picture_url: null,
+        created_at: new Date(Date.now() - 172800000).toISOString(),
+        role: "nanny",
+      },
     ];
   }
   const supabase = createClient();
 
   // Get recent user profiles with their roles
   const { data, error } = await supabase
-    .from('user_profiles')
-    .select(`
+    .from("user_profiles")
+    .select(
+      `
       user_id,
       first_name,
       last_name,
@@ -112,8 +169,9 @@ async function getRecentActivity(): Promise<RecentUser[]> {
       profile_picture_url,
       created_at,
       user_roles!inner(role)
-    `)
-    .order('created_at', { ascending: false })
+    `,
+    )
+    .order("created_at", { ascending: false })
     .limit(5);
 
   if (error || !data) {
@@ -128,7 +186,7 @@ async function getRecentActivity(): Promise<RecentUser[]> {
     email: user.email,
     profile_picture_url: user.profile_picture_url,
     created_at: user.created_at,
-    role: (user.user_roles as unknown as { role: string })?.role || 'unknown',
+    role: (user.user_roles as unknown as { role: string })?.role || "unknown",
   }));
 }
 
@@ -193,7 +251,8 @@ export default async function AdminDashboardPage() {
               <div>
                 <p className="text-2xl font-bold">{stats.newThisWeek}</p>
                 <p className="text-xs text-slate-500">
-                  New This Week ({stats.newNanniesThisWeek} nannies, {stats.newParentsThisWeek} parents)
+                  New This Week ({stats.newNanniesThisWeek} nannies,{" "}
+                  {stats.newParentsThisWeek} parents)
                 </p>
               </div>
             </div>
@@ -207,7 +266,9 @@ export default async function AdminDashboardPage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{stats.conversionRate}%</p>
-                <p className="text-xs text-slate-500">Tier 2 Conversion Rate</p>
+                <p className="text-xs text-slate-500">
+                  Fully Verified Rate (level 4)
+                </p>
               </div>
             </div>
           </CardContent>
@@ -229,7 +290,9 @@ export default async function AdminDashboardPage() {
 
       {/* Quick Actions */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold text-slate-900">Quick Actions</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-900">
+          Quick Actions
+        </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Link href="/admin/pipeline">
             <Card className="cursor-pointer transition-shadow hover:shadow-md">
@@ -254,7 +317,9 @@ export default async function AdminDashboardPage() {
                 <div>
                   <h3 className="font-medium">Verifications</h3>
                   <p className="text-sm text-slate-500">
-                    {stats.pendingCount > 0 ? `${stats.pendingCount} pending` : 'Review documents'}
+                    {stats.pendingCount > 0
+                      ? `${stats.pendingCount} pending`
+                      : "Review documents"}
                   </p>
                 </div>
               </CardContent>
@@ -307,13 +372,17 @@ export default async function AdminDashboardPage() {
                 >
                   <div className="flex items-center gap-3">
                     <UserAvatar
-                      name={`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown'}
+                      name={
+                        `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+                        "Unknown"
+                      }
                       imageUrl={user.profile_picture_url || undefined}
                       className="h-10 w-10"
                     />
                     <div>
                       <p className="font-medium">
-                        {`${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown User'}
+                        {`${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+                          "Unknown User"}
                       </p>
                       <p className="text-sm text-slate-500">{user.email}</p>
                     </div>

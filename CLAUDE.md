@@ -1,6 +1,10 @@
-> **[DEPRECATED SYSTEM REFERENCE]** This document references the old Tier 1-2-3 verification system (Signed Up → ID Verified → Facebook Share) which has been **fully deprecated**. The current system uses numeric `verification_level` (0-4) and per-section status codes. See [`OLD system/Tier1-2-3/README.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/OLD system/Tier1-2-3/README.md) for full deprecation details.
-
 # CLAUDE.md - Baby Bloom Sydney
+
+> **Verification system — canonical references:**
+> - Nanny: [`system/verification/nanny_verification/nanny_verification-data-systems.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/nanny_verification/nanny_verification-data-systems.md)
+> - Parent: [`system/verification/parent_verification/parent_verification_status_codes.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/parent_verification/parent_verification_status_codes.md)
+> - Code constants: `app/src/lib/verification.ts`
+> **The old Tier 1-2-3 system is deprecated. Use `verification_level` (nanny 0-4, parent 0-1) + `verification_status` (grouped by tens). Do not use "Tier" language in new code or copy.**
 
 ## Efficiency Rules (READ FIRST — ALL AGENTS MUST FOLLOW)
 
@@ -132,24 +136,30 @@ Baby Bloom Sydney is a nanny matching platform for Sydney, Australia. We're rebu
 
 ## Key Business Rules
 
-### Verification Tiers (enforced by computed columns):
-- **Tier 1:** Profile created → `profile_visible = true`
-- **Tier 2:** WWCC + Passport verified → `visible_in_match_making = true`
-- **Tier 3:** Facebook post verified → `visible_in_bsr = true`
+### Verification (current system — see canonical docs linked at top)
+**Nanny access gate = `nannies.verification_level` (integer 0-4):**
+- 0 Signed Up · 1 Registered · 2 ID Verified · 3 Provisionally Verified (visible to parents, cannot accept engagements) · 4 Fully Verified (OCG confirmed, full access)
+
+**Parent access gate = `parents.verification_level` (integer 0-1):**
+- 0 Unverified · 1 Verified (ID + selfie confirmed)
+
+**Communication / UI layer = `verification_status` (integer, grouped by tens)** on the `verifications` / `parent_verifications` tables. Drives dashboard copy, emails, admin queues, forms rendered. Nanny range: 0, 10–12, 20–29, 30, 40. Parent range: 0, 10–13, 20.
+
+**Babysitting eligibility:** `verification_level >= 4 AND babysitter_eligible = true` on `nannies`.
 
 ### Constraints:
 - ONE active position per parent (unique index)
 - ONE active placement per parent (unique index)
-- WWCC expiry auto-disables via daily cron → `wwcc_verified = false`
+- WWCC expiry auto-detected via daily cron → nanny `verification_level` drops to 2, `verification_status` → 23
 - File retention: 5 years after account deactivation, then auto-delete
 
 ### Matching Algorithm:
 **Regular Matching (nanny positions):**
-- Hard filters: availability overlap, location proximity, child age experience
+- Hard filters: availability overlap, location proximity, child age experience, `verification_level >= 3`
 - Weighted scoring: Rate 30%, Experience 25%, Qualifications 20%, Skills 15%, Other 10%
 
 **Babysitting Matching (one-time jobs):**
-- Find all Tier 3 nannies available at requested time
+- Find all nannies with `verification_level >= 4 AND babysitter_eligible = true` available at the requested time
 - Calculate distance using sydney_postcodes lat/lng
 - Select 20 closest, notify all simultaneously
 - First to accept wins (timestamp determines)
@@ -174,7 +184,7 @@ Baby Bloom Sydney is a nanny matching platform for Sydney, Australia. We're rebu
 ## User Journeys
 
 ### Nanny Flow:
-Signup (40 fields) → AI bio generated → Profile live (Tier 1) → Upload passport + WWCC → AI verifies → Tier 2 → Share AI-generated Facebook post → Upload screenshot → Tier 3 → Receive interview requests → Get hired → Placement tracked → Available for babysitting jobs
+Signup (level 0) → AI bio generated → Complete profile (level 1) → Submit passport + selfie + WWCC form → AI ID check passes (level 2) → WWCC auto-check passes (level 3, visible to parents, silent manual review queued) → Admin confirms WWCC on OCG portal (level 4) → Receive interview + babysitting requests → Get hired → Placement tracked
 
 ### Parent Flow:
 Browse nannies publicly → Signup → See availability calendars → Create position (42-field form, ONE at a time) → See matched nannies → Request interview (pick 3 times) → AI emails nanny → Interview → Hire → Placement created → Can also post babysitting requests

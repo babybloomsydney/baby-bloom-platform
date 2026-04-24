@@ -1,4 +1,8 @@
-> **[DEPRECATED SYSTEM REFERENCE]** This document references the old Tier 1-2-3 verification system (Signed Up → ID Verified → Facebook Share) which has been **fully deprecated**. The current system uses numeric `verification_level` (0-4) and per-section status codes. See [`OLD system/Tier1-2-3/README.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/OLD system/Tier1-2-3/README.md) for full deprecation details.
+> **Verification system — canonical references:**
+> - Nanny: [`system/verification/nanny_verification/nanny_verification-data-systems.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/nanny_verification/nanny_verification-data-systems.md)
+> - Parent: [`system/verification/parent_verification/parent_verification_status_codes.md`](/Users/bai/.openclaw/workspace/bai-brain/projects/baby-bloom/website/system/verification/parent_verification/parent_verification_status_codes.md)
+> - Code constants: `app/src/lib/verification.ts`
+> **The old Tier 1-2-3 system is deprecated. Use `verification_level` (nanny 0-4, parent 0-1) + `verification_status` (grouped by tens). Do not use "Tier" language in new code or copy.**
 
 # Baby Bloom Sydney — Comprehensive Project Context
 
@@ -51,43 +55,30 @@ Sydney suburbs only. 194 suburbs seeded with lat/lng coordinates for geolocation
 
 ## 3. USER ROLES & JOURNEYS
 
-### 3.1 Nanny Journey (3 Tiers)
+### 3.1 Nanny Journey (`verification_level` 0–4)
 
-**Tier 1 — Profile Created:**
-- Signs up → fills 9-step registration form (~40 fields) → AI generates professional bio
-- Profile visible publicly but CANNOT receive interview or babysitting requests
+Access gate is a single integer on `nannies.verification_level`. See canonical doc for the full status-code table that drives dashboard copy + emails.
 
-**Tier 2 — Identity Verified:**
-- Uploads passport photo → AI verifies (name, photo match, not expired)
-- Uploads WWCC details → AI extracts info → Admin verifies via NSW portal
-- Unlocks: Can receive interview requests from parents
-
-**Tier 3 — Fully Verified:**
-- AI generates a Facebook post script with link to their Baby Bloom profile
-- Nanny shares to Facebook parenting/nanny groups, uploads screenshot
-- AI verifies screenshot (name, content, link, group)
-- Unlocks: Full babysitting pool access (notified of nearby jobs)
+**Level 0 — Signed Up:** Account created; profile form not yet completed.
+**Level 1 — Registered:** 9-step registration filled, AI bio generated. Profile NOT visible to parents yet. Cannot receive any requests.
+**Level 2 — ID Verified:** Passport + selfie confirmed (AI auto-pass OR admin manual verify). Still not visible to parents; waiting on WWCC.
+**Level 3 — Provisionally Verified:** WWCC auto-check passed. Profile visible to parents in search, but still CANNOT accept interview or babysitting requests. Admin reviews WWCC silently on OCG portal.
+**Level 4 — Fully Verified:** Admin confirmed WWCC on OCG. Full access — accept interviews + (if `babysitter_eligible=true`) babysitting jobs.
 
 **Receiving Opportunities:**
 - Interview Requests: Email with parent info + 3 proposed times → nanny picks one → calendar invites sent
 - Babysitting: Notified when in closest 20 nannies to a job → first to accept wins
 
-### 3.2 Parent Journey (3 Tiers)
+### 3.2 Parent Journey (`verification_level` 0–1)
 
-**Tier 1 — Basic Account:**
-- Signs up → can browse nanny profiles and see availability calendars
-- Cannot request interviews
+Binary gate on `parents.verification_level`. Verification happens once; there is no downgrade path.
 
-**Tier 2 — Open Nanny Position:**
-- Fills 5-step nanny request form (preferences, schedule, children, requirements)
-- ONE active position at a time (database constraint)
-- Can request interviews with nannies (pick 3 time slots)
-- AI coordinates scheduling via email
+**Level 0 — Unverified:** Account exists. Can browse nanny profiles, view availability, read inbox. Cannot send connection requests or babysitting requests.
+**Level 1 — Verified:** Photo ID + selfie confirmed (AI auto-pass OR admin manual verify). Full parent-side access.
 
-**Tier 3 — Babysitting:**
-- Posts babysitting request (up to 7 time slots)
-- First time: must verify ID (photo ID upload → admin reviews → address shared with nanny)
-- System finds 20 closest Tier 3 nannies, notifies all simultaneously
+**Position creation** (creating an open nanny position) is available to parents at any level — position setup is independent of verification. The gate only kicks in at the *connection / babysitting request* step.
+
+**Babysitting:** Posts a babysitting request (up to 7 time slots). System notifies the 20 closest nannies with `verification_level >= 4 AND babysitter_eligible = true`. First to accept wins.
 - First nanny to accept wins
 
 ### 3.3 Admin

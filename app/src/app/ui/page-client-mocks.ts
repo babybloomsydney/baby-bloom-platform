@@ -60,10 +60,7 @@ export const MOCK_INTERVIEW_REQUESTS: InterviewRequestWithDetails[] = [
     nanny_id: "mock-nanny-002",
     position_id: "mock-pos-002",
     status: "accepted",
-    proposed_times: [
-      "2026-03-18_morning",
-      "2026-03-19_midday",
-    ],
+    proposed_times: ["2026-03-18_morning", "2026-03-19_midday"],
     selected_time: "2026-03-18_morning",
     message: "Looking for a nanny for our toddler. Flexible on schedule.",
     created_at: "2026-03-08T10:00:00Z",
@@ -115,7 +112,8 @@ export const MOCK_NANNY_BABYSITTING_JOBS: NannyBabysittingJob[] = [
   {
     id: "mock-bsj-001",
     title: "Saturday evening babysitting",
-    special_requirements: "Bedtime routine at 7:30pm. Youngest needs white noise machine.",
+    special_requirements:
+      "Bedtime routine at 7:30pm. Youngest needs white noise machine.",
     suburb: "Bondi Beach",
     postcode: "2026",
     address: null,
@@ -126,7 +124,13 @@ export const MOCK_NANNY_BABYSITTING_JOBS: NannyBabysittingJob[] = [
     created_at: "2026-03-09T10:00:00Z",
     expires_at: "2026-03-14T00:00:00Z",
     slots: [
-      { id: "slot-001", slot_date: "2026-03-15", start_time: "18:00", end_time: "22:00", is_selected: false },
+      {
+        id: "slot-001",
+        slot_date: "2026-03-15",
+        start_time: "18:00",
+        end_time: "22:00",
+        is_selected: false,
+      },
     ],
     notification: {
       distanceKm: 2.1,
@@ -157,8 +161,20 @@ export const MOCK_NANNY_BABYSITTING_JOBS: NannyBabysittingJob[] = [
     created_at: "2026-03-08T14:00:00Z",
     expires_at: "2026-03-13T00:00:00Z",
     slots: [
-      { id: "slot-002", slot_date: "2026-03-12", start_time: "14:00", end_time: "17:00", is_selected: false },
-      { id: "slot-003", slot_date: "2026-03-13", start_time: "14:00", end_time: "17:00", is_selected: false },
+      {
+        id: "slot-002",
+        slot_date: "2026-03-12",
+        start_time: "14:00",
+        end_time: "17:00",
+        is_selected: false,
+      },
+      {
+        id: "slot-003",
+        slot_date: "2026-03-13",
+        start_time: "14:00",
+        end_time: "17:00",
+        is_selected: false,
+      },
     ],
     notification: {
       distanceKm: 4.5,
@@ -220,7 +236,7 @@ export const MOCK_INBOX_MESSAGES: InboxMessage[] = [
     id: "mock-msg-004",
     type: "verification",
     title: "Verification update",
-    body: "Your WWCC check has been verified. You're now Tier 2!",
+    body: "Your WWCC auto-check passed — your profile is now visible to parents.",
     action_url: "/nanny/verification",
     reference_id: null,
     reference_type: null,
@@ -277,7 +293,11 @@ export const MOCK_CONNECTION_REQUESTS: ConnectionRequestWithDetails[] = [
     nanny_id: "mock-nanny-002",
     position_id: "mock-pos-001",
     status: "pending",
-    proposed_times: ["2026-03-18_morning", "2026-03-19_midday", "2026-03-20_morning"],
+    proposed_times: [
+      "2026-03-18_morning",
+      "2026-03-19_midday",
+      "2026-03-20_morning",
+    ],
     confirmed_time: null,
     confirmed_at: null,
     message: "Interested in connecting for our part-time nanny position.",
@@ -359,7 +379,8 @@ export const MOCK_NANNY_SHARE_DATA = {
   age: 27,
   profilePicUrl: null as string | null,
   suburb: "Bondi",
-  parentPitch: "Bailey is a warm, experienced nanny with a genuine passion for helping children learn and grow. With 4 years of dedicated nanny experience and a Certificate III in Early Childhood, she brings both expertise and heart to every family she works with. Book a free interview today!",
+  parentPitch:
+    "Bailey is a warm, experienced nanny with a genuine passion for helping children learn and grow. With 4 years of dedicated nanny experience and a Certificate III in Early Childhood, she brings both expertise and heart to every family she works with. Book a free interview today!",
   share: null,
 };
 
@@ -459,8 +480,22 @@ export const MOCK_POSITION_WITH_CHILDREN = {
   filled_at: null,
   filled_by_nanny_id: null,
   children: [
-    { id: "child-001", position_id: "mock-pos-001", child_label: "Child 1", age_months: 18, gender: "female", display_order: 0 },
-    { id: "child-002", position_id: "mock-pos-001", child_label: "Child 2", age_months: 42, gender: "male", display_order: 1 },
+    {
+      id: "child-001",
+      position_id: "mock-pos-001",
+      child_label: "Child 1",
+      age_months: 18,
+      gender: "female",
+      display_order: 0,
+    },
+    {
+      id: "child-002",
+      position_id: "mock-pos-001",
+      child_label: "Child 2",
+      age_months: 42,
+      gender: "male",
+      display_order: 1,
+    },
   ],
 } as unknown as PositionWithChildren;
 
@@ -472,7 +507,8 @@ export const MOCK_POSITION_SHARE_DATA = {
   lastName: "Chen" as string | null,
   profilePicUrl: null as string | null,
   suburb: "Coogee",
-  sharePost: "Looking for an amazing nanny in Coogee! We need someone warm and experienced for our two little ones (18mo and 3yo). Part-time, Mon/Wed/Fri. If you know a great nanny, tag them below! #SydneyNanny #BabyBloom",
+  sharePost:
+    "Looking for an amazing nanny in Coogee! We need someone warm and experienced for our two little ones (18mo and 3yo). Part-time, Mon/Wed/Fri. If you know a great nanny, tag them below! #SydneyNanny #BabyBloom",
   children: [
     { ageMonths: 18, gender: "female" },
     { ageMonths: 42, gender: "male" },
@@ -505,7 +541,13 @@ export const MOCK_PARENT_BSR_REQUESTS: BabysittingRequestWithSlots[] = [
     expires_at: "2026-03-14T00:00:00Z",
     cancelled_by: null,
     slots: [
-      { id: "bsr-slot-001", slot_date: "2026-03-15", start_time: "18:00", end_time: "22:00", is_selected: false },
+      {
+        id: "bsr-slot-001",
+        slot_date: "2026-03-15",
+        start_time: "18:00",
+        end_time: "22:00",
+        is_selected: false,
+      },
     ],
     requestingNannies: [
       {
@@ -521,7 +563,8 @@ export const MOCK_PARENT_BSR_REQUESTS: BabysittingRequestWithSlots[] = [
         hourlyRateMin: 35,
         verificationTier: "tier2",
         verificationLevel: 3,
-        aiHeadline: "Experienced nanny with a passion for early childhood development",
+        aiHeadline:
+          "Experienced nanny with a passion for early childhood development",
         languages: ["English", "French"],
       },
     ],
@@ -544,7 +587,13 @@ export const MOCK_PARENT_BSR_REQUESTS: BabysittingRequestWithSlots[] = [
     expires_at: "2026-03-10T00:00:00Z",
     cancelled_by: null,
     slots: [
-      { id: "bsr-slot-002", slot_date: "2026-03-11", start_time: "15:00", end_time: "18:00", is_selected: true },
+      {
+        id: "bsr-slot-002",
+        slot_date: "2026-03-11",
+        start_time: "15:00",
+        end_time: "18:00",
+        is_selected: true,
+      },
     ],
     acceptedNanny: {
       firstName: "Sophie",
@@ -598,7 +647,8 @@ export const MOCK_BSR_SHARE_DATA = {
   lastName: "Chen" as string | null,
   profilePicUrl: null as string | null,
   suburb: "Coogee",
-  sharePost: "Need a babysitter in Coogee this Saturday evening! 6pm-10pm for two kids (2yo and 4yo). Know someone great? Tag them! #SydneyBabysitter #BabyBloom",
+  sharePost:
+    "Need a babysitter in Coogee this Saturday evening! 6pm-10pm for two kids (2yo and 4yo). Know someone great? Tag them! #SydneyBabysitter #BabyBloom",
   timeSlots: [
     { slot_date: "2026-03-15", start_time: "18:00", end_time: "22:00" },
   ],
@@ -800,7 +850,8 @@ export const MOCK_ADMIN_IDENTITY_CHECKS: PendingIdentityCheck[] = [
     extracted_nationality: "Australian",
     extracted_passport_number: "PA5555555",
     extracted_passport_expiry: "2030-01-15",
-    identity_ai_reasoning: "Name and DOB match. Photo similarity: 92%. Passport is valid and unexpired.",
+    identity_ai_reasoning:
+      "Name and DOB match. Photo similarity: 92%. Passport is valid and unexpired.",
     identity_ai_issues: null,
   },
 ];
