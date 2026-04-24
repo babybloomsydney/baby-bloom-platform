@@ -25,6 +25,7 @@ export type PromptSectionId =
   | "identity"
   | "voice"
   | "boundaries"
+  | "data_surfaces"
   | "proactive_rules"
   | "logging_rules"
   | "scheduling_constraints"
@@ -183,6 +184,7 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
     "identity",
     "voice",
     "boundaries",
+    "data_surfaces",
     "logging_rules",
     "proactive_rules",
     "scheduling_constraints",

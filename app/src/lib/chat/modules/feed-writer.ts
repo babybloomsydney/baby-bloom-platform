@@ -162,39 +162,40 @@ export const feedWriterModule: BloomBotModule = {
   id: "feed-writer",
   name: "Feed Writer",
   description:
-    "Creates and soft-deletes custom tiles in the feed. Use create_tile to publish Katie-authored content (summaries, callouts, shared notes), delete_tile to remove anything from the feed.",
+    "Writes to the child-shared feed surface — bapp_logs rows with type='custom'. The feed is visible to BOTH the nanny and the child's parent. This module ONLY handles content about the child; anything private to the nanny or parent belongs in agent-memory instead.",
 
   tools: [
     {
       name: "create_tile",
       description:
-        "Publish a custom tile into the child's feed. Use for summaries, callouts, shared notes — anything that doesn't fit diary/observation/activity shapes but still belongs in the feed.",
+        "Publish a custom tile to the child's SHARED feed. The tile is visible to BOTH the nanny and the child's parent — this is a co-owned developmental journal, NOT a private pinboard. ONLY use for content about the child: observations worth highlighting, educational summaries, shared notes about the child's week, captions for a photo of the child. NEVER use for nanny-private items (jobs being considered, applications, interviews, rate changes, professional reminders) or parent-private items (schedule conflicts, doubts about the placement, notes about the nanny). For anything private, use `write_memory` (scope='account') instead. If the user asks you to 'pin' or 'remember' something that isn't clearly about the child, default to memory, not create_tile.",
       parameters: {
         type: "object",
         properties: {
           child_name: {
             type: "string",
             description:
-              "Which child (required if the user has multiple children; can omit if only one).",
+              "Which child the tile is ABOUT (required if the user has multiple children; can omit if only one). The tile lands in this child's shared feed.",
           },
           title: {
             type: "string",
-            description: "Short headline for the tile.",
+            description:
+              "Short headline. Must be about the named child — not about the user's private plans, jobs, or preferences.",
           },
           body: {
             type: "string",
             description:
-              "Main content of the tile. Markdown is allowed (renderer handles plain text + line breaks minimally).",
+              "Main content of the tile, about the named child. Markdown ok (renderer handles plain text + line breaks).",
           },
           image_url: {
             type: "string",
             description:
-              "Optional image URL (Cloudinary preferred) to display above the body.",
+              "Optional image URL (Cloudinary preferred). Must be a photo relevant to the child (a photo of the child, of their work, of somewhere they went).",
           },
           badge: {
             type: "string",
             description:
-              "Optional short label shown on the tile (e.g. 'Summary', 'Tip').",
+              "Optional short label shown on the tile (e.g. 'Summary', 'Tip', 'Milestone'). Keep it child-relevant.",
           },
         },
         required: ["title", "body"],
@@ -225,5 +226,5 @@ export const feedWriterModule: BloomBotModule = {
   },
 
   systemPromptFragment:
-    "Use `create_tile` to publish custom content to the child's feed (summaries, callouts, shared notes) when no other log type fits. Use `delete_tile` only when the user explicitly asks to remove something — confirm the tile contents back to them first so accidental deletes are hard. delete_tile is a soft-delete: rows stay in the DB with is_active=false, so 'undelete' is possible via raw SQL if needed.",
+    "CRITICAL: `create_tile` writes to the CHILD-SHARED feed. The other party (nanny ↔ parent) will see everything you put there. Use it ONLY for content about the child. If the user asks you to pin, note, or remember something that isn't about the child — a job prospect, an application, a private plan, a professional reminder, doubts, rate changes — reject that use of create_tile and route to `write_memory` with scope='account' instead. Example: user says 'add a tile about the Surry Hills job to my feed' → you save a memory, not a tile, and tell them: 'I'll keep that as a private note on your account. The child's feed is shared with [the parent / the nanny], so job-related items stay here with you.'\n\nUse `delete_tile` only when the user explicitly asks to remove something — confirm the tile contents back to them first so accidental deletes are hard. delete_tile is a soft-delete: rows stay in the DB with is_active=false, recoverable via raw SQL if needed.",
 };
