@@ -8,6 +8,7 @@
 import { useCallback, useState } from "react";
 import type { KatieMessage } from "./messages/types";
 import type { CurrentSurface } from "@/contexts/KatieContext";
+import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
 
 export interface SendResult {
   ok: boolean;
@@ -17,6 +18,7 @@ export interface SendResult {
 export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingText, setStreamingText] = useState("");
+  const [streamingTile, setStreamingTile] = useState<ChatTile | null>(null);
 
   const send = useCallback(
     async (
@@ -26,6 +28,7 @@ export function useChatStream() {
     ): Promise<SendResult> => {
       setIsStreaming(true);
       setStreamingText("");
+      setStreamingTile(null);
 
       // Optimistic user message
       const userMsg: KatieMessage = {
@@ -56,6 +59,7 @@ export function useChatStream() {
         const decoder = new TextDecoder();
         let buffer = "";
         let fullText = "";
+        let committedTile: ChatTile | null = null;
         let done = false;
 
         while (!done) {
@@ -79,17 +83,25 @@ export function useChatStream() {
                   | { type: "text"; content: string }
                   | { type: "tool_call"; name: string; args: unknown }
                   | { type: "tool_result"; name: string; result: unknown }
+                  | { type: "tile"; tile: unknown }
                   | { type: "error"; message: string }
                   | { type: "done" };
 
                 if (evt.type === "text") {
                   fullText += evt.content;
                   setStreamingText(fullText);
+                } else if (evt.type === "tile") {
+                  // Last tile wins (matches server-side persistence rule).
+                  if (isChatTile(evt.tile)) {
+                    committedTile = evt.tile;
+                    setStreamingTile(evt.tile);
+                  }
                 } else if (evt.type === "error") {
                   return { ok: false, error: evt.message };
                 }
-                // tool_call / tool_result — could render inline tile events;
-                // deferred to future iteration. Text completion follows.
+                // tool_call / tool_result — stream events the UI could
+                // expose as ephemeral "Katie is doing X…" chips in a
+                // future iteration. Swallow silently for now.
               } catch {
                 // Malformed frame — skip
               }
@@ -105,6 +117,7 @@ export function useChatStream() {
           trigger_source: "assistant_reply",
           is_read: true,
           created_at: new Date().toISOString(),
+          tile: committedTile,
         });
 
         return { ok: true };
@@ -116,10 +129,11 @@ export function useChatStream() {
       } finally {
         setIsStreaming(false);
         setStreamingText("");
+        setStreamingTile(null);
       }
     },
     [],
   );
 
-  return { send, isStreaming, streamingText };
+  return { send, isStreaming, streamingText, streamingTile };
 }

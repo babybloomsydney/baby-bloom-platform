@@ -48,7 +48,7 @@ export function KatieDeck() {
   const [isHydrating, setIsHydrating] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const { send, isStreaming, streamingText } = useChatStream();
+  const { send, isStreaming, streamingText, streamingTile } = useChatStream();
 
   // Fetch history on mount
   useEffect(() => {
@@ -110,10 +110,10 @@ export function KatieDeck() {
             <MessageRow key={m.id} message={m} />
           ))}
 
-          {isStreaming && streamingText.length > 0 ? (
-            <AssistantMessage content={streamingText} />
+          {isStreaming && (streamingText.length > 0 || streamingTile) ? (
+            <AssistantMessage content={streamingText} tile={streamingTile} />
           ) : null}
-          {isStreaming && streamingText.length === 0 ? (
+          {isStreaming && streamingText.length === 0 && !streamingTile ? (
             <TypingIndicator />
           ) : null}
 

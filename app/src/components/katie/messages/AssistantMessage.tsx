@@ -7,17 +7,21 @@
 
 import { SparkleIcon } from "./SparkleIcon";
 import type { TriggerSource } from "./types";
+import { RenderTile } from "@/components/katie/tiles/TileRegistry";
+import type { ChatTile } from "@/lib/chat/tiles";
 
 export interface AssistantMessageProps {
   content: string;
   triggerSource?: TriggerSource;
   isUnread?: boolean;
+  tile?: ChatTile | null;
 }
 
 export function AssistantMessage({
   content,
   triggerSource = "assistant_reply",
   isUnread = false,
+  tile = null,
 }: AssistantMessageProps) {
   const isProactive = triggerSource.startsWith("proactive_");
 
@@ -35,7 +39,7 @@ export function AssistantMessage({
           (isProactive ? "text-violet-600" : "text-violet-500")
         }
       />
-      <div className="flex-1 space-y-1 text-sm text-slate-900">
+      <div className="flex-1 space-y-2 text-sm text-slate-900">
         {isProactive ? (
           <div className="flex items-center gap-1.5 text-xs text-violet-700">
             <span className="rounded-full bg-violet-100 px-2 py-0.5 font-medium">
@@ -45,7 +49,10 @@ export function AssistantMessage({
             </span>
           </div>
         ) : null}
-        <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+        {content ? (
+          <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+        ) : null}
+        {tile ? <RenderTile tile={tile} /> : null}
       </div>
     </div>
   );

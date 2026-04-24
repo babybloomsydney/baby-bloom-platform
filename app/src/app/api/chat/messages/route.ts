@@ -8,6 +8,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { KATIE_ENABLED } from "@/lib/chat/flags";
+import { readPersistedTile } from "@/lib/chat/tiles";
 
 export const runtime = "nodejs";
 
@@ -60,7 +61,9 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await admin
     .from("chat_messages")
-    .select("id, role, content, trigger_source, is_read, created_at, metadata")
+    .select(
+      "id, role, content, trigger_source, is_read, created_at, metadata, tile",
+    )
     .eq("bloombot_id", bot.id)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
@@ -71,8 +74,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Return chronological (oldest first) for the client to render top→bottom
-  const messages = (data ?? []).reverse();
+  // Return chronological (oldest first) for the client to render top→bottom.
+  // Validate tile shape — malformed persisted values degrade to null rather
+  // than crashing the whole chat view.
+  const messages = (data ?? []).reverse().map((m) => ({
+    ...m,
+    tile: readPersistedTile((m as { tile?: unknown }).tile),
+  }));
 
   return NextResponse.json({ messages });
 }

@@ -3,6 +3,8 @@
  * Mirror shape of chat_messages rows for SSR + Realtime.
  */
 
+import type { ChatTile } from "@/lib/chat/tiles";
+
 export type MessageRole = "user" | "assistant" | "system" | "tool";
 
 export type TriggerSource =
@@ -21,4 +23,6 @@ export interface KatieMessage {
   is_read: boolean;
   created_at: string;
   metadata?: Record<string, unknown> | null;
+  /** Optional inline tile rendered with this message. */
+  tile?: ChatTile | null;
 }

@@ -10,6 +10,7 @@
 import type { BotRole } from "@/lib/ai/model-selector";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurrentSurface, ChildSummary } from "@/lib/chat/context";
+import type { ChatTile } from "@/lib/chat/tiles";
 
 // ── Tool schemas (Gemini function-calling format) ──────────────────────────
 
@@ -27,8 +28,12 @@ export interface ToolResult {
   feedEntry?: boolean;
   /** optional user-facing message to render directly (bypasses AI) */
   userMessage?: string;
-  /** optional tile to render inline in the chat surface */
-  tile?: unknown;
+  /**
+   * Optional tile to render inline in the chat surface. Discriminated
+   * union — see @/lib/chat/tiles. Gets emitted on the SSE stream and
+   * persisted on `chat_messages.tile` so it re-renders on scrollback.
+   */
+  tile?: ChatTile;
 }
 
 // ── Module execution context ──────────────────────────────────────────────

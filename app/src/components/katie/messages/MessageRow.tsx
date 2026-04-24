@@ -16,6 +16,7 @@ export function MessageRow({ message }: { message: KatieMessage }) {
         content={message.content}
         triggerSource={message.trigger_source}
         isUnread={!message.is_read}
+        tile={message.tile ?? null}
       />
     );
   }

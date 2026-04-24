@@ -47,6 +47,7 @@ import {
 } from "@/lib/chat/cost-tracker";
 import { collectTools, findToolHandler } from "@/lib/chat/modules/registry";
 import type { ToolResult } from "@/lib/chat/modules/types";
+import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
 import {
   getOrCreateBot,
   getUserChildren,
@@ -251,6 +252,11 @@ export async function POST(req: NextRequest) {
         result: ToolResult;
       }> = [];
       let fullText = "";
+      // Last tile wins — if multiple tool calls in the same turn each
+      // return a tile, we render + persist the most recent. Earlier
+      // tiles are still streamed to the client via tile events for
+      // visibility.
+      let persistedTile: ChatTile | null = null;
       let totalUsage: TokenUsage = {
         inputTokens: 0,
         outputTokens: 0,
@@ -356,6 +362,14 @@ export async function POST(req: NextRequest) {
             controller.enqueue(
               encodeSSE({ type: "tool_result", name: call.name, result }),
             );
+            // If the tool attached an inline tile, stream it and remember
+            // the latest one for persistence with the assistant message.
+            if (result.tile && isChatTile(result.tile)) {
+              persistedTile = result.tile;
+              controller.enqueue(
+                encodeSSE({ type: "tile", tile: result.tile }),
+              );
+            }
           }
 
           // Append model turn (echo parts verbatim to preserve thoughtSignature)
@@ -405,6 +419,7 @@ export async function POST(req: NextRequest) {
           is_read: true,
           surface_route: body.currentSurface?.route ?? null,
           surface_feature: body.currentSurface?.feature ?? null,
+          tile: persistedTile,
           metadata: {
             model,
             input_tokens: totalUsage.inputTokens,
