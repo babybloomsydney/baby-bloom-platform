@@ -11,8 +11,10 @@
 --   1. Captures the current version per section (for the version+1 calc)
 --   2. UPDATEs the existing row to is_active=false (frees the unique slot)
 --   3. INSERTs the new row at version+1 with is_active=true
---   4. Bumps the singleton katie_prompt_version row so the chat context
---      loader re-fetches on next request
+--
+-- The katie_prompt_version cache-invalidation hash is bumped automatically
+-- by the trg_katie_prompt_bump_version trigger on each katie_prompt write —
+-- no manual UPDATE needed.
 --
 -- After running, the next chat request will pick up the new prompt.
 -- ============================================================================
@@ -149,10 +151,17 @@ Avoid "maybe", "perhaps", "I think" when you have a clear recommendation. But wh
 END $$;
 
 -- ───────────────────────────────────────────────────────────────────
--- 3. Bump the singleton version_hash so context loader re-fetches
+-- 3. version_hash bump — handled automatically.
+--
+-- The trg_katie_prompt_bump_version trigger fires AFTER every
+-- INSERT/UPDATE/DELETE on katie_prompt and bumps katie_prompt_version
+-- via bump_katie_prompt_version(). Each of the 4 katie_prompt writes
+-- above (2 deactivate + 2 insert) fires the trigger, so by the time
+-- this transaction commits the version_hash is already fresh and the
+-- chat context loader will re-fetch on next request.
+--
+-- No manual UPDATE needed.
 -- ───────────────────────────────────────────────────────────────────
-
-UPDATE public.katie_prompt_version SET version_hash = gen_random_uuid()::text;
 
 COMMIT;
 
