@@ -70,13 +70,34 @@ async function createTile(
     };
   }
 
+  const logId = (inserted as { id: string }).id;
+  // Render the same content inline in Katie's deck. Without `tile`, the
+  // chat reply has no inline preview and the user has to switch decks to
+  // see what Katie just wrote.
+  const tileImage =
+    typeof data.image_url === "string" && data.image_url.length > 0
+      ? data.image_url
+      : undefined;
+  const tileBadge =
+    typeof data.badge === "string" && data.badge.length > 0
+      ? data.badge
+      : undefined;
   return {
     success: true,
     feedEntry: true,
     data: {
-      log_id: (inserted as { id: string }).id,
+      log_id: logId,
       child_name: child.firstName,
       title,
+    },
+    tile: {
+      kind: "katie_note",
+      data: {
+        title,
+        body,
+        ...(tileImage ? { image_url: tileImage } : {}),
+        ...(tileBadge ? { badge: tileBadge } : {}),
+      },
     },
   };
 }

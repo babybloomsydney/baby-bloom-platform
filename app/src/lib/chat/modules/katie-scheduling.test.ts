@@ -107,6 +107,12 @@ function makeCtx(init?: Partial<State>): {
             error: null,
           };
         },
+        single: async () => {
+          return {
+            data: { id: "bot-1", settings: state.botSettings },
+            error: null,
+          };
+        },
       };
       return api;
     }

@@ -132,13 +132,36 @@ async function planActivity(
     title,
   };
   const nowIso = new Date().toISOString();
-  await ctx.supabase
+  const { error: updateErr } = await ctx.supabase
     .from("bapp_logs")
     .update({
       status: "ready",
       data: activityData,
     })
     .eq("id", logId);
+  if (updateErr) {
+    // The plan was generated but we couldn't promote the row from
+    // 'pending' to 'ready'. Best-effort: flip the row to 'error' so
+    // the feed stops rendering "Generating Plan…" forever. If even
+    // that recovery fails, log it and continue — the user gets the
+    // chat error either way.
+    void ctx.supabase
+      .from("bapp_logs")
+      .update({ status: "error" })
+      .eq("id", logId)
+      .then(({ error: recoveryErr }) => {
+        if (recoveryErr) {
+          console.error(
+            "[activities] recovery flip to status=error also failed",
+            { logId, recoveryErr },
+          );
+        }
+      });
+    return {
+      success: false,
+      error: `Activity generated but log update failed: ${updateErr.message}`,
+    };
+  }
 
   // 5. Emit the same ActivityTile the child feed uses. FeedItem-shaped
   //    snapshot is fine here — bapp_logs of type='activity' are

@@ -374,13 +374,32 @@ async function setWakingHours(
   const startStr = `${String(start.h).padStart(2, "0")}:${String(start.m).padStart(2, "0")}`;
   const endStr = `${String(end.h).padStart(2, "0")}:${String(end.m).padStart(2, "0")}`;
 
+  // Merge into existing settings rather than overwrite — the JSONB column
+  // also holds bloombot.settings.effective_role (Option C admin cross-role
+  // simulation) plus any future preferences. A naive `update({ settings: ... })`
+  // replaces the column, silently destroying everything except waking_hours.
+  const { data: current, error: readErr } = await ctx.supabase
+    .from("bloombot")
+    .select("settings")
+    .eq("id", ctx.botId)
+    .single();
+  if (readErr) {
+    return {
+      success: false,
+      error: `Failed to read current settings: ${readErr.message}`,
+    };
+  }
+  const existingSettings =
+    (current as { settings: Record<string, unknown> | null } | null)
+      ?.settings ?? {};
+  const mergedSettings = {
+    ...existingSettings,
+    waking_hours: { start: startStr, end: endStr, timezone },
+  };
+
   const { error } = await ctx.supabase
     .from("bloombot")
-    .update({
-      settings: {
-        waking_hours: { start: startStr, end: endStr, timezone },
-      },
-    })
+    .update({ settings: mergedSettings })
     .eq("id", ctx.botId)
     .select()
     .single();

@@ -167,8 +167,11 @@ export async function POST(req: NextRequest) {
   const children = await getUserChildren(user.id);
   const admin = createAdminClient();
 
-  // 7. Save user message (capture surface)
-  const { data: savedUser } = await admin
+  // 7. Save user message (capture surface). Surface insert errors loudly —
+  // if the user's turn isn't persisted, conversation history breaks
+  // silently for every subsequent turn. We'd rather the user see "try
+  // again" now than silently lose half a conversation.
+  const { data: savedUser, error: savedUserErr } = await admin
     .from("chat_messages")
     .insert({
       bloombot_id: bot.id,
@@ -180,7 +183,11 @@ export async function POST(req: NextRequest) {
       surface_feature: body.currentSurface?.feature ?? null,
     })
     .select("id")
-    .single();
+    .single<{ id: string }>();
+  if (savedUserErr || !savedUser) {
+    console.error("[api/chat] failed to save user message", savedUserErr);
+    return errorSSE("Sorry — I couldn't save your message. Try again?");
+  }
 
   // 8. Build memory section (pre-rendered for inclusion in system prompt)
   const memoryTable = await buildMemoryTable({
@@ -202,18 +209,29 @@ export async function POST(req: NextRequest) {
     memoryTable,
   });
 
-  // 9. Load recent history (last 20 user+assistant messages)
+  // 9. Load recent history (last 20 user+assistant messages).
+  // Select id so we can exclude the just-saved user message by id rather
+  // than content — a content-based filter silently drops every prior
+  // message with the same text, corrupting context when users send
+  // short repeated phrases like "yes" or "ok" across turns.
   const { data: history } = await admin
     .from("chat_messages")
-    .select("role, content, metadata")
+    .select("id, role, content, metadata")
     .eq("bloombot_id", bot.id)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
     .limit(20);
 
-  // Reverse to chronological; exclude the just-saved user message
-  const historyRows = (history ?? [])
-    .filter((r) => r.content !== body.message)
+  const justSavedId = savedUser.id;
+  const historyRows = (
+    (history ?? []) as Array<{
+      id: string;
+      role: string;
+      content: string;
+      metadata: unknown;
+    }>
+  )
+    .filter((r) => r.id !== justSavedId)
     .reverse();
 
   const conversationTurns: GeminiTurn[] = [
@@ -468,9 +486,6 @@ export async function POST(req: NextRequest) {
       }
     },
   });
-
-  // savedUser reserved for future error-path bookkeeping; suppress unused warning
-  void savedUser;
 
   return new Response(stream, {
     status: 200,

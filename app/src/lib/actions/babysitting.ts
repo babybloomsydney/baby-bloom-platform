@@ -964,13 +964,43 @@ export async function activateBsr(
     distance_km: n.distanceKm,
   }));
 
-  await adminClient.from("bsr_notifications").insert(notifRows);
+  const { error: notifInsertErr } = await adminClient
+    .from("bsr_notifications")
+    .insert(notifRows);
+  if (notifInsertErr) {
+    // Notification rows didn't land — don't fire Katie pings to nannies
+    // who weren't actually notified. The BSR itself stays open and the
+    // parent's request is still recorded; surface the failure.
+    console.error(
+      "[BSR] bsr_notifications insert failed; skipping Katie dispatch",
+      notifInsertErr,
+    );
+    return { success: false, error: "Failed to notify nannies" };
+  }
 
   // Update notified count
   await adminClient
     .from("babysitting_requests")
     .update({ nannies_notified_count: closestNannies.length })
     .eq("id", bsrId);
+
+  // Katie proactive — narrate the new invitation to each invited nanny.
+  // Plain-text "when" derived from the first slot; the email already
+  // ships the full slotsStr, so we keep the chat ping concise.
+  const firstSlot = slots?.[0];
+  const whenText = firstSlot ? formatSlotDisplay(firstSlot) : "soon";
+  for (const n of closestNannies) {
+    dispatchActionTriggeredInBackground({
+      triggerId: "bsr.invitation_received",
+      recipientUserId: n.userId,
+      payload: {
+        when: whenText,
+        suburb: bsr.suburb,
+        distance: n.distanceKm < 1 ? "<1 km away" : `${n.distanceKm} km away`,
+        bsr_id: bsrId,
+      },
+    });
+  }
 
   const slotsStr = (slots ?? []).map((s) => formatSlotDisplay(s)).join("<br>");
   const estimatedTotal = bsr.estimated_total ?? 0;
