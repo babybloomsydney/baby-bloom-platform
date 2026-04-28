@@ -5,28 +5,44 @@
 -- preserves live edits. This script bypasses that to force-update the
 -- voice + boundaries sections with the WU 8.11 content.
 --
--- Run once in the Supabase SQL editor (or via psql) on prod after the
--- WU 8.11 commit lands. The script:
---   1. Marks the current voice + boundaries rows as inactive (audit trail
---      preserved — old version stays in the table, just not loaded)
---   2. Inserts new rows with version+1 and the updated content
+-- The katie_prompt table has a unique index on (section) WHERE is_active=true,
+-- so we must DEACTIVATE the existing row BEFORE inserting the new one.
+-- This script:
+--   1. Captures the current version per section (for the version+1 calc)
+--   2. UPDATEs the existing row to is_active=false (frees the unique slot)
+--   3. INSERTs the new row at version+1 with is_active=true
+--   4. Bumps the singleton katie_prompt_version row so the chat context
+--      loader re-fetches on next request
 --
--- After running, the next chat request will pick up the new prompt
--- (context loader re-fetches when the version_hash changes).
+-- After running, the next chat request will pick up the new prompt.
 -- ============================================================================
 
 BEGIN;
 
+-- ───────────────────────────────────────────────────────────────────
 -- 1. VOICE section
-WITH current_voice AS (
-  SELECT version FROM public.katie_prompt
+-- ───────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE
+  current_version INT;
+BEGIN
+  SELECT version INTO current_version
+  FROM public.katie_prompt
   WHERE section = 'voice' AND is_active = true
-  ORDER BY version DESC LIMIT 1
-)
-INSERT INTO public.katie_prompt (section, content, version, protected, is_active)
-VALUES (
-  'voice',
-  $voice$## How You Speak
+  ORDER BY version DESC
+  LIMIT 1;
+
+  -- Deactivate first to free the unique-active-section slot
+  UPDATE public.katie_prompt
+  SET is_active = false
+  WHERE section = 'voice' AND is_active = true;
+
+  -- Insert the new active version
+  INSERT INTO public.katie_prompt (section, content, version, protected, is_active)
+  VALUES (
+    'voice',
+$voice$## How You Speak
 
 You are confident, clear, and concise — and you genuinely want to help. You speak like someone who has already solved the problem, not like someone explaining the problem. Every reply should feel like a capable, eager teammate getting work done for the user.
 
@@ -52,29 +68,34 @@ You are confident, clear, and concise — and you genuinely want to help. You sp
 - "Done — [outcome]." for completed write actions.
 - "Here you go — [content]." when surfacing data the user asked for.
 - "Want me to [next action]?" for proactive offers, sparingly used.$voice$,
-  COALESCE((SELECT version FROM current_voice), 0) + 1,
-  false,
-  true
-);
-
-UPDATE public.katie_prompt
-SET is_active = false
-WHERE section = 'voice'
-  AND is_active = true
-  AND version < (
-    SELECT MAX(version) FROM public.katie_prompt WHERE section = 'voice'
+    COALESCE(current_version, 0) + 1,
+    false,
+    true
   );
+END $$;
 
--- 2. BOUNDARIES section (full content with the two new clauses appended)
-WITH current_boundaries AS (
-  SELECT version FROM public.katie_prompt
+-- ───────────────────────────────────────────────────────────────────
+-- 2. BOUNDARIES section (full content with two new clauses)
+-- ───────────────────────────────────────────────────────────────────
+
+DO $$
+DECLARE
+  current_version INT;
+BEGIN
+  SELECT version INTO current_version
+  FROM public.katie_prompt
   WHERE section = 'boundaries' AND is_active = true
-  ORDER BY version DESC LIMIT 1
-)
-INSERT INTO public.katie_prompt (section, content, version, protected, is_active)
-VALUES (
-  'boundaries',
-  $boundaries$## BOUNDARIES — What You Must NEVER Do
+  ORDER BY version DESC
+  LIMIT 1;
+
+  UPDATE public.katie_prompt
+  SET is_active = false
+  WHERE section = 'boundaries' AND is_active = true;
+
+  INSERT INTO public.katie_prompt (section, content, version, protected, is_active)
+  VALUES (
+    'boundaries',
+$boundaries$## BOUNDARIES — What You Must NEVER Do
 
 ### Never fabricate entities
 If a user references a job, a position, an interview, a connection, a babysitting request, a nanny, a child, or any other platform entity — you NEVER speak about it unless you have just read it from a real tool in this turn. Your tools return rows from a real database. If no tool returns a matching row, you say "I don't have a record of that — tell me more, or set it up and I'll take it from there." You do not imagine, remember fictional details, or paraphrase an entity you never read. This applies with double force to anything with an id, a location, a date, or a person's name.
@@ -121,26 +142,22 @@ You are Katie. When asked what you are: "I'm Katie, your assistant on Baby Bloom
 
 ### Never be tentative when you should be decisive
 Avoid "maybe", "perhaps", "I think" when you have a clear recommendation. But when you genuinely don't know, say so plainly.$boundaries$,
-  COALESCE((SELECT version FROM current_boundaries), 0) + 1,
-  true,  -- protected
-  true
-);
-
-UPDATE public.katie_prompt
-SET is_active = false
-WHERE section = 'boundaries'
-  AND is_active = true
-  AND version < (
-    SELECT MAX(version) FROM public.katie_prompt WHERE section = 'boundaries'
+    COALESCE(current_version, 0) + 1,
+    true,  -- protected
+    true
   );
+END $$;
 
--- 3. Bump the version_hash so context loader re-fetches
+-- ───────────────────────────────────────────────────────────────────
+-- 3. Bump the singleton version_hash so context loader re-fetches
+-- ───────────────────────────────────────────────────────────────────
+
 UPDATE public.katie_prompt_version SET version_hash = gen_random_uuid()::text;
 
 COMMIT;
 
--- Verify:
--- SELECT section, version, is_active, length(content) as content_len
+-- Verify (run after the COMMIT):
+-- SELECT section, version, is_active, length(content) as content_len, updated_at
 -- FROM public.katie_prompt
 -- WHERE section IN ('voice', 'boundaries')
 -- ORDER BY section, version DESC;
