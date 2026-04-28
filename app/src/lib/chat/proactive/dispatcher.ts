@@ -14,7 +14,7 @@
  *     prompt + the schedule's prompt_fragment. No tools. Single turn.
  *   - ai-full is deferred — requires reproducing the chat route
  *     agentic loop. Current cron just skips ai-full with
- *     last_status='skipped_ai_full'.
+ *     full agentic loop with tool calling (see fireAiFull).
  *
  * After firing:
  *   - Insert chat_messages (role='assistant', is_read=false,
@@ -26,8 +26,15 @@
 
 import { CronExpressionParser } from "cron-parser";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { generate } from "@/lib/ai/gemini-client";
+import { generate, type GeminiTool } from "@/lib/ai/gemini-client";
 import { selectGeminiModel, type BotRole } from "@/lib/ai/model-selector";
+import { collectTools, findToolHandler } from "@/lib/chat/modules/registry";
+import type { ChatTile } from "@/lib/chat/tiles";
+import { buildSystemPrompt } from "@/lib/chat/context";
+import { buildMemoryTable } from "@/lib/chat/memory/context-builder";
+import { updateDailyCost } from "@/lib/chat/cost-tracker";
+import { getUserChildren } from "@/lib/chat/bot";
+import { runScheduledAgenticLoop } from "./agentic-loop";
 
 export interface WakingHours {
   start: string; // HH:MM
@@ -113,7 +120,7 @@ interface ChildRow {
 
 export interface DispatchResult {
   schedule_id: string;
-  status: "fired" | "skipped_waking" | "skipped_ai_full" | "error";
+  status: "fired" | "skipped_waking" | "error";
   reason?: string;
   message_id?: string;
   next_run_at?: string;
@@ -211,6 +218,152 @@ async function fireAiMinimal(
     .single();
 
   return { content, messageId: (data as { id: string } | null)?.id ?? null };
+}
+
+async function fireAiFull(
+  row: ScheduleRow,
+  bot: BotRow,
+  child: ChildRow | null,
+  admin: SupabaseClient,
+): Promise<{
+  content: string;
+  messageId: string | null;
+  tile: ChatTile | null;
+}> {
+  const model = selectGeminiModel(bot.role);
+
+  // Resolve children + memory + system prompt up-front. The cron path
+  // doesn't have a currentSurface (no UI in flight) — pass null.
+  const children = await getUserChildren(bot.user_id);
+  const memoryTable = await buildMemoryTable({
+    botId: bot.id,
+    childIds: children.map((c) => c.id),
+    supabase: admin,
+  });
+  const systemPrompt = await buildSystemPrompt({
+    botId: bot.id,
+    userId: bot.user_id,
+    role: bot.role,
+    effectiveRole: bot.role,
+    userName: "there",
+    children,
+    currentSurface: null,
+    memoryTable,
+  });
+
+  const today = new Date().toLocaleDateString("en-AU", {
+    weekday: "long",
+    timeZone: row.timezone,
+  });
+  const initialPromptText = [
+    `Today is ${today}.`,
+    child
+      ? `You are running the scheduled trigger "${row.trigger_id}" for ${child.first_name}.`
+      : `You are running the scheduled trigger "${row.trigger_id}".`,
+    "Run the trigger now. Use read tools for context, write tiles when appropriate. End with a short text recap (under 4 sentences).",
+    "",
+    row.prompt_fragment ?? row.description,
+  ].join("\n\n");
+
+  const toolDefs = collectTools(bot.role);
+  const tools: GeminiTool[] | undefined =
+    toolDefs.length > 0
+      ? [
+          {
+            functionDeclarations: toolDefs.map((t) => ({
+              name: t.name,
+              description: t.description,
+              parameters: t.parameters,
+            })),
+          },
+        ]
+      : undefined;
+
+  const result = await runScheduledAgenticLoop({
+    model,
+    systemPrompt,
+    initialPromptText,
+    tools,
+    runTool: async (call) => {
+      // Defensive: Gemini's functionCall name is `string | undefined` at
+      // the SDK boundary. Guard before dispatch so a malformed response
+      // never crashes the loop.
+      if (!call.name) {
+        return { success: false, error: "tool call missing name" };
+      }
+      const handlerModule = findToolHandler(call.name, bot.role);
+      if (!handlerModule) {
+        return { success: false, error: `Unknown tool: ${call.name}` };
+      }
+      return handlerModule.execute(
+        call.name,
+        (call.args ?? {}) as Record<string, unknown>,
+        {
+          botId: bot.id,
+          userId: bot.user_id,
+          userRole: bot.role,
+          effectiveRole: bot.role,
+          children,
+          currentSurface: null,
+          supabase: admin,
+        },
+      );
+    },
+  });
+
+  // Hard fail on the silent-no-content path — empty text AND no tile is
+  // never a valid scheduled fire. Throwing propagates to runDueSchedules'
+  // catch which records last_status='error', so the schedule retries on
+  // its next tick instead of advancing past a wasted run.
+  if (!result.fullText.trim() && !result.lastTile) {
+    throw new Error(
+      `ai-full produced no content (no text, no tile) for trigger ${row.trigger_id}`,
+    );
+  }
+
+  // Empty text but tile present: persist a placeholder string so the
+  // chat_messages row is well-formed; the tile carries the meaning.
+  const content = result.fullText.trim() || "…";
+
+  await updateDailyCost(bot.id, model, result.usage, "proactive");
+
+  const { data, error: insertError } = await admin
+    .from("chat_messages")
+    .insert({
+      bloombot_id: bot.id,
+      role: "assistant",
+      content,
+      trigger_source: "proactive",
+      proactive_trigger_id: row.trigger_id,
+      proactive_schedule_id: row.id,
+      is_read: false,
+      tile: result.lastTile,
+      metadata: {
+        mode: "ai-full",
+        schedule_id: row.id,
+        description: row.description,
+        model,
+        input_tokens: result.usage.inputTokens,
+        output_tokens: result.usage.outputTokens,
+        cached_tokens: result.usage.cachedTokens,
+      },
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    // Surface the failure so runDueSchedules records last_status='error'
+    // instead of advancing the schedule as if it fired.
+    throw new Error(
+      `chat_messages insert failed for ai-full trigger ${row.trigger_id}: ${insertError.message}`,
+    );
+  }
+
+  return {
+    content,
+    messageId: (data as { id: string } | null)?.id ?? null,
+    tile: result.lastTile,
+  };
 }
 
 async function updateScheduleAfterFire(
@@ -355,14 +508,20 @@ export async function runDueSchedules(
           next_run_at: nextRunAt,
         });
       } else {
-        // ai-full deferred
-        await updateScheduleAfterFire(
+        // ai-full — full agentic loop with tool calling + memory + tiles.
+        const { messageId } = await fireAiFull(row, bot, child, admin);
+        const nextRunAt = await updateScheduleAfterFire(
           row,
-          "skipped_ai_full",
-          "ai-full mode not yet implemented in dispatcher",
+          "fired",
+          undefined,
           admin,
         );
-        results.push({ schedule_id: row.id, status: "skipped_ai_full" });
+        results.push({
+          schedule_id: row.id,
+          status: "fired",
+          message_id: messageId ?? undefined,
+          next_run_at: nextRunAt,
+        });
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
