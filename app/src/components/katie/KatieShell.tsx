@@ -38,6 +38,18 @@ export function KatieShell({ children }: { children: ReactNode }) {
   // (Phase 3 admin module enables inspection/edit of Katie herself via
   // Gemini Pro).
   if (!KATIE_UI_ENABLED || !user || !role) {
+    // WU 8.11 diagnostic — added to debug parent visibility issue.
+    // Remove once root cause is identified. Logs once per render cycle
+    // when KatieShell would otherwise bail without rendering the deck.
+    if (typeof window !== "undefined") {
+      console.warn("[KatieShell] not rendering deck", {
+        KATIE_UI_ENABLED,
+        hasUser: !!user,
+        userId: user?.id ?? null,
+        role,
+        path: window.location.pathname,
+      });
+    }
     return <>{children}</>;
   }
 
