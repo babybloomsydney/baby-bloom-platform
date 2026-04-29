@@ -11,7 +11,6 @@
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Briefcase,
   ArrowRight,
@@ -21,6 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import type { JobMatchChatTile } from "@/lib/chat/tiles";
+import { useTileNavigation } from "./use-tile-navigation";
 
 interface JobMatchLiveData {
   id: string;
@@ -118,8 +118,17 @@ export function JobMatchTile({ tile }: { tile: JobMatchChatTile }) {
 
   const d = state.data;
 
+  return <JobMatchBody d={d} />;
+}
+
+function JobMatchBody({ d }: { d: JobMatchLiveData }) {
+  const navProps = useTileNavigation("/nanny/jobs");
   return (
-    <article className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/60 to-white p-3 shadow-sm">
+    <article
+      {...navProps}
+      aria-label={`Open match: ${d.parent_first_name}'s family`}
+      className="cursor-pointer rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/60 to-white p-3 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+    >
       <header className="flex items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100">
           <Briefcase className="h-3.5 w-3.5 text-emerald-600" />
@@ -158,9 +167,9 @@ export function JobMatchTile({ tile }: { tile: JobMatchChatTile }) {
 
         {d.requirements.length > 0 ? (
           <div className="flex flex-wrap gap-1 pt-1">
-            {d.requirements.map((req, i) => (
+            {d.requirements.map((req) => (
               <span
-                key={i}
+                key={req}
                 className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600"
               >
                 {req}
@@ -175,13 +184,10 @@ export function JobMatchTile({ tile }: { tile: JobMatchChatTile }) {
           </p>
         ) : null}
 
-        <Link
-          href="/nanny/jobs"
-          className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-emerald-700 hover:text-emerald-900"
-        >
+        <p className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-emerald-700">
           View match details
           <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        </p>
       </div>
     </article>
   );

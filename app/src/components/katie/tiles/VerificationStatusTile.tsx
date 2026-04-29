@@ -24,17 +24,30 @@
  * surfaces on direct question.
  */
 
-import Link from "next/link";
 import { ShieldCheck, ArrowRight } from "lucide-react";
 import { VerificationProgress } from "@/components/verification/VerificationProgress";
 import type { VerificationStatusChatTile as TileData } from "@/lib/chat/tiles";
+import { useTileNavigation } from "./use-tile-navigation";
 
 export function VerificationStatusTile({ tile }: { tile: TileData }) {
   const { headline, steps, action } = tile.data;
   const isVerified = /you'?re (fully )?verified/i.test(headline);
 
+  // Whole-tile navigation when there's an action; otherwise the tile is
+  // a passive status card and clicking does nothing.
+  const navProps = useTileNavigation(action?.href ?? "");
+  const interactive = Boolean(action?.href);
+
   return (
-    <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <article
+      {...(interactive ? navProps : {})}
+      aria-label={interactive ? `${headline} — ${action?.label}` : headline}
+      className={`rounded-xl border border-slate-200 bg-white p-3 shadow-sm ${
+        interactive
+          ? "cursor-pointer transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          : ""
+      }`}
+    >
       <header className="flex items-center gap-2">
         <div
           className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
@@ -66,13 +79,10 @@ export function VerificationStatusTile({ tile }: { tile: TileData }) {
         ) : null}
 
         {action ? (
-          <Link
-            href={action.href}
-            className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-violet-700 hover:text-violet-900"
-          >
+          <p className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-violet-700">
             {action.label}
             <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
+          </p>
         ) : null}
       </div>
     </article>

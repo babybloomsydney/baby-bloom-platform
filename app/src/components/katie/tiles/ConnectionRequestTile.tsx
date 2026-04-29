@@ -16,7 +16,6 @@
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   MessageSquare,
   ArrowRight,
@@ -27,6 +26,7 @@ import {
   MapPin,
 } from "lucide-react";
 import type { ConnectionRequestChatTile } from "@/lib/chat/tiles";
+import { useTileNavigation, stopTileNav } from "./use-tile-navigation";
 
 interface ConnectionLiveData {
   id: string;
@@ -38,7 +38,6 @@ interface ConnectionLiveData {
   timeLeft: string | null;
   confirmedTime: string | null;
   nannyPhone: string | null;
-  positionSummary: unknown;
 }
 
 interface ApiError {
@@ -132,8 +131,22 @@ export function ConnectionRequestTile({
   const d = state.data;
   const actionHref = d.role === "nanny" ? "/nanny/positions" : "/parent/inbox";
 
+  return <ConnectionTileBody d={d} actionHref={actionHref} />;
+}
+
+interface ConnectionLiveDataProp {
+  d: ConnectionLiveData;
+  actionHref: string;
+}
+
+function ConnectionTileBody({ d, actionHref }: ConnectionLiveDataProp) {
+  const navProps = useTileNavigation(actionHref);
   return (
-    <article className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/60 to-white p-3 shadow-sm">
+    <article
+      {...navProps}
+      aria-label={`Open ${d.headline}`}
+      className="cursor-pointer rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/60 to-white p-3 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+    >
       <header className="flex items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
           <MessageSquare className="h-3.5 w-3.5 text-violet-600" />
@@ -171,6 +184,7 @@ export function ConnectionRequestTile({
             <Phone className="h-3 w-3" />
             <a
               href={`tel:${d.nannyPhone}`}
+              onClick={stopTileNav}
               className="text-violet-700 hover:text-violet-900"
             >
               {d.nannyPhone}
@@ -188,13 +202,10 @@ export function ConnectionRequestTile({
           </p>
         ) : null}
 
-        <Link
-          href={actionHref}
-          className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-violet-700 hover:text-violet-900"
-        >
+        <p className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-violet-700">
           {d.nextStep ? "Open to respond" : "Open connection"}
           <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        </p>
       </div>
     </article>
   );

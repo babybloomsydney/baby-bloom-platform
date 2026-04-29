@@ -16,7 +16,6 @@
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Baby,
   ArrowRight,
@@ -26,6 +25,7 @@ import {
   MapPin,
 } from "lucide-react";
 import type { BsrJobChatTile } from "@/lib/chat/tiles";
+import { useTileNavigation } from "./use-tile-navigation";
 
 interface BsrLiveData {
   id: string;
@@ -128,8 +128,23 @@ export function BsrJobTile({ tile }: { tile: BsrJobChatTile }) {
   const actionHref =
     d.role === "nanny" ? "/nanny/babysitting" : "/parent/babysitting";
 
+  return <BsrTileBody d={d} actionHref={actionHref} />;
+}
+
+function BsrTileBody({
+  d,
+  actionHref,
+}: {
+  d: BsrLiveData;
+  actionHref: string;
+}) {
+  const navProps = useTileNavigation(actionHref);
   return (
-    <article className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50/60 to-white p-3 shadow-sm">
+    <article
+      {...navProps}
+      aria-label={`Open ${d.headline}`}
+      className="cursor-pointer rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50/60 to-white p-3 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+    >
       <header className="flex items-center gap-2">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100">
           <Baby className="h-3.5 w-3.5 text-sky-600" />
@@ -150,9 +165,9 @@ export function BsrJobTile({ tile }: { tile: BsrJobChatTile }) {
 
         {d.slots.length > 0 ? (
           <ul className="space-y-0.5">
-            {d.slots.map((slot, i) => (
+            {d.slots.map((slot) => (
               <li
-                key={i}
+                key={slot}
                 className="flex items-center gap-1.5 text-xs text-slate-600"
               >
                 <Clock className="h-3 w-3" />
@@ -187,13 +202,10 @@ export function BsrJobTile({ tile }: { tile: BsrJobChatTile }) {
           </p>
         ) : null}
 
-        <Link
-          href={actionHref}
-          className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-sky-700 hover:text-sky-900"
-        >
+        <p className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-sky-700">
           Open babysitting page
           <ArrowRight className="h-3.5 w-3.5" />
-        </Link>
+        </p>
       </div>
     </article>
   );
