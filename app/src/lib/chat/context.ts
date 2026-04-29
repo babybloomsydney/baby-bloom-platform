@@ -18,6 +18,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import { getActiveModules } from "@/lib/chat/modules/registry";
+import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,14 @@ export interface BotContext {
   currentSurface?: CurrentSurface | null;
   /** Pre-rendered memory table (from memory/context-builder — Phase 2). Null in Phase 1. */
   memoryTable?: string | null;
+  /**
+   * ISO timestamp of the most recent prior chat_messages row (any role)
+   * for this bot, before the current turn. Used to render a "user
+   * returning after N hours/days" note in the runtime header so Gemini
+   * re-fetches state-dependent info instead of quoting from history.
+   * Null when this is the user's first chat ever.
+   */
+  lastInteractionAt?: string | null;
 }
 
 // ── Worker-local cache ───────────────────────────────────────────────────────
@@ -272,6 +281,32 @@ function renderRuntimeHeader(ctx: BotContext): string {
       timeZone: "Australia/Sydney",
     })}`,
   );
+
+  // Conversation-continuity note. Tiered: skip entirely on tight
+  // continuous chat (<15 min gap), soft warning at 15min-4h, strong
+  // warning at >=4h. The history turns are timestamp-prefixed on user
+  // messages (see route.ts), but this header line lifts the most
+  // actionable piece so Gemini can't miss it.
+  if (ctx.lastInteractionAt) {
+    const tier = classifyGap(ctx.lastInteractionAt, now);
+    if (tier !== "fresh") {
+      const relative = formatRelativeTime(ctx.lastInteractionAt, now);
+      lines.push("");
+      lines.push("## Conversation continuity");
+      lines.push(`Last interaction: ${relative}.`);
+      if (tier === "stale") {
+        lines.push(
+          "The user is returning after a meaningful gap. Anything you said in past turns about state-dependent entities (connections, BSRs, positions, placements, verifications, jobs) MAY BE STALE — those move forward in real time. For any such question, call the relevant read tool fresh; do not quote the state you reported in past turns.",
+        );
+      } else {
+        // tier === "warming"
+        lines.push(
+          "The user may have stepped away briefly. For any state-dependent question (connection stage, BSR status, etc.) prefer a fresh tool call over re-quoting prior turns — state may have moved on.",
+        );
+      }
+    }
+  }
+
   lines.push("");
   lines.push("## Who You Are Speaking With");
   lines.push(`Name: ${ctx.userName}`);

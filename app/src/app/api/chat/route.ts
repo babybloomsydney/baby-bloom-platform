@@ -56,6 +56,7 @@ import {
   type BotRecord,
 } from "@/lib/chat/bot";
 import { pickFallbackText, safeToolResultForClient } from "./fallback";
+import { formatRelativeTime } from "@/lib/chat/relative-time";
 
 // Use Node runtime for streaming + access to private Supabase key
 export const runtime = "nodejs";
@@ -198,27 +199,19 @@ export async function POST(req: NextRequest) {
     supabase: admin,
   });
 
-  // 9. Build system prompt
-  const systemPrompt = await buildSystemPrompt({
-    botId: bot.id,
-    userId: user.id,
-    role: bot.role,
-    effectiveRole,
-    userName:
-      (user.user_metadata as { first_name?: string })?.first_name ?? "there",
-    children,
-    currentSurface: body.currentSurface ?? null,
-    memoryTable,
-  });
-
   // 9. Load recent history (last 20 user+assistant messages).
-  // Select id so we can exclude the just-saved user message by id rather
-  // than content — a content-based filter silently drops every prior
-  // message with the same text, corrupting context when users send
-  // short repeated phrases like "yes" or "ok" across turns.
+  // Done BEFORE buildSystemPrompt so we can pass the most-recent
+  // prior message timestamp to the prompt builder for the
+  // conversation-continuity / freshness-warning header.
+  // - Select `id` so we can exclude the just-saved user message by id
+  //   (content-based dedup silently drops repeated phrases like "yes").
+  // - Select `created_at` so we can prefix each turn with a relative
+  //   timestamp ("yesterday", "3 days ago"). Without that, Gemini has
+  //   no way to distinguish state from yesterday vs state from now,
+  //   and silently quotes stale info in the current reply.
   const { data: history } = await admin
     .from("chat_messages")
-    .select("id, role, content, metadata")
+    .select("id, role, content, metadata, created_at")
     .eq("bloombot_id", bot.id)
     .in("role", ["user", "assistant"])
     .order("created_at", { ascending: false })
@@ -231,20 +224,60 @@ export async function POST(req: NextRequest) {
       role: string;
       content: string;
       metadata: unknown;
+      created_at: string;
     }>
   )
     .filter((r) => r.id !== justSavedId)
     .reverse();
 
+  // Most-recent prior message timestamp (post-reverse order = the
+  // chronologically last entry). Used for the gap-aware header in the
+  // system prompt.
+  const lastInteractionAt =
+    historyRows.length > 0
+      ? historyRows[historyRows.length - 1].created_at
+      : null;
+
+  // 10. Build system prompt
+  const systemPrompt = await buildSystemPrompt({
+    botId: bot.id,
+    userId: user.id,
+    role: bot.role,
+    effectiveRole,
+    userName:
+      (user.user_metadata as { first_name?: string })?.first_name ?? "there",
+    children,
+    currentSurface: body.currentSurface ?? null,
+    memoryTable,
+    lastInteractionAt,
+  });
+
+  // Prefix USER turns with `[N min ago] / [yesterday] / [3 days ago]`
+  // so Gemini can reason about how long ago the user said what they
+  // said. Assistant turns are NOT timestamped — Gemini reading its
+  // OWN prior output as timestamped truth could create false
+  // confidence ("I confirmed state X 3 days ago" vs "state X moved
+  // forward yesterday"). The user-turn timestamps + the gap-aware
+  // continuity header in the system prompt are the freshness signal;
+  // assistant turns stay clean so Gemini doesn't mistake them for
+  // confirmed facts at those timestamps.
+  const renderTime = new Date();
   const conversationTurns: GeminiTurn[] = [
     ...historyRows.map((r) => ({
       role: r.role === "assistant" ? ("model" as const) : ("user" as const),
-      parts: [{ text: r.content }],
+      parts: [
+        {
+          text:
+            r.role === "user"
+              ? `[${formatRelativeTime(r.created_at, renderTime)}] ${r.content}`
+              : r.content,
+        },
+      ],
     })),
-    { role: "user", parts: [{ text: body.message }] },
+    { role: "user", parts: [{ text: `[just now] ${body.message}` }] },
   ];
 
-  // 10. Tools
+  // 11. Tools
   const toolDefs = collectTools(effectiveRole);
   const tools: GeminiTool[] | undefined =
     toolDefs.length > 0
@@ -259,7 +292,7 @@ export async function POST(req: NextRequest) {
         ]
       : undefined;
 
-  // 11. Stream response — agentic loop, streams the FINAL text response.
+  // 12. Stream response — agentic loop, streams the FINAL text response.
   // 8 rounds rather than 5: exploratory chains where the user asks
   // about an entity Katie isn't sure about (e.g. "tell me about Obie"
   // when Obie isn't connected to the account) can take 6-7 calls to
