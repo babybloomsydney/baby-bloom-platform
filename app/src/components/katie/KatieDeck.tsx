@@ -13,6 +13,7 @@ import { KatieHeader } from "./KatieHeader";
 import { KatieFooter } from "./KatieFooter";
 import { KatieInput } from "./KatieInput";
 import { KatieQuickActions } from "./KatieQuickActions";
+import { ImageAttachmentProvider } from "./image-attachment-context";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantMessage } from "./messages/AssistantMessage";
 import { TypingIndicator } from "./messages/TypingIndicator";
@@ -111,36 +112,38 @@ export function KatieDeck() {
   );
 
   return (
-    <div className="flex h-full flex-col bg-white">
-      <KatieHeader />
+    <ImageAttachmentProvider>
+      <div className="flex h-full flex-col bg-white">
+        <KatieHeader />
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
-        <div className="space-y-4">
-          {!isHydrating && messages.length === 0 && !isStreaming ? (
-            <EmptyState role={role ?? ""} onChipSelect={handleSend} />
-          ) : null}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
+          <div className="space-y-4">
+            {!isHydrating && messages.length === 0 && !isStreaming ? (
+              <EmptyState role={role ?? ""} onChipSelect={handleSend} />
+            ) : null}
 
-          {messages.map((m) => (
-            <MessageRow key={m.id} message={m} />
-          ))}
+            {messages.map((m) => (
+              <MessageRow key={m.id} message={m} />
+            ))}
 
-          {isStreaming && (streamingText.length > 0 || streamingTile) ? (
-            <AssistantMessage content={streamingText} tile={streamingTile} />
-          ) : null}
-          {isStreaming && streamingText.length === 0 && !streamingTile ? (
-            <TypingIndicator />
-          ) : null}
+            {isStreaming && (streamingText.length > 0 || streamingTile) ? (
+              <AssistantMessage content={streamingText} tile={streamingTile} />
+            ) : null}
+            {isStreaming && streamingText.length === 0 && !streamingTile ? (
+              <TypingIndicator />
+            ) : null}
 
-          {loadError ? (
-            <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
-              {loadError}
-            </div>
-          ) : null}
+            {loadError ? (
+              <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
+                {loadError}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <KatieInput disabled={isStreaming} onSend={handleSend} />
-      <KatieFooter />
-    </div>
+        <KatieInput disabled={isStreaming} onSend={handleSend} />
+        <KatieFooter />
+      </div>
+    </ImageAttachmentProvider>
   );
 }

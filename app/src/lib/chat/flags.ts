@@ -51,6 +51,23 @@ export const KATIE_DAILY_LIMIT_USD = parseNumber(
 );
 
 /**
+ * Image-attach marker gate. When true, the chat client embeds
+ * `[Image attached: <url>]` into user messages whenever the user
+ * has uploaded an image via the action menu. Off by default until
+ * the system prompt teaches Katie about the marker (WU 8.22e) — if
+ * it ships before then, Katie may treat the bracketed string as
+ * unfamiliar text and produce confusing replies.
+ *
+ * Server-side: reads KATIE_IMAGE_MARKER_ENABLED.
+ * Client-side: reads NEXT_PUBLIC_KATIE_IMAGE_MARKER_ENABLED.
+ */
+export const KATIE_IMAGE_MARKER_ENABLED = parseBool(
+  process.env.KATIE_IMAGE_MARKER_ENABLED ??
+    process.env.NEXT_PUBLIC_KATIE_IMAGE_MARKER_ENABLED,
+  false,
+);
+
+/**
  * Summary of flags — useful for admin debugging and health endpoints.
  * Never exposed to user-facing APIs.
  */
@@ -59,5 +76,6 @@ export function getKatieFlags() {
     KATIE_ENABLED,
     PROACTIVE_ENABLED,
     KATIE_DAILY_LIMIT_USD,
+    KATIE_IMAGE_MARKER_ENABLED,
   };
 }

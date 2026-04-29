@@ -7,10 +7,22 @@
  * - Enter sends; Shift+Enter newline
  * - Disabled during streaming
  * - Cmd/Ctrl+K focuses from anywhere (global listener)
+ * - Plus button (`KatieActionMenu`) opens a multi-action menu —
+ *   image attach + manual log shortcuts. Both surfaces flow through
+ *   the draft-tile pattern.
+ *
+ * Image-attach handoff: when the action menu sets a pending
+ * attachment, we render a preview chip above the textarea and embed
+ * a `[Image attached: <url>]` marker into the user's next message
+ * so Katie has the URL as text context. The attachment clears on
+ * send so it doesn't ride along with subsequent messages.
  */
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Plus, ArrowUp } from "lucide-react";
+import { ArrowUp, Image as ImageIcon, X } from "lucide-react";
+import { KatieActionMenu } from "./KatieActionMenu";
+import { useImageAttachment } from "./image-attachment-context";
+import { KATIE_IMAGE_MARKER_ENABLED } from "@/lib/chat/flags";
 
 export interface KatieInputProps {
   disabled?: boolean;
@@ -25,6 +37,7 @@ export function KatieInput({
 }: KatieInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const { attachment, clearAttachment, error, setError } = useImageAttachment();
 
   // Cmd/Ctrl+K global focus
   useEffect(() => {
@@ -46,13 +59,26 @@ export function KatieInput({
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   }, [value]);
 
-  const canSend = value.trim().length > 0 && !disabled;
+  const canSend = (value.trim().length > 0 || attachment != null) && !disabled;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!canSend) return;
-    const msg = value.trim();
+    const trimmed = value.trim();
+    // The bracketed marker is only meaningful once the system prompt
+    // teaches Katie to recognise it (WU 8.22e). Until that ships, we
+    // gate the append so the marker doesn't reach the model and
+    // confuse the response. The image stays in the attachment chip
+    // so the user knows it was uploaded; it just doesn't enter the
+    // chat history yet.
+    const marker =
+      attachment && KATIE_IMAGE_MARKER_ENABLED
+        ? `[Image attached: ${attachment.url}]`
+        : "";
+    const msg = [trimmed, marker].filter(Boolean).join("\n\n");
     setValue("");
+    clearAttachment();
+    setError(null);
     await onSend(msg);
   }
 
@@ -66,43 +92,75 @@ export function KatieInput({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex items-end gap-1.5 border-t border-slate-200 bg-white px-3 py-2"
+      className="flex flex-col gap-1.5 border-t border-slate-200 bg-white px-3 py-2"
     >
-      <button
-        type="button"
-        disabled
-        aria-label="Attach (coming soon)"
-        className="rounded-md p-1.5 text-slate-300"
-        tabIndex={-1}
-      >
-        <Plus className="h-4 w-4" />
-      </button>
+      {attachment && (
+        <div className="flex items-start gap-2 rounded-md bg-slate-50 p-1.5">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={attachment.previewUrl}
+            alt="Attached image preview"
+            className="h-12 w-12 rounded object-cover"
+          />
+          <div className="flex-1 text-xs text-slate-600">
+            <div className="flex items-center gap-1 font-medium">
+              <ImageIcon className="h-3 w-3" aria-hidden="true" />
+              Image attached
+            </div>
+            <p className="mt-0.5 text-slate-500">
+              Send a message and Katie will figure out what to do with it.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={clearAttachment}
+            aria-label="Remove attached image"
+            // p-1.5 + 14px icon = ≈26px target — clears WCAG 2.5.8 24×24.
+            className="rounded p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
-      <textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={disabled}
-        placeholder={disabled ? "Katie is writing…" : placeholder}
-        rows={1}
-        aria-label="Message Katie"
-        className="flex-1 resize-none rounded-md border-0 bg-slate-100 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
-      />
+      {error && (
+        <div
+          role="alert"
+          className="rounded-md bg-rose-50 px-2 py-1 text-xs text-rose-700"
+        >
+          {error}
+        </div>
+      )}
 
-      <button
-        type="submit"
-        disabled={!canSend}
-        aria-label="Send"
-        className={
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors " +
-          (canSend
-            ? "bg-violet-600 text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
-            : "bg-slate-200 text-slate-400")
-        }
-      >
-        <ArrowUp className="h-4 w-4" />
-      </button>
+      <div className="flex items-end gap-1.5">
+        <KatieActionMenu disabled={disabled} />
+
+        <textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          disabled={disabled}
+          placeholder={disabled ? "Katie is writing…" : placeholder}
+          rows={1}
+          aria-label="Message Katie"
+          className="flex-1 resize-none rounded-md border-0 bg-slate-100 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+        />
+
+        <button
+          type="submit"
+          disabled={!canSend}
+          aria-label="Send"
+          className={
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors " +
+            (canSend
+              ? "bg-violet-600 text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+              : "bg-slate-200 text-slate-400")
+          }
+        >
+          <ArrowUp className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
     </form>
   );
 }
