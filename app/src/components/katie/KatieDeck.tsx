@@ -23,7 +23,7 @@ import type { KatieMessage } from "./messages/types";
 import { useKatie } from "@/contexts/KatieContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChatStream } from "./use-chat-stream";
-import { isChatTile } from "@/lib/chat/tiles";
+import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
 
 interface EmptyStateProps {
   role: string;
@@ -113,9 +113,10 @@ export function KatieDeck() {
     [send, currentSurface, append],
   );
 
-  // Draft action handlers — stubbed in 8.22b. The real Accept and
-  // Amend round-trips wire up in 8.22c; Dismiss is fully wired here
-  // because removing a chat message client-side is a pure UI op.
+  // Draft action handlers. Accept POSTs to the apply endpoint and
+  // replaces the draft tile on the host chat message with the
+  // persisted one. Dismiss is fully client-side. Amend is stubbed
+  // until 8.22e teaches Katie the conversational amendment pattern.
   const handleDraftAccept = useCallback(
     async (
       draftId: string,
@@ -123,17 +124,48 @@ export function KatieDeck() {
       args: Record<string, unknown>,
       imageUrl: string | null,
     ) => {
-      // 8.22c: POST to /api/chat/drafts/accept and update the chat
-      // message in place. For now: log + leave the draft visible
-      // so the wiring gap is obvious during dev.
-      console.warn("[KatieDeck] Draft Accept stubbed — 8.22c wires this", {
-        draftId,
-        toolName,
-        args,
-        imageUrl,
-      });
+      try {
+        const res = await fetch("/api/chat/drafts/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // draftId travels server-side so a future dedup layer can
+          // reject double-accepts (button mash, network retry). The
+          // server doesn't enforce idempotency yet — wired in 8.22d
+          // when more tools join — but the contract is in place now.
+          body: JSON.stringify({ draftId, toolName, args, imageUrl }),
+        });
+        const body = (await res.json()) as {
+          tile?: ChatTile;
+          error?: string;
+        };
+        if (!res.ok || !body.tile) {
+          // Surface the server message at the top of the deck so
+          // the user knows the Accept didn't go through. The draft
+          // tile stays visible so they can retry.
+          setLoadError(body.error ?? "Couldn't accept that draft.");
+          return;
+        }
+        const persistedTile = body.tile;
+        // Replace the draft tile on the host chat message in place.
+        // Keeping the same message id preserves scroll position and
+        // any surrounding text Katie wrote alongside the draft.
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (!isChatTile(m.tile) || m.tile.kind !== "draft") return m;
+            if (m.tile.data.draftId !== draftId) return m;
+            return { ...m, tile: persistedTile };
+          }),
+        );
+      } catch (err) {
+        setLoadError(
+          err instanceof Error ? err.message : "Couldn't accept that draft.",
+        );
+      }
     },
-    [],
+    // setMessages and setLoadError are stable React setters but
+    // listing them explicitly keeps the lint rule happy + makes
+    // the dependency contract obvious for future maintainers.
+    [setLoadError, setMessages],
   );
 
   const handleDraftAmend = useCallback(

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { diaryModule } from "./diary";
+import { diaryModule, applyLogFood, applyLogSleep } from "./diary";
 import type { ChildSummary, ModuleContext } from "./types";
 
 const oliver: ChildSummary = {
@@ -42,10 +42,17 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
   return { ctx, insertMock };
 }
 
-describe("diary module — log_food", () => {
+// ── Propose path (LLM-callable via diaryModule.execute) ───────────────────
+//
+// WU 8.22c: log_food / log_sleep no longer insert directly. They
+// validate args and return a `kind: "draft"` tile. The actual
+// bapp_logs insert happens later via applyLogFood / applyLogSleep
+// when the user clicks Accept on the draft tile.
+
+describe("diary module — log_food (propose)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("logs a breakfast with items", async () => {
+  it("returns a draft tile and does NOT insert", async () => {
     const { ctx, insertMock } = makeCtx();
     const r = await diaryModule.execute(
       "log_food",
@@ -53,18 +60,20 @@ describe("diary module — log_food", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.feedEntry).toBe(true);
-    expect(insertMock).toHaveBeenCalled();
-    // Tile emission — wraps the existing DiaryTile / FoodTile. Must
-    // use the canonical FoodData shape so the SAME bapp_logs row also
-    // renders correctly in the main feed at /nanny/development/<child>.
-    expect(r.tile?.kind).toBe("diary");
-    if (r.tile?.kind === "diary") {
-      const d = r.tile.data.item.data as Record<string, unknown>;
-      expect(d.subtype).toBe("meal");
-      expect(d.title).toBe("Food Log");
-      expect(d.details).toContain("banana");
-      expect(d.details).toContain("breakfast");
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("log_food");
+      expect(typeof r.tile.data.draftId).toBe("string");
+      const preview = r.tile.data.preview;
+      expect(preview.kind).toBe("diary");
+      if (preview.kind === "diary") {
+        const previewData = preview.data.item.data as Record<string, unknown>;
+        expect(previewData.subtype).toBe("meal");
+        expect(previewData.title).toBe("Food Log");
+        expect(previewData.details).toContain("banana");
+        expect(previewData.details).toContain("breakfast");
+      }
     }
   });
 
@@ -90,7 +99,7 @@ describe("diary module — log_food", () => {
     expect(r.error).toMatch(/item/i);
   });
 
-  it("accepts optional notes and time", async () => {
+  it("accepts optional notes and time without inserting", async () => {
     const { ctx, insertMock } = makeCtx();
     const r = await diaryModule.execute(
       "log_food",
@@ -103,14 +112,14 @@ describe("diary module — log_food", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(insertMock).toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
 
-describe("diary module — log_sleep", () => {
+describe("diary module — log_sleep (propose)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("logs a nap with duration", async () => {
+  it("returns a draft tile and does NOT insert", async () => {
     const { ctx, insertMock } = makeCtx();
     const r = await diaryModule.execute(
       "log_sleep",
@@ -118,16 +127,20 @@ describe("diary module — log_sleep", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.feedEntry).toBe(true);
-    expect(insertMock).toHaveBeenCalled();
-    expect(r.tile?.kind).toBe("diary");
-    if (r.tile?.kind === "diary") {
-      const d = r.tile.data.item.data as Record<string, unknown>;
-      expect(d.subtype).toBe("sleep");
-      expect(d.title).toBe("Sleep Log");
-      // duration_minutes=90 → humanDuration → "1h 30m"
-      expect(d.duration).toBe("1h 30m");
-      expect(String(d.notes)).toContain("cot");
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("log_sleep");
+      const preview = r.tile.data.preview;
+      if (preview.kind === "diary") {
+        const previewData = preview.data.item.data as Record<string, unknown>;
+        expect(previewData.subtype).toBe("sleep");
+        expect(previewData.title).toBe("Sleep Log");
+        expect(previewData.duration).toBe("1h 30m");
+        expect(String(previewData.notes)).toContain("cot");
+      } else {
+        throw new Error(`expected diary preview, got ${preview.kind}`);
+      }
     }
   });
 
@@ -171,5 +184,131 @@ describe("diary module — common", () => {
     const r = await diaryModule.execute("log_nap", {}, ctx);
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/Unknown tool/);
+  });
+});
+
+// ── Apply path — called by /api/chat/drafts/accept ────────────────────────
+
+describe("diary apply — log_food", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts and returns a persisted diary tile", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogFood(
+      { meal_type: "breakfast", items: ["banana", "yogurt"] },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    if (r.ok) {
+      expect(r.tile.kind).toBe("diary");
+      expect(r.tile.data.item.id).toBe("log-1");
+      expect(r.data.log_id).toBe("log-1");
+    }
+  });
+
+  it("merges image_url into the persisted shape when provided", async () => {
+    const { ctx } = makeCtx();
+    const r = await applyLogFood(
+      {
+        meal_type: "breakfast",
+        items: ["banana"],
+        image_url: "https://example.com/banana.jpg",
+      },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.image_url).toBe("https://example.com/banana.jpg");
+    }
+  });
+
+  it("returns an error result if the insert fails", async () => {
+    const { ctx, insertMock } = makeCtx();
+    insertMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: "boom" },
+    });
+    const r = await applyLogFood(
+      { meal_type: "lunch", items: ["rice"] },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/Failed to log food/);
+    }
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogFood(
+      { meal_type: "brunch", items: ["x"] },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("diary apply — log_sleep", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts and returns a persisted diary tile", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogSleep(
+      { duration_minutes: 60 },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    if (r.ok) {
+      expect(r.tile.kind).toBe("diary");
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.subtype).toBe("sleep");
+      expect(d.duration).toBe("1h");
+    }
+  });
+
+  it("merges image_url into the persisted shape when provided", async () => {
+    const { ctx } = makeCtx();
+    const r = await applyLogSleep(
+      {
+        duration_minutes: 45,
+        image_url: "https://example.com/cot.jpg",
+      },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.image_url).toBe("https://example.com/cot.jpg");
+    }
+  });
+
+  it("returns an error result if the insert fails", async () => {
+    const { ctx, insertMock } = makeCtx();
+    insertMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: "boom" },
+    });
+    const r = await applyLogSleep(
+      { duration_minutes: 30 },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/Failed to log sleep/);
+    }
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogSleep(
+      { duration_minutes: 99999 }, // > MAX_SLEEP_MINUTES
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });

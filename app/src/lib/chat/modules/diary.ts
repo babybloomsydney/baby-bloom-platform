@@ -4,9 +4,27 @@
  * Writes to bapp_logs with type='diary', context='adhoc'. Shape of
  * `data` JSONB is tool-specific but self-describing so the existing
  * feed/timeline UIs render them without any changes.
+ *
+ * Two-turn pattern (WU 8.22c):
+ *   1. The LLM-callable tool (`log_food`, `log_sleep`) is the
+ *      *propose* path — it validates the args, builds the would-be
+ *      bapp_log shape, and returns a `kind: "draft"` chat tile.
+ *      Nothing is inserted at this stage.
+ *   2. The user clicks Accept on the draft tile. The frontend POSTs
+ *      to /api/chat/drafts/accept, which calls `applyLogFood` /
+ *      `applyLogSleep` (exported below). Those functions actually
+ *      INSERT into bapp_logs and return the persisted tile, which
+ *      replaces the draft tile on the host chat message.
+ *
+ * `prepareFood` / `prepareSleep` are the shared validation +
+ * shape-mapping helpers. Both propose and apply call them. If a
+ * future amend cycle re-emits propose with revised args, the same
+ * preparation runs again with the new inputs.
  */
 
-import type { BloomBotModule, ToolResult } from "./types";
+import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import type { DiaryChatTile } from "@/lib/chat/tiles";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
@@ -23,8 +41,13 @@ interface BappLogInsert {
   data: Record<string, unknown>;
 }
 
+interface InsertCtx {
+  userId: string;
+  supabase: SupabaseClient;
+}
+
 async function insertLog(
-  ctx: Parameters<BloomBotModule["execute"]>[2],
+  ctx: InsertCtx,
   row: BappLogInsert,
 ): Promise<{ id: string } | null> {
   const { data, error } = await ctx.supabase
@@ -44,11 +67,6 @@ async function insertLog(
 //            title: "Sleep Log", image_url|null }
 // (See src/types/bapp.ts FoodData + SleepData, and DiarySheet's submit
 // payload which is the reference writer.)
-// Previous implementation wrote a custom shape (entry_type / meal_type /
-// items[] / duration_minutes) that DiaryTile didn't understand, so
-// Katie-written diary rows silently failed to render in the main feed.
-// This rewrite aligns on the canonical shape so the same row renders
-// identically in both surfaces.
 
 function mealTypeToFoodSubtype(mealType: string): "meal" | "snack" {
   return mealType === "snack" ? "snack" : "meal";
@@ -62,12 +80,27 @@ function humanDuration(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
-async function logFood(
+interface PreparedFood {
+  child: ChildSummary;
+  mealType: MealType;
+  items: string[];
+  foodData: Record<string, unknown>;
+}
+
+function prepareFood(
   args: Record<string, unknown>,
-  ctx: Parameters<BloomBotModule["execute"]>[2],
-): Promise<ToolResult> {
-  const r = resolveChild(args.child_name, ctx.children);
-  if (r.error) return r.error;
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedFood }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
   const child = r.child;
 
   const mealType = args.meal_type;
@@ -76,15 +109,19 @@ async function logFood(
     !MEAL_TYPES.includes(mealType as MealType)
   ) {
     return {
-      success: false,
+      ok: false,
       error: `Invalid meal_type — expected one of ${MEAL_TYPES.join(", ")}.`,
     };
   }
 
-  const items = Array.isArray(args.items) ? args.items.filter(Boolean) : [];
+  const items: string[] = Array.isArray(args.items)
+    ? args.items.filter(
+        (v): v is string => typeof v === "string" && v.trim().length > 0,
+      )
+    : [];
   if (items.length === 0) {
     return {
-      success: false,
+      ok: false,
       error: "log_food needs at least one item (e.g. ['banana','yogurt']).",
     };
   }
@@ -102,9 +139,6 @@ async function logFood(
       ? args.image_url.trim()
       : null;
 
-  // Meal intent (breakfast/lunch/dinner/snack) is part of the details
-  // line so it's not lost when the canonical shape only carries
-  // meal|snack|bottle in `subtype`.
   const detailsLine = [`${mealType}: ${items.join(", ")}`, rawNotes]
     .filter(Boolean)
     .join(" — ");
@@ -118,55 +152,37 @@ async function logFood(
     image_url: imageUrl,
   };
 
-  const inserted = await insertLog(ctx, {
-    child_client_id: child.id,
-    author_id: ctx.userId,
-    type: "diary",
-    status: "completed",
-    context: "adhoc",
-    data: foodData,
-  });
-  if (!inserted) {
-    return { success: false, error: "Failed to log food entry." };
-  }
-
-  const nowIso = new Date().toISOString();
   return {
-    success: true,
-    feedEntry: true,
-    data: {
-      log_id: inserted.id,
-      child_name: child.firstName,
-      meal_type: mealType,
+    ok: true,
+    prepared: {
+      child,
+      mealType: mealType as MealType,
       items,
-    },
-    tile: {
-      kind: "diary",
-      data: {
-        item: {
-          id: inserted.id,
-          child_client_id: child.id,
-          author_id: ctx.userId,
-          author_name: "Katie",
-          type: "diary",
-          status: "completed",
-          context: "adhoc",
-          parent_log_id: null,
-          data: foodData,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-      },
+      foodData,
     },
   };
 }
 
-async function logSleep(
+interface PreparedSleep {
+  child: ChildSummary;
+  durationMinutes: number;
+  sleepData: Record<string, unknown>;
+}
+
+function prepareSleep(
   args: Record<string, unknown>,
-  ctx: Parameters<BloomBotModule["execute"]>[2],
-): Promise<ToolResult> {
-  const r = resolveChild(args.child_name, ctx.children);
-  if (r.error) return r.error;
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedSleep }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
   const child = r.child;
 
   const duration =
@@ -179,7 +195,7 @@ async function logSleep(
     duration > MAX_SLEEP_MINUTES
   ) {
     return {
-      success: false,
+      ok: false,
       error: `Invalid duration_minutes — must be a number between 1 and ${MAX_SLEEP_MINUTES}.`,
     };
   }
@@ -205,8 +221,6 @@ async function logSleep(
       ? args.image_url.trim()
       : null;
 
-  // Location + user notes combine into the canonical `notes` slot — no
-  // separate field in SleepData.
   const combinedNotes = [notesText, location ? `at ${location}` : null]
     .filter(Boolean)
     .join(" · ");
@@ -221,59 +235,210 @@ async function logSleep(
     image_url: imageUrl,
   };
 
-  const inserted = await insertLog(ctx, {
-    child_client_id: child.id,
-    author_id: ctx.userId,
-    type: "diary",
-    status: "completed",
-    context: "adhoc",
-    data: sleepData,
-  });
-  if (!inserted) {
-    return { success: false, error: "Failed to log sleep entry." };
-  }
-
-  const nowIso = new Date().toISOString();
   return {
-    success: true,
-    feedEntry: true,
+    ok: true,
+    prepared: { child, durationMinutes: duration, sleepData },
+  };
+}
+
+// ── Tile builders ─────────────────────────────────────────────────────────
+
+function buildDiaryTile(
+  logId: string,
+  childId: string,
+  authorId: string,
+  data: Record<string, unknown>,
+  createdAtIso: string,
+): DiaryChatTile {
+  return {
+    kind: "diary",
     data: {
-      log_id: inserted.id,
-      child_name: child.firstName,
-      duration_minutes: duration,
-    },
-    tile: {
-      kind: "diary",
-      data: {
-        item: {
-          id: inserted.id,
-          child_client_id: child.id,
-          author_id: ctx.userId,
-          author_name: "Katie",
-          type: "diary",
-          status: "completed",
-          context: "adhoc",
-          parent_log_id: null,
-          data: sleepData,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
+      item: {
+        id: logId,
+        child_client_id: childId,
+        author_id: authorId,
+        author_name: "Katie",
+        type: "diary",
+        status: "completed",
+        context: "adhoc",
+        parent_log_id: null,
+        data,
+        created_at: createdAtIso,
+        updated_at: createdAtIso,
       },
     },
   };
 }
 
+// ── Propose path (LLM-callable) ──────────────────────────────────────────
+
+async function proposeLogFood(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareFood(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, foodData } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      preview: foodData,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "log_food",
+        // Pass the original args through so the apply endpoint can
+        // re-run prepareFood with identical inputs (image_url may be
+        // amended via the tile's Add Image button before Accept).
+        args,
+        preview: buildDiaryTile(
+          draftId,
+          child.id,
+          ctx.userId,
+          foodData,
+          nowIso,
+        ),
+      },
+    },
+  };
+}
+
+async function proposeLogSleep(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareSleep(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, sleepData } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      preview: sleepData,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "log_sleep",
+        args,
+        preview: buildDiaryTile(
+          draftId,
+          child.id,
+          ctx.userId,
+          sleepData,
+          nowIso,
+        ),
+      },
+    },
+  };
+}
+
+// ── Apply path (frontend-callable via /api/chat/drafts/accept) ───────────
+
+export interface DiaryApplyResult {
+  ok: true;
+  tile: DiaryChatTile;
+  data: { log_id: string; child_name: string };
+}
+
+export interface DiaryApplyError {
+  ok: false;
+  error: string;
+}
+
+export async function applyLogFood(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<DiaryApplyResult | DiaryApplyError> {
+  const r = prepareFood(args, ctx.children);
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, foodData } = r.prepared;
+
+  const inserted = await insertLog(
+    { userId: ctx.userId, supabase: ctx.supabase },
+    {
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "diary",
+      status: "completed",
+      context: "adhoc",
+      data: foodData,
+    },
+  );
+  if (!inserted) {
+    return { ok: false, error: "Failed to log food entry." };
+  }
+
+  const nowIso = new Date().toISOString();
+  return {
+    ok: true,
+    data: { log_id: inserted.id, child_name: child.firstName },
+    tile: buildDiaryTile(inserted.id, child.id, ctx.userId, foodData, nowIso),
+  };
+}
+
+export async function applyLogSleep(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<DiaryApplyResult | DiaryApplyError> {
+  const r = prepareSleep(args, ctx.children);
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, sleepData } = r.prepared;
+
+  const inserted = await insertLog(
+    { userId: ctx.userId, supabase: ctx.supabase },
+    {
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "diary",
+      status: "completed",
+      context: "adhoc",
+      data: sleepData,
+    },
+  );
+  if (!inserted) {
+    return { ok: false, error: "Failed to log sleep entry." };
+  }
+
+  const nowIso = new Date().toISOString();
+  return {
+    ok: true,
+    data: { log_id: inserted.id, child_name: child.firstName },
+    tile: buildDiaryTile(inserted.id, child.id, ctx.userId, sleepData, nowIso),
+  };
+}
+
+// ── Module export ────────────────────────────────────────────────────────
+
 export const diaryModule: BloomBotModule = {
   id: "diary",
   name: "Daily Diary",
   description:
-    "Logs daily-care diary entries — meals (log_food) and sleep (log_sleep). Each entry produces a bapp_logs row visible in the child's feed.",
+    "Drafts daily-care diary entries — meals (log_food) and sleep (log_sleep). Each tool returns a DRAFT tile the user must accept; nothing is inserted into bapp_logs until the user clicks Accept.",
 
   tools: [
     {
       name: "log_food",
       description:
-        "Log a meal or snack the child has eaten. Prefer this when the user describes any food consumed (breakfast, lunch, dinner, snack).",
+        "Draft a meal or snack the child has eaten. Returns a draft tile the user can Accept, Amend, or Dismiss. Prefer this when the user describes any food consumed (breakfast, lunch, dinner, snack). NOTE: nothing is logged until the user accepts the draft.",
       parameters: {
         type: "object",
         properties: {
@@ -311,7 +476,7 @@ export const diaryModule: BloomBotModule = {
     {
       name: "log_sleep",
       description:
-        "Log a nap or sleep session. Prefer this when the user describes the child sleeping.",
+        "Draft a nap or sleep session. Returns a draft tile the user can Accept, Amend, or Dismiss. NOTE: nothing is logged until the user accepts.",
       parameters: {
         type: "object",
         properties: {
@@ -349,11 +514,11 @@ export const diaryModule: BloomBotModule = {
   ],
 
   async execute(toolName, args, ctx) {
-    if (toolName === "log_food") return logFood(args, ctx);
-    if (toolName === "log_sleep") return logSleep(args, ctx);
+    if (toolName === "log_food") return proposeLogFood(args, ctx);
+    if (toolName === "log_sleep") return proposeLogSleep(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Log meals with `log_food` and sleep with `log_sleep`. Each call appends a diary entry to the child's feed. Confirm what you logged back to the user in natural language afterwards.",
+    "Draft meals with `log_food` and sleep with `log_sleep`. Each call returns a DRAFT tile in the chat — the user clicks Accept to commit, Amend to revise, or Dismiss to drop. Do NOT tell the user the entry is logged after calling — say something like 'Drafted breakfast — review and accept when ready' and then stop. The user's button press finalises the entry.",
 };
