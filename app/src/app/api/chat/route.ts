@@ -54,6 +54,7 @@ import {
   getUserRole,
   type BotRecord,
 } from "@/lib/chat/bot";
+import { pickFallbackText, safeToolResultForClient } from "./fallback";
 
 // Use Node runtime for streaming + access to private Supabase key
 export const runtime = "nodejs";
@@ -378,7 +379,11 @@ export async function POST(req: NextRequest) {
             roundResults.push(result);
             toolCalls.push({ name: call.name!, args: call.args, result });
             controller.enqueue(
-              encodeSSE({ type: "tool_result", name: call.name, result }),
+              encodeSSE({
+                type: "tool_result",
+                name: call.name,
+                result: safeToolResultForClient(result),
+              }),
             );
             // If the tool attached an inline tile, stream it and remember
             // the latest one for persistence with the assistant message.
@@ -406,16 +411,14 @@ export async function POST(req: NextRequest) {
           // Continue loop → call Gemini again with tool results.
         }
 
-        // Fallback: if the loop produced zero text (shouldn't normally happen
-        // but Gemini sometimes falls silent mid-loop), synthesize a minimal
-        // acknowledgement from the last tool result.
+        // Fallback: if the loop produced zero text (shouldn't normally
+        // happen but Gemini sometimes falls silent mid-loop), synthesize
+        // a Katie-voice acknowledgement. NEVER leak tool names or
+        // mechanism details — those are backend concerns the user
+        // doesn't see and shouldn't be told about.
         if (!fullText.trim()) {
           const last = toolCalls[toolCalls.length - 1];
-          const fallbackText = last?.result.error
-            ? last.result.error
-            : last
-              ? `I ran \`${last.name}\` — results are above.`
-              : "Sorry — I didn't have anything to say there. Try rephrasing?";
+          const fallbackText = pickFallbackText(last);
           fullText = fallbackText;
           controller.enqueue(
             encodeSSE({ type: "text", content: fallbackText }),
