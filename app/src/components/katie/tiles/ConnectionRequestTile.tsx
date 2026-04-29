@@ -3,41 +3,38 @@
 /**
  * ConnectionRequestTile — id-only interactive tile.
  *
- * Carries just the connection id; fetches live state on mount (and on
- * window focus) from `/api/chat/connections/[id]`. This is the first
- * interactive tile — future kinds (bsr_job, interview_reschedule etc.)
- * follow the same shape.
+ * Carries just the connection id; fetches the live record on mount
+ * (and on window focus, debounced + visibility-gated) from
+ * `/api/chat/connections/[id]`. Renders the SHARED `<ConnectionTile />`
+ * component so the chat view never drifts visually from the main
+ * connections page (architectural commitment — see TileRegistry.tsx
+ * leading comment).
  *
- * Action buttons (accept / decline / schedule / cancel) are NOT wired
- * in Phase 4B.1 — the module only supports reads. Phase 4B.2 adds
- * writes with two-turn-confirm scaffolding. For now we render the
- * action prompts but route through the main-page surface so the user
- * is never blocked.
+ * Click navigates to the role's connections deck:
+ *   parent → /parent/connections
+ *   nanny  → /nanny/inbox
+ *
+ * Action buttons (accept / decline / schedule / cancel) are NOT
+ * inline — the user lands on the main page where the modal handles
+ * the action with the existing flow.
  */
 
-import { useEffect, useState } from "react";
-import {
-  MessageSquare,
-  ArrowRight,
-  Loader2,
-  AlertCircle,
-  Clock,
-  Phone,
-  MapPin,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, AlertCircle } from "lucide-react";
 import type { ConnectionRequestChatTile } from "@/lib/chat/tiles";
-import { useTileNavigation, stopTileNav } from "./use-tile-navigation";
+import type { ConnectionRequestWithDetails } from "@/lib/actions/connection";
+import {
+  ConnectionTile,
+  type ViewerRole,
+} from "@/components/connections/ConnectionTile";
+
+const FOCUS_REFETCH_MIN_INTERVAL_MS = 5_000;
 
 interface ConnectionLiveData {
   id: string;
-  role: "nanny" | "parent";
-  counterpartyName: string;
-  suburb: string | null;
-  headline: string;
-  nextStep: string | null;
-  timeLeft: string | null;
-  confirmedTime: string | null;
-  nannyPhone: string | null;
+  role: ViewerRole;
+  connection: ConnectionRequestWithDetails;
 }
 
 interface ApiError {
@@ -53,17 +50,37 @@ function isError(value: unknown): value is ApiError {
   );
 }
 
+// Validates the API envelope and that the embedded connection has
+// the minimum fields ConnectionTile reads at the top level.
+// Deeper nested fields (nanny / parent objects) are checked at
+// render time inside the shared component, which already handles
+// missing data gracefully.
+function isLiveData(value: unknown): value is ConnectionLiveData {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as { id?: unknown; role?: unknown; connection?: unknown };
+  if (typeof v.id !== "string") return false;
+  if (v.role !== "nanny" && v.role !== "parent") return false;
+  if (typeof v.connection !== "object" || v.connection === null) return false;
+  const c = v.connection as {
+    id?: unknown;
+    status?: unknown;
+  };
+  return typeof c.id === "string" && typeof c.status === "string";
+}
+
 export function ConnectionRequestTile({
   tile,
 }: {
   tile: ConnectionRequestChatTile;
 }) {
+  const router = useRouter();
   const { id } = tile.data;
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "ready"; data: ConnectionLiveData }
     | { kind: "error"; message: string }
   >({ kind: "loading" });
+  const lastFocusFetchRef = useRef<number>(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +97,14 @@ export function ConnectionRequestTile({
           setState({ kind: "error", message: msg });
           return;
         }
-        setState({ kind: "ready", data: body as ConnectionLiveData });
+        if (!isLiveData(body)) {
+          setState({
+            kind: "error",
+            message: "Unexpected connection payload.",
+          });
+          return;
+        }
+        setState({ kind: "ready", data: body });
       } catch (err) {
         if (cancelled) return;
         setState({
@@ -95,7 +119,20 @@ export function ConnectionRequestTile({
 
     // Refetch on window focus so the chat view catches up after the
     // user acts on the main page (accept / schedule / decline).
+    // Visibility-gated and rate-limited so a wall of connection tiles
+    // doesn't trigger a request storm on every tab switch.
     const handleFocus = () => {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      ) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastFocusFetchRef.current < FOCUS_REFETCH_MIN_INTERVAL_MS) {
+        return;
+      }
+      lastFocusFetchRef.current = now;
       void load();
     };
     window.addEventListener("focus", handleFocus);
@@ -108,9 +145,9 @@ export function ConnectionRequestTile({
 
   if (state.kind === "loading") {
     return (
-      <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 text-xs text-slate-500">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
           Loading connection…
         </div>
       </article>
@@ -119,94 +156,23 @@ export function ConnectionRequestTile({
 
   if (state.kind === "error") {
     return (
-      <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center gap-2 text-xs text-red-600">
-          <AlertCircle className="h-3.5 w-3.5" />
+          <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
           {state.message}
         </div>
       </article>
     );
   }
 
-  const d = state.data;
-  const actionHref = d.role === "nanny" ? "/nanny/positions" : "/parent/inbox";
+  const { connection, role } = state.data;
+  const href = role === "parent" ? "/parent/connections" : "/nanny/inbox";
 
-  return <ConnectionTileBody d={d} actionHref={actionHref} />;
-}
-
-interface ConnectionLiveDataProp {
-  d: ConnectionLiveData;
-  actionHref: string;
-}
-
-function ConnectionTileBody({ d, actionHref }: ConnectionLiveDataProp) {
-  const navProps = useTileNavigation(actionHref);
   return (
-    <article
-      {...navProps}
-      aria-label={`Open ${d.headline}`}
-      className="cursor-pointer rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/60 to-white p-3 shadow-sm transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-    >
-      <header className="flex items-center gap-2">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
-          <MessageSquare className="h-3.5 w-3.5 text-violet-600" />
-        </div>
-        <span className="text-xs font-medium text-violet-700">Connection</span>
-      </header>
-
-      <div className="mt-3 space-y-2">
-        <p className="text-sm font-semibold text-slate-900">{d.headline}</p>
-
-        {d.suburb ? (
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <MapPin className="h-3 w-3" />
-            {d.counterpartyName} — {d.suburb}
-          </div>
-        ) : null}
-
-        {d.confirmedTime ? (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Clock className="h-3 w-3" />
-            {new Date(d.confirmedTime).toLocaleString("en-AU", {
-              timeZone: "Australia/Sydney",
-              weekday: "short",
-              day: "numeric",
-              month: "short",
-              hour: "numeric",
-              minute: "2-digit",
-            })}{" "}
-            AEST
-          </div>
-        ) : null}
-
-        {d.nannyPhone ? (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Phone className="h-3 w-3" />
-            <a
-              href={`tel:${d.nannyPhone}`}
-              onClick={stopTileNav}
-              className="text-violet-700 hover:text-violet-900"
-            >
-              {d.nannyPhone}
-            </a>
-          </div>
-        ) : null}
-
-        {d.timeLeft ? (
-          <p className="text-xs italic text-slate-500">{d.timeLeft}</p>
-        ) : null}
-
-        {d.nextStep ? (
-          <p className="rounded-lg bg-amber-50 px-2.5 py-2 text-xs font-medium text-amber-800">
-            {d.nextStep}
-          </p>
-        ) : null}
-
-        <p className="inline-flex items-center gap-1 pt-1 text-sm font-medium text-violet-700">
-          {d.nextStep ? "Open to respond" : "Open connection"}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </p>
-      </div>
-    </article>
+    <ConnectionTile
+      request={connection}
+      viewerRole={role}
+      onClick={() => router.push(href)}
+    />
   );
 }

@@ -1,17 +1,18 @@
 /**
- * GET /api/chat/connections/[id] — returns a single connection
- * enriched + translated to plain English, role-aware, for Katie's
- * inline ConnectionRequestTile.
+ * GET /api/chat/connections/[id] — returns the raw connection
+ * (`ConnectionRequestWithDetails`) plus the viewer role.
  *
- * This is the "id-only tile" endpoint — the tile ships only a
- * connection id in its data payload, then fetches here on mount and on
- * focus so the chat view never drifts from the main-site view of the
- * same connection.
+ * Architectural commitment: the chat ConnectionRequestTile renders
+ * the SAME `<ConnectionTile />` component as the main connections
+ * page. So this endpoint hands the tile the exact shape that the
+ * page receives from `getNanny|getParentConnectionRequests` — no
+ * translation. Translation/headlines for AI text responses still
+ * live in `connections-translator.ts`; that path is unaffected.
  *
- * Access control: returns 404 if the connection doesn't belong to the
- * caller (either as the parent or the nanny side). We reuse the
- * existing server actions — they already apply parent_id / nanny_id
- * scoping, so the admin-client fetch underneath is safe.
+ * Access control: returns 404 if the connection doesn't belong to
+ * the caller. We reuse the existing server actions — they already
+ * scope by parent_id / nanny_id, so any record returned here is
+ * guaranteed to belong to the user.
  */
 
 import { NextResponse } from "next/server";
@@ -24,15 +25,10 @@ import {
   getParentConnectionRequests,
   type ConnectionRequestWithDetails,
 } from "@/lib/actions/connection";
-import {
-  stageHeadline,
-  nextStepForUser,
-  timeLeft,
-  counterpartyDisplayName,
-  type ConnectionRole,
-} from "@/lib/chat/modules/connections-translator";
 
 export const runtime = "nodejs";
+
+type ViewerRole = "nanny" | "parent";
 
 async function getAuthUser(): Promise<
   { ok: true; userId: string } | { ok: false; status: number; error: string }
@@ -68,8 +64,7 @@ async function getAuthUser(): Promise<
 async function resolveRole(
   userId: string,
 ): Promise<
-  | { ok: true; role: ConnectionRole }
-  | { ok: false; status: number; error: string }
+  { ok: true; role: ViewerRole } | { ok: false; status: number; error: string }
 > {
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -78,8 +73,6 @@ async function resolveRole(
     .eq("user_id", userId)
     .maybeSingle();
   if (error) {
-    // DB failure vs "user has no role" are operationally different and should
-    // produce different status codes so the client can distinguish.
     console.error("[chat/connections] user_roles lookup error:", error);
     return {
       ok: false,
@@ -134,52 +127,9 @@ export async function GET(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const counterparty = role === "nanny" ? connection.parent : connection.nanny;
-  // Missing join is a data-integrity problem — worth surfacing rather than
-  // silently rendering "Unknown" as a legitimate name. Log for ops; return
-  // 500 so the tile shows an error state instead of a convincing-looking
-  // wrong name. (Before: fallback to "Them" / "Unknown" silently.)
-  if (!counterparty || !counterparty.first_name) {
-    console.error(
-      "[chat/connections] enriched connection missing counterparty first_name",
-      { connectionId: connection.id, role },
-    );
-    return NextResponse.json(
-      { error: "connection data incomplete — please refresh" },
-      { status: 500 },
-    );
-  }
-  const firstName = counterparty.first_name;
-  const lastName = counterparty.last_name ?? "";
-  const displayName = counterpartyDisplayName(firstName, lastName);
-  const suburb = counterparty.suburb ?? null;
-
-  const headline = stageHeadline(connection.connection_stage, role, {
-    counterpartyName: displayName,
-    fillInitiatedBy: connection.fill_initiated_by,
-  });
-  const nextStep = nextStepForUser(connection.connection_stage, role, {
-    fillInitiatedBy: connection.fill_initiated_by,
-  });
-  const left = timeLeft(connection.expires_at);
-
-  // nanny_phone is only shared to the parent side, and only once the
-  // connection has reached a scheduled stage (the underlying column is set
-  // by scheduleConnectionTime and null before then, so any non-null value
-  // here is already gated by the server action).
-  const nannyPhoneForParent =
-    role === "parent" ? connection.nanny_phone_shared : null;
-
   return NextResponse.json({
     id: connection.id,
     role,
-    counterpartyName: displayName,
-    suburb,
-    headline,
-    nextStep,
-    timeLeft: left,
-    confirmedTime: connection.confirmed_time,
-    nannyPhone: nannyPhoneForParent,
-    positionSummary: connection.position ?? null,
+    connection,
   });
 }
