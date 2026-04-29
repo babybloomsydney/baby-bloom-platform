@@ -12,15 +12,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { KatieHeader } from "./KatieHeader";
 import { KatieFooter } from "./KatieFooter";
 import { KatieInput } from "./KatieInput";
+import { KatieQuickActions } from "./KatieQuickActions";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantMessage } from "./messages/AssistantMessage";
 import { TypingIndicator } from "./messages/TypingIndicator";
 import { SparkleIcon } from "./messages/SparkleIcon";
 import type { KatieMessage } from "./messages/types";
 import { useKatie } from "@/contexts/KatieContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { useChatStream } from "./use-chat-stream";
 
-function EmptyState() {
+interface EmptyStateProps {
+  role: string;
+  onChipSelect: (prompt: string) => void;
+}
+
+function EmptyState({ role, onChipSelect }: EmptyStateProps) {
   return (
     <div className="mt-8 flex flex-col items-start gap-3 text-sm text-slate-700">
       <SparkleIcon className="h-6 w-6 text-violet-500" />
@@ -31,22 +38,23 @@ function EmptyState() {
         I can help you across all of Baby Bloom — child development, jobs,
         babysitting, verification, your profile.
       </p>
-      <p className="text-slate-500">
-        Try:{" "}
-        <em>
-          &ldquo;log Oliver&apos;s breakfast — banana and yogurt, 8am&rdquo;
-        </em>
-      </p>
+      <KatieQuickActions role={role} onSelect={onChipSelect} />
     </div>
   );
 }
 
 export function KatieDeck() {
   const { currentSurface } = useKatie();
+  const { role } = useAuth();
   const [messages, setMessages] = useState<KatieMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Guards against rapid double-clicks (e.g., chip + chip, or
+  // chip + Enter) firing two sends before `isStreaming` flips. The
+  // disabled state on KatieInput / KatieQuickActions only updates
+  // after `send` awaits its first network tick.
+  const sendingRef = useRef(false);
 
   const { send, isStreaming, streamingText, streamingTile } = useChatStream();
 
@@ -87,10 +95,16 @@ export function KatieDeck() {
 
   const handleSend = useCallback(
     async (message: string) => {
+      if (sendingRef.current) return;
+      sendingRef.current = true;
       setLoadError(null);
-      const result = await send(message, currentSurface, append);
-      if (!result.ok && result.error) {
-        setLoadError(result.error);
+      try {
+        const result = await send(message, currentSurface, append);
+        if (!result.ok && result.error) {
+          setLoadError(result.error);
+        }
+      } finally {
+        sendingRef.current = false;
       }
     },
     [send, currentSurface, append],
@@ -103,7 +117,7 @@ export function KatieDeck() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
         <div className="space-y-4">
           {!isHydrating && messages.length === 0 && !isStreaming ? (
-            <EmptyState />
+            <EmptyState role={role ?? ""} onChipSelect={handleSend} />
           ) : null}
 
           {messages.map((m) => (
