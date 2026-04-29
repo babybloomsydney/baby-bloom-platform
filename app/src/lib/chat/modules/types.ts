@@ -34,6 +34,19 @@ export interface ToolResult {
    * persisted on `chat_messages.tile` so it re-renders on scrollback.
    */
   tile?: ChatTile;
+  /**
+   * True when this result is conclusive and the agentic loop should
+   * stop calling more tools. Set by tool handlers when retrying with
+   * a different argument (e.g. another child name) cannot help — the
+   * answer is already known from this single call.
+   *
+   * Route handler treats `terminal: true` as: surface `error` (or a
+   * derivation of `data`) to the user as the assistant reply and
+   * break the loop. Cleaner than an in-band string marker because
+   * it's structural and stripped before the SSE payload reaches the
+   * client (see `safeToolResultForClient`).
+   */
+  terminal?: boolean;
 }
 
 // ── Module execution context ──────────────────────────────────────────────

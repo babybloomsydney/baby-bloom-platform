@@ -168,7 +168,7 @@ describe("progress module — read_milestones", () => {
     const { ctx } = makeCtx([]);
     const result = await progressModule.execute("read_milestones", {}, ctx);
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/don't yet have any children/);
+    expect(result.error).toMatch(/don't have any children linked/);
   });
 
   it("returns error for unknown tool", async () => {

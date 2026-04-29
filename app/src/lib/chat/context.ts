@@ -277,13 +277,26 @@ function renderRuntimeHeader(ctx: BotContext): string {
   lines.push(`Name: ${ctx.userName}`);
   lines.push(`Role: ${ctx.effectiveRole}`);
 
-  if (ctx.children.length > 0) {
-    lines.push("");
-    lines.push("## Children This User Has Access To");
+  // Always render the children section — even when empty — so Gemini
+  // has authoritative ground truth about what's connected. Without an
+  // explicit "(none)" line, an absent section reads ambiguously: did
+  // we forget to load children, or are there genuinely none? That
+  // ambiguity caused Gemini to spiral on read_child_profile when the
+  // user named a child that wasn't actually linked.
+  lines.push("");
+  lines.push("## Children This User Has Access To");
+  if (ctx.children.length === 0) {
+    lines.push(
+      "(none) — this account has no children linked to it. If the user names a child, that child is NOT in this account. Tell them so directly; do not call read_child_profile to double-check.",
+    );
+  } else {
     for (const c of ctx.children) {
       const g = c.gender ? `, ${c.gender}` : "";
       lines.push(`- ${c.firstName} — ${c.ageMonths}mo (${c.ageBracket})${g}`);
     }
+    lines.push(
+      "If the user names a child NOT in the list above, that child is NOT linked to this account. Tell them so directly; do not call read_child_profile to double-check.",
+    );
   }
 
   if (ctx.currentSurface) {

@@ -38,12 +38,27 @@ export function resolveChild(
 ):
   | { child: ChildSummary; error?: undefined }
   | { child?: undefined; error: ToolResult } {
+  // Bound the user-supplied name when echoing into messages — it
+  // arrives via Gemini's tool-call args which are unverified `unknown`.
+  // 60 chars is plenty for any real first name and prevents pathological
+  // strings (10KB blobs, control chars) bleeding into the assistant
+  // reply Gemini will surface.
+  const safeName =
+    typeof nameArg === "string" && nameArg.length > 0
+      ? String(nameArg).slice(0, 60)
+      : null;
+
   if (children.length === 0) {
+    // Terminal: nothing to retry. Either the user has no children
+    // attached at all, or they referenced one that isn't linked.
+    const opener = safeName
+      ? `I don't see ${safeName} linked to your account yet.`
+      : "I don't have any children linked to your account yet.";
     return {
       error: {
         success: false,
-        error:
-          "You don't yet have any children in the system. Add a child through onboarding before asking me to log or read data.",
+        terminal: true,
+        error: `${opener} If they're your child, you'll need to set up a position so a nanny can be matched, or wait for a placement to be confirmed. Want help with that, or did you mean a different name?`,
       },
     };
   }
@@ -57,7 +72,8 @@ export function resolveChild(
     return {
       error: {
         success: false,
-        error: `I don't recognise "${nameArg}". The only child I have access to is ${children[0].firstName}.`,
+        terminal: true,
+        error: `I don't see ${safeName} on your account — the only child linked here is ${children[0].firstName}. Did you mean ${children[0].firstName}, or someone else?`,
       },
     };
   }
@@ -68,6 +84,7 @@ export function resolveChild(
     return {
       error: {
         success: false,
+        terminal: true,
         error: `You have multiple children (${names}). Which one?`,
       },
     };
@@ -80,7 +97,8 @@ export function resolveChild(
     return {
       error: {
         success: false,
-        error: `I don't recognise "${nameArg}". You have access to: ${names}.`,
+        terminal: true,
+        error: `I don't see ${safeName} on your account. You have access to: ${names}. Did you mean one of those, or is the spelling off?`,
       },
     };
   }

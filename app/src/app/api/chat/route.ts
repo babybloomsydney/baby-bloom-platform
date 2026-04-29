@@ -258,8 +258,13 @@ export async function POST(req: NextRequest) {
         ]
       : undefined;
 
-  // 11. Stream response — agentic loop, streams the FINAL text response
-  const MAX_TOOL_ROUNDS = 5;
+  // 11. Stream response — agentic loop, streams the FINAL text response.
+  // 8 rounds rather than 5: exploratory chains where the user asks
+  // about an entity Katie isn't sure about (e.g. "tell me about Obie"
+  // when Obie isn't connected to the account) can take 6-7 calls to
+  // exhaust the relevant read tools before Gemini synthesises the
+  // "I don't see this entity" answer. 5 was hitting the cap silently.
+  const MAX_TOOL_ROUNDS = 8;
   // Narrow non-null references once before the async closure.
   const userId = user.id;
   const stream = new ReadableStream({
@@ -393,6 +398,29 @@ export async function POST(req: NextRequest) {
                 encodeSSE({ type: "tile", tile: result.tile }),
               );
             }
+          }
+
+          // Terminal short-circuit. If any tool in this round returned
+          // `terminal: true`, the answer is already known — no need to
+          // burn more rounds (or risk Gemini retrying with different
+          // args). Surface the terminal error message directly as the
+          // assistant text and break the loop.
+          //
+          // Why early-emit here rather than letting Gemini synthesise:
+          // the terminal error is already user-facing (resolveChild's
+          // contract) and another Gemini round costs tokens + latency
+          // for no information gain. The model does not see the
+          // `terminal` flag itself — only the human-readable error
+          // text via the functionResponse — so leaving it to synthesis
+          // would be a coin-flip on whether it echoes vs retries.
+          const terminalResult = roundResults.find((r) => r.terminal === true);
+          if (terminalResult) {
+            const text =
+              terminalResult.error ??
+              "I have everything I need — try asking again?";
+            fullText += text;
+            controller.enqueue(encodeSSE({ type: "text", content: text }));
+            break;
           }
 
           // Append model turn (echo parts verbatim to preserve thoughtSignature)
