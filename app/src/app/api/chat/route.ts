@@ -32,8 +32,9 @@ import {
   selectGeminiModel,
   resolveEffectiveRole,
 } from "@/lib/ai/model-selector";
+import type { GenerateContentResponse, FunctionCall } from "@google/genai";
 import {
-  generate,
+  generateStream,
   echoModelParts,
   type GeminiTool,
   type GeminiTurn,
@@ -339,36 +340,72 @@ export async function POST(req: NextRequest) {
       }
 
       try {
-        // Agentic loop: keep calling Gemini while it wants to call tools.
-        // On the FINAL round (no more tool calls), stream the text response.
+        // Agentic loop with streaming. Each round opens a Gemini stream,
+        // emits text deltas to SSE as they arrive (so the user sees
+        // typewriter behaviour, not a per-round chunk drop), buffers
+        // any function calls until end-of-stream, then either dispatches
+        // tools + continues OR breaks if the model converged to text.
         const runningTurns: GeminiTurn[] = [...conversationTurns];
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-          const resp = await generate({
+          const stream = await generateStream({
             model,
             systemPrompt,
             contents: runningTurns,
             tools,
           });
-          accrueUsage(resp.usageMetadata);
 
-          const roundCalls = resp.functionCalls ?? [];
-          const roundText = resp.text ?? "";
+          let roundText = "";
+          // Use the SDK's FunctionCall type so the `id` and other fields
+          // round-trip through to the continuation turn — needed when
+          // Gemini correlates functionResponse parts back to the call.
+          const roundCalls: FunctionCall[] = [];
+          // Track the last chunk so we can pull usageMetadata +
+          // candidates[0].content.parts (for echoModelParts) at the
+          // end of the stream — those fields are typically aggregated
+          // on the final chunk.
+          let lastChunk: GenerateContentResponse | undefined = undefined;
 
-          // Always stream whatever text this round produced — even if the
-          // model is about to call another tool, there may be narration.
-          if (roundText) {
-            fullText += roundText;
-            controller.enqueue(encodeSSE({ type: "text", content: roundText }));
+          for await (const chunk of stream) {
+            // Text delta — stream straight through to SSE so the client
+            // sees char-by-char (or token-by-token) typewriter UX.
+            //
+            // SDK semantics: `chunk.text` is the concatenation of all
+            // text parts within THIS chunk's candidate. Across chunks
+            // it behaves as a delta because each chunk is a fresh
+            // GenerateContentResponse with only that chunk's wire
+            // bytes — there is no cross-chunk aggregation. Within a
+            // single chunk, multiple text parts (rare; happens when
+            // thoughts and text are interleaved on the same wire
+            // chunk) are concatenated. That's harmless cosmetically
+            // but worth knowing if tokens ever arrive doubled.
+            const delta = chunk.text;
+            if (typeof delta === "string" && delta.length > 0) {
+              roundText += delta;
+              controller.enqueue(encodeSSE({ type: "text", content: delta }));
+            }
+            // Function calls can arrive in any chunk; accumulate them.
+            // Most often Gemini batches them into the final chunk before
+            // the stream closes, but we tolerate either pattern.
+            const calls = chunk.functionCalls ?? [];
+            if (calls.length > 0) {
+              roundCalls.push(...calls);
+            }
+            lastChunk = chunk;
           }
 
+          // Accrue usage from the final chunk only (avoids double-count;
+          // intermediate chunks don't have authoritative totals).
+          accrueUsage(lastChunk?.usageMetadata);
+          fullText += roundText;
+
           if (roundCalls.length === 0) {
-            // Done — no more tool calls requested.
+            // Model converged to text — done.
             break;
           }
 
           // Execute tool calls, emit events, build the continuation turn.
-          const modelParts = resp.candidates?.[0]?.content?.parts;
+          const modelParts = lastChunk?.candidates?.[0]?.content?.parts;
           if (!modelParts) break; // defensive — shouldn't happen with tool calls
 
           const roundResults: ToolResult[] = [];
