@@ -46,6 +46,7 @@ import {
 } from "@/lib/actions/nanny";
 import { getPosition } from "@/lib/actions/parent";
 import { getParentPlacement } from "@/lib/actions/position-funnel";
+import { formatSydneyDate } from "@/lib/timezone";
 import { asUserFacingRole, type UserFacingRole } from "./utils";
 
 type ProfileRole = UserFacingRole;
@@ -193,6 +194,152 @@ function nannySnapshot(profile: NannyProfile): NannySnapshot {
   };
 }
 
+// ── Tile builders ─────────────────────────────────────────────────────────
+//
+// Read tools emit `katie_note` tiles with formatted summaries. This is
+// the v1 path — when dedicated `position` / `placement` / `profile`
+// tile kinds are extracted from the parent hub cards (deferred under
+// WU 8.18b), these helpers will switch to id-only payloads pointing at
+// the new components. The `katie_note` shape is intentionally simple
+// so the migration is a one-file change.
+
+function formatRateLine(rate: number | null | undefined): string {
+  return rate != null ? `$${rate}/hour` : "Rate not set";
+}
+
+function joinDays(days: string[]): string {
+  if (days.length === 0) return "no set days";
+  if (days.length === 7) return "every day";
+  return days.join(", ");
+}
+
+// Format an ISO date / timestamp for display in a tile body. Wraps
+// `formatSydneyDate` and tolerates `null` so callers can pass through
+// possibly-missing values without an extra check at every site.
+function formatTileDate(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return formatSydneyDate(value);
+  } catch {
+    // formatSydneyDate parses leniently — but if a row ever lands here
+    // with an unparseable value, surface the raw string rather than
+    // crashing the whole read. ops will see this in the chat history.
+    return value;
+  }
+}
+
+function nannyProfileTileBody(snap: NannySnapshot): string {
+  // Section 1 — facts; Section 2 — visibility status. Joined with a
+  // blank line to render as two tile paragraphs. Filtering on `null`
+  // (not on truthy) preserves any intentional empty strings if a
+  // future field ever needs them.
+  const facts = [
+    `${snap.first_name} — ${snap.suburb ?? "no suburb on file"}`,
+    `Rate: ${snap.hourly_rate}`,
+    snap.age_range ? `Age range: ${snap.age_range}` : null,
+    snap.max_children != null ? `Max children: ${snap.max_children}` : null,
+    snap.available_days.length > 0
+      ? `Available: ${joinDays(snap.available_days)}`
+      : null,
+    snap.role_types.length > 0 ? `Role: ${snap.role_types.join(", ")}` : null,
+    snap.photo_count > 0
+      ? `${snap.photo_count} photo${snap.photo_count === 1 ? "" : "s"} uploaded`
+      : "No photos uploaded yet",
+  ].filter((line): line is string => line !== null);
+  return `${facts.join("\n")}\n\n${snap.visibility}`;
+}
+
+interface ParentSnapshotInput {
+  has_active_position: boolean;
+  position_summary: {
+    suburb: string | null;
+    hours_per_week: number | null;
+    days_required: string[];
+    num_children: number;
+    hourly_rate: number | null;
+  } | null;
+  has_active_placement: boolean;
+  placement_summary: {
+    nanny_name: string;
+    nanny_suburb: string | null;
+    weekly_hours: number | null;
+    hourly_rate: number | null;
+    hired_at: string;
+  } | null;
+}
+
+function parentProfileTileBody(snap: ParentSnapshotInput): string {
+  const lines: (string | null)[] = [];
+  if (snap.has_active_position && snap.position_summary) {
+    const p = snap.position_summary;
+    lines.push(
+      `Active position in ${p.suburb ?? "your area"} — ${p.num_children} child${p.num_children === 1 ? "" : "ren"}, ${p.hours_per_week ?? "?"}h/week.`,
+    );
+  } else {
+    lines.push("No active position yet.");
+  }
+  if (snap.has_active_placement && snap.placement_summary) {
+    const pl = snap.placement_summary;
+    lines.push(
+      `Placed with ${pl.nanny_name}${pl.nanny_suburb ? ` (${pl.nanny_suburb})` : ""} — ${pl.weekly_hours ?? "?"}h/week.`,
+    );
+  } else if (snap.has_active_position) {
+    lines.push("No nanny placed yet.");
+  }
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
+interface PositionTileInput {
+  suburb: string | null;
+  urgency: string | null;
+  start_date: string | null;
+  hours_per_week: number | null;
+  days_required: string[];
+  hourly_rate: number | null;
+  num_children: number;
+}
+
+function positionTileBody(p: PositionTileInput): string {
+  // `urgency` is stored as the human-readable label itself ("As soon
+  // as possible", "At a later date", etc — see /parent/request
+  // questions). Rendering verbatim is correct; if the underlying
+  // schema ever changes to a code-style enum, replace this with a
+  // mapping rather than letting raw codes leak.
+  const startDate = formatTileDate(p.start_date);
+  const lines = [
+    `${p.num_children} child${p.num_children === 1 ? "" : "ren"} in ${p.suburb ?? "your area"}`,
+    `${p.hours_per_week ?? "?"}h/week — ${joinDays(p.days_required)}`,
+    `Pay: ${formatRateLine(p.hourly_rate)}`,
+    startDate ? `Start: ${startDate}` : null,
+    p.urgency ? `Urgency: ${p.urgency}` : null,
+  ];
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
+interface PlacementTileInput {
+  nanny_name: string;
+  nanny_suburb: string | null;
+  weekly_hours: number | null;
+  hourly_rate: number | null;
+  hired_at: string;
+  start_date: string | null;
+}
+
+function placementTileBody(p: PlacementTileInput): string {
+  // Prefer the explicit start_date when set; fall back to the hired_at
+  // timestamp which is always populated. Both run through formatTileDate
+  // so an ISO row never reaches the rendered tile.
+  const dateLabel = p.start_date
+    ? `Started: ${formatTileDate(p.start_date)}`
+    : `Hired: ${formatTileDate(p.hired_at) ?? p.hired_at}`;
+  const lines = [
+    `${p.nanny_name}${p.nanny_suburb ? ` — ${p.nanny_suburb}` : ""}`,
+    `${p.weekly_hours ?? "?"}h/week at ${formatRateLine(p.hourly_rate)}`,
+    dateLabel,
+  ];
+  return lines.filter((line): line is string => line !== null).join("\n");
+}
+
 // ── Read tools ────────────────────────────────────────────────────────────
 
 async function readMyProfile(
@@ -212,7 +359,20 @@ async function readMyProfile(
           "We couldn't find your nanny profile. Contact support if this persists.",
       };
     }
-    return { success: true, data: nannySnapshot(data) };
+    const snap = nannySnapshot(data);
+    return {
+      success: true,
+      data: snap,
+      tile: {
+        kind: "katie_note",
+        data: {
+          badge: "Your Profile",
+          title: `${snap.first_name}'s profile`,
+          body: nannyProfileTileBody(snap),
+          action: { label: "Edit profile", href: "/nanny/edit-profile" },
+        },
+      },
+    };
   }
 
   // Parent: blend account + position + placement into one snapshot.
@@ -227,30 +387,40 @@ async function readMyProfile(
   const position = positionRes.data;
   const placement = placementRes.data;
 
+  const parentSnapshot: ParentSnapshotInput = {
+    has_active_position: position != null,
+    position_summary: position
+      ? {
+          suburb: position.suburb ?? null,
+          hours_per_week: position.hours_per_week ?? null,
+          days_required: position.days_required ?? [],
+          num_children: position.children.length,
+          hourly_rate: position.hourly_rate ?? null,
+        }
+      : null,
+    has_active_placement: placement != null,
+    placement_summary: placement
+      ? {
+          nanny_name: placement.nannyName,
+          nanny_suburb: placement.nannySuburb,
+          weekly_hours: placement.weeklyHours,
+          hourly_rate: placement.hourlyRate,
+          hired_at: placement.hiredAt,
+        }
+      : null,
+  };
+
   return {
     success: true,
-    data: {
-      role: "parent",
-      has_active_position: position != null,
-      position_summary: position
-        ? {
-            suburb: position.suburb ?? null,
-            hours_per_week: position.hours_per_week ?? null,
-            days_required: position.days_required ?? [],
-            num_children: position.children.length,
-            hourly_rate: position.hourly_rate ?? null,
-          }
-        : null,
-      has_active_placement: placement != null,
-      placement_summary: placement
-        ? {
-            nanny_name: placement.nannyName,
-            nanny_suburb: placement.nannySuburb,
-            weekly_hours: placement.weeklyHours,
-            hourly_rate: placement.hourlyRate,
-            hired_at: placement.hiredAt,
-          }
-        : null,
+    data: { role: "parent", ...parentSnapshot },
+    tile: {
+      kind: "katie_note",
+      data: {
+        badge: "Your Account",
+        title: "Your Baby Bloom snapshot",
+        body: parentProfileTileBody(parentSnapshot),
+        action: { label: "Open dashboard", href: "/parent" },
+      },
     },
   };
 }
@@ -273,24 +443,46 @@ async function readMyPosition(
         summary:
           "You don't have an active position yet. Want to create one? I'll open the form for you.",
       },
+      tile: {
+        kind: "katie_note",
+        data: {
+          badge: "No Position",
+          title: "No active position yet",
+          body: "Open the position form to get matched with nannies who fit your family.",
+          action: { label: "Create a position", href: "/parent/request" },
+        },
+      },
     };
   }
+
+  const positionPayload: PositionTileInput = {
+    suburb: data.suburb ?? null,
+    urgency: data.urgency ?? null,
+    start_date: data.start_date ?? null,
+    hours_per_week: data.hours_per_week ?? null,
+    days_required: data.days_required ?? [],
+    hourly_rate: data.hourly_rate ?? null,
+    num_children: data.children.length,
+  };
 
   return {
     success: true,
     data: {
       has_active_position: true,
       position: {
-        suburb: data.suburb ?? null,
-        urgency: data.urgency ?? null,
-        start_date: data.start_date ?? null,
-        hours_per_week: data.hours_per_week ?? null,
-        days_required: data.days_required ?? [],
-        hourly_rate: data.hourly_rate ?? null,
-        num_children: data.children.length,
+        ...positionPayload,
         children_ages_months: data.children
           .map((c) => c.age_months)
           .filter((m): m is number => typeof m === "number"),
+      },
+    },
+    tile: {
+      kind: "katie_note",
+      data: {
+        badge: "Your Position",
+        title: `Position in ${positionPayload.suburb ?? "your area"}`,
+        body: positionTileBody(positionPayload),
+        action: { label: "Edit position", href: "/parent/request" },
       },
     },
   };
@@ -307,6 +499,11 @@ async function readMyPlacement(
   const { data, error } = await getParentPlacement();
   if (error) return { success: false, error };
   if (!data) {
+    // Asymmetry vs read_my_position (which emits a CTA tile when no
+    // position exists): a missing placement is an expected
+    // in-progress state — most parents reach the position stage long
+    // before they confirm a placement, and a CTA card here would
+    // create constant noise. Narration is enough.
     return {
       success: true,
       data: {
@@ -317,17 +514,28 @@ async function readMyPlacement(
     };
   }
 
+  const placementPayload: PlacementTileInput = {
+    nanny_name: data.nannyName,
+    nanny_suburb: data.nannySuburb,
+    weekly_hours: data.weeklyHours,
+    hourly_rate: data.hourlyRate,
+    hired_at: data.hiredAt,
+    start_date: data.startDate,
+  };
+
   return {
     success: true,
     data: {
       has_active_placement: true,
-      placement: {
-        nanny_name: data.nannyName,
-        nanny_suburb: data.nannySuburb,
-        weekly_hours: data.weeklyHours,
-        hourly_rate: data.hourlyRate,
-        hired_at: data.hiredAt,
-        start_date: data.startDate,
+      placement: placementPayload,
+    },
+    tile: {
+      kind: "katie_note",
+      data: {
+        badge: "Your Nanny",
+        title: `Placed with ${data.nannyName}`,
+        body: placementTileBody(placementPayload),
+        action: { label: "Open connections", href: "/parent/connections" },
       },
     },
   };
@@ -601,6 +809,7 @@ export const profileModule: BloomBotModule = {
     "• 'Show me my profile', 'what does my profile say', 'how's my account looking' → `read_my_profile`.\n" +
     "• Parent asking about their position specifically → `read_my_position`.\n" +
     "• Parent asking 'who's my nanny' / 'do I have a nanny yet' → `read_my_placement`.\n\n" +
+    'All three reads emit a tile with the snapshot — the user SEES the data on the card. Acknowledge with one short sentence ("here\'s your position" / "here\'s where things stand") and stop. Do NOT enumerate fields, do NOT paraphrase the tile body, do NOT repeat numbers the card already shows. The tile is the answer; your text is just a hand-off.\n\n' +
     "Hard rules:\n" +
     "• NEVER speak `verification_level`, `verification_tier`, `status`, `visible_in_match_making`, `visible_in_bsr`, `profile_visible`, `last_regenerated_at`, `ai_model` or any other internal column name. The read tools return plain-English strings — surface those directly.\n" +
     "• NEVER mention 'tier 1', 'tier 2', 'tier 3' — the old tier system is deprecated.\n" +

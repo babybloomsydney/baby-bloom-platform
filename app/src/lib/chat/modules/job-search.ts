@@ -386,8 +386,11 @@ export const jobSearchModule: BloomBotModule = {
   systemPromptFragment:
     "Three nanny job tools:\n" +
     "• `read_my_job_matches` — open positions the matchmaker recommended for THIS nanny. Use for 'any matches for me?', 'new jobs in my queue?'.\n" +
-    "• `read_job_match_detail` — full detail on a specific match by id. Use after read_my_job_matches when the user picks one.\n" +
+    "• `read_job_match_detail` — full detail on a specific match by id. Use after read_my_job_matches when the user picks one. EMITS A TILE (`job_match`).\n" +
     "• `browse_open_positions` — ALL open positions across the platform, regardless of match status. Use for 'what jobs are available?', 'show me all open positions', 'any positions in [suburb]?'. Each result has `matched: true|false` so the user can see which ones the matchmaker already flagged for them. The user CAN still apply to non-matched positions — they just don't have the matchmaker's endorsement.\n\n" +
+    "Tile / narration pattern for list reads:\n" +
+    "• `read_my_job_matches` and `browse_open_positions` return MULTIPLE positions but emit NO tile — they're list views. Narrate the list briefly (count + 1-2 standout entries), then offer to drill in: 'I found 4 matches — want to see the closest one in detail?' If the user picks one, call `read_job_match_detail` with that match's `id`, which DOES emit a tile.\n" +
+    "• Don't dump every field of every position into the chat text. The list narration is a quick scan; the per-item tile is the deep view.\n\n" +
     "Hard rules:\n" +
     "• When the user asks for available jobs / positions WITHOUT specifying matched-only, default to `browse_open_positions` so they see the full picture, not just the matchmaker queue. Do NOT redirect them to the manual /nanny/jobs page — show the data in chat.\n" +
     "• NEVER speak raw field names (`match_score`, `dfy_tier`, `respondedAt`, etc.) — the tools return plain-English text already.\n" +

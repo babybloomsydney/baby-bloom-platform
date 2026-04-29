@@ -307,6 +307,180 @@ describe("profile module — read_my_position / read_my_placement", () => {
   });
 });
 
+describe("profile module — tile emission (WU 8.18)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Narrows the loosely-typed ToolResult.tile to a katie_note shape so
+  // the assertion block reads `tile.data.body` etc with full type
+  // checking instead of `as any` blanket casts. If the tile is the
+  // wrong kind (or missing) the helper throws — which surfaces as a
+  // fast, descriptive test failure.
+  function expectKatieNoteTile(
+    tile: { kind: string; data: unknown } | undefined,
+  ): {
+    badge?: string;
+    title?: string;
+    body: string;
+    action?: { label: string; href: string };
+    image_url?: string;
+  } {
+    if (!tile) throw new Error("expected katie_note tile but got none");
+    if (tile.kind !== "katie_note") {
+      throw new Error(`expected katie_note tile, got ${tile.kind}`);
+    }
+    return tile.data as {
+      badge?: string;
+      title?: string;
+      body: string;
+      action?: { label: string; href: string };
+      image_url?: string;
+    };
+  }
+
+  it("read_my_profile (nanny) emits a katie_note tile with the profile snapshot", async () => {
+    vi.mocked(getNannyProfile).mockResolvedValue({
+      data: nannyFixture(),
+      error: null,
+    });
+    const r = await profileModule.execute(
+      "read_my_profile",
+      {},
+      makeCtx("nanny"),
+    );
+    expect(r.success).toBe(true);
+    const td = expectKatieNoteTile(r.tile);
+    expect(td.badge).toBe("Your Profile");
+    expect(td.title).toMatch(/Jess/);
+    expect(td.body).toMatch(/\$45\/hour/);
+    expect(td.action?.href).toBe("/nanny/edit-profile");
+  });
+
+  it("read_my_profile (parent) emits a katie_note tile with the account snapshot", async () => {
+    vi.mocked(getPosition).mockResolvedValue({
+      data: {
+        id: "pos-1",
+        suburb: "Mosman",
+        hours_per_week: 30,
+        days_required: ["Mon", "Tue"],
+        hourly_rate: 40,
+        children: [{ age_months: 18 }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      error: null,
+    });
+    vi.mocked(getParentPlacement).mockResolvedValue({
+      data: {
+        nannyName: "Jess",
+        nannySuburb: "Bondi",
+        weeklyHours: 30,
+        hourlyRate: 45,
+        hiredAt: "2026-03-01T00:00:00Z",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      error: null,
+    });
+    const r = await profileModule.execute(
+      "read_my_profile",
+      {},
+      makeCtx("parent"),
+    );
+    const td = expectKatieNoteTile(r.tile);
+    expect(td.body).toMatch(/Mosman/);
+    expect(td.body).toMatch(/Jess/);
+    expect(td.action?.href).toBe("/parent");
+  });
+
+  it("read_my_position emits a tile with formatted urgency + start date", async () => {
+    vi.mocked(getPosition).mockResolvedValue({
+      data: {
+        id: "pos-1",
+        suburb: "Surry Hills",
+        // Real urgency values are full plain-English labels (see
+        // /parent/request questions) — verify we render the string the
+        // user typed at form time, not a raw enum code.
+        urgency: "As soon as possible",
+        start_date: "2026-05-01",
+        hours_per_week: 25,
+        days_required: ["Mon", "Wed", "Fri"],
+        hourly_rate: 42,
+        children: [{ age_months: 12 }, { age_months: 36 }],
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      error: null,
+    });
+    const r = await profileModule.execute(
+      "read_my_position",
+      {},
+      makeCtx("parent"),
+    );
+    const td = expectKatieNoteTile(r.tile);
+    expect(td.badge).toBe("Your Position");
+    expect(td.title).toMatch(/Surry Hills/);
+    expect(td.body).toMatch(/2 children/);
+    expect(td.body).toMatch(/25h\/week/);
+    expect(td.body).toMatch(/\$42\/hour/);
+    expect(td.body).toMatch(/As soon as possible/);
+    // ISO date should be formatted, not echoed verbatim
+    expect(td.body).not.toMatch(/2026-05-01/);
+    expect(td.action?.href).toBe("/parent/request");
+  });
+
+  it("read_my_position emits a tile prompting position creation when none exists", async () => {
+    vi.mocked(getPosition).mockResolvedValue({ data: null, error: null });
+    const r = await profileModule.execute(
+      "read_my_position",
+      {},
+      makeCtx("parent"),
+    );
+    const td = expectKatieNoteTile(r.tile);
+    expect(td.badge).toBe("No Position");
+    expect(td.action?.label).toMatch(/Create/i);
+    expect(td.action?.href).toBe("/parent/request");
+  });
+
+  it("read_my_placement emits a tile when a placement exists, with formatted dates", async () => {
+    vi.mocked(getParentPlacement).mockResolvedValue({
+      data: {
+        nannyName: "Jess Mahoney",
+        nannySuburb: "Bondi",
+        weeklyHours: 30,
+        hourlyRate: 45,
+        hiredAt: "2026-03-01T00:00:00Z",
+        startDate: "2026-03-15",
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      error: null,
+    });
+    const r = await profileModule.execute(
+      "read_my_placement",
+      {},
+      makeCtx("parent"),
+    );
+    const td = expectKatieNoteTile(r.tile);
+    expect(td.title).toMatch(/Jess Mahoney/);
+    expect(td.body).toMatch(/Bondi/);
+    expect(td.body).toMatch(/30h\/week/);
+    // ISO date should be formatted, not echoed verbatim
+    expect(td.body).not.toMatch(/2026-03-15/);
+    expect(td.action?.href).toBe("/parent/connections");
+  });
+
+  it("read_my_placement does NOT emit a tile when no placement exists", async () => {
+    vi.mocked(getParentPlacement).mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    const r = await profileModule.execute(
+      "read_my_placement",
+      {},
+      makeCtx("parent"),
+    );
+    expect(r.success).toBe(true);
+    // No tile — narration only — keeps the chat tidy when there's nothing to render
+    expect(r.tile).toBeUndefined();
+  });
+});
+
 describe("profile module — propose_/apply_update_rate", () => {
   beforeEach(() => vi.clearAllMocks());
 
