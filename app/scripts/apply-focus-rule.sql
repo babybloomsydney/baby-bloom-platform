@@ -75,7 +75,7 @@ END $$;
 COMMIT;
 
 -- Verify (run after the COMMIT):
--- SELECT section, version, is_active, length(content) as content_len, updated_at
+-- SELECT section, version, is_active, length(content) AS content_len, created_at
 -- FROM public.katie_prompt
 -- WHERE section = 'voice'
 -- ORDER BY version DESC LIMIT 3;
