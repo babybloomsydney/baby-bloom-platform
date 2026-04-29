@@ -23,6 +23,7 @@ import { BsrJobTile } from "./BsrJobTile";
 import { JobMatchTile } from "./JobMatchTile";
 import { PositionTile } from "./PositionTile";
 import { PlacementTile } from "./PlacementTile";
+import { DraftTile } from "./DraftTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 import { DiaryTile } from "@/components/bapp/tiles/DiaryTile";
@@ -78,6 +79,13 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       // Reuses the SAME PlacementCard used on /parent/position, in
       // compact + read-only mode. Fetches /api/chat/placement/[id].
       return <PlacementTile tile={tile} />;
+    case "draft":
+      // Sudo / draft tile (WU 8.22b). Wraps a draftable preview
+      // with Add Image + Accept / Amend / Dismiss footer. Action
+      // handlers come from the surrounding DraftActionsProvider in
+      // KatieDeck — outside that surface the buttons render
+      // disabled (see DraftTile's `actions.isWired`).
+      return <DraftTile tile={tile} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":

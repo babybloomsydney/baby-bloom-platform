@@ -14,6 +14,7 @@ import { KatieFooter } from "./KatieFooter";
 import { KatieInput } from "./KatieInput";
 import { KatieQuickActions } from "./KatieQuickActions";
 import { ImageAttachmentProvider } from "./image-attachment-context";
+import { DraftActionsProvider } from "./tiles/draft-actions-context";
 import { MessageRow } from "./messages/MessageRow";
 import { AssistantMessage } from "./messages/AssistantMessage";
 import { TypingIndicator } from "./messages/TypingIndicator";
@@ -22,6 +23,7 @@ import type { KatieMessage } from "./messages/types";
 import { useKatie } from "@/contexts/KatieContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChatStream } from "./use-chat-stream";
+import { isChatTile } from "@/lib/chat/tiles";
 
 interface EmptyStateProps {
   role: string;
@@ -111,39 +113,101 @@ export function KatieDeck() {
     [send, currentSurface, append],
   );
 
+  // Draft action handlers — stubbed in 8.22b. The real Accept and
+  // Amend round-trips wire up in 8.22c; Dismiss is fully wired here
+  // because removing a chat message client-side is a pure UI op.
+  const handleDraftAccept = useCallback(
+    async (
+      draftId: string,
+      toolName: string,
+      args: Record<string, unknown>,
+      imageUrl: string | null,
+    ) => {
+      // 8.22c: POST to /api/chat/drafts/accept and update the chat
+      // message in place. For now: log + leave the draft visible
+      // so the wiring gap is obvious during dev.
+      console.warn("[KatieDeck] Draft Accept stubbed — 8.22c wires this", {
+        draftId,
+        toolName,
+        args,
+        imageUrl,
+      });
+    },
+    [],
+  );
+
+  const handleDraftAmend = useCallback(
+    async (draftId: string, toolName: string) => {
+      // 8.22e: send a synthetic "amend please" message so Katie asks
+      // what to change. Until then, log only.
+      console.warn("[KatieDeck] Draft Amend stubbed — 8.22e wires this", {
+        draftId,
+        toolName,
+      });
+    },
+    [],
+  );
+
+  const handleDraftDismiss = useCallback((draftId: string) => {
+    // Fully wired in 8.22b: the chat message hosting this draft is
+    // identified by a tile.data.draftId match. Remove it from the
+    // local message list. Nothing was persisted, so no server call.
+    setMessages((prev) =>
+      prev.filter((m) => {
+        // Keep messages that aren't draft tiles, or whose draft id
+        // doesn't match the dismissal target. `isChatTile` narrows
+        // to the typed union so the kind check is type-safe.
+        if (!isChatTile(m.tile)) return true;
+        if (m.tile.kind !== "draft") return true;
+        return m.tile.data.draftId !== draftId;
+      }),
+    );
+  }, []);
+
   return (
     <ImageAttachmentProvider>
-      <div className="flex h-full flex-col bg-white">
-        <KatieHeader />
+      <DraftActionsProvider
+        value={{
+          onAccept: handleDraftAccept,
+          onAmend: handleDraftAmend,
+          onDismiss: handleDraftDismiss,
+        }}
+      >
+        <div className="flex h-full flex-col bg-white">
+          <KatieHeader />
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
-          <div className="space-y-4">
-            {!isHydrating && messages.length === 0 && !isStreaming ? (
-              <EmptyState role={role ?? ""} onChipSelect={handleSend} />
-            ) : null}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="space-y-4">
+              {!isHydrating && messages.length === 0 && !isStreaming ? (
+                <EmptyState role={role ?? ""} onChipSelect={handleSend} />
+              ) : null}
 
-            {messages.map((m) => (
-              <MessageRow key={m.id} message={m} />
-            ))}
+              {messages.map((m) => (
+                <MessageRow key={m.id} message={m} />
+              ))}
 
-            {isStreaming && (streamingText.length > 0 || streamingTile) ? (
-              <AssistantMessage content={streamingText} tile={streamingTile} />
-            ) : null}
-            {isStreaming && streamingText.length === 0 && !streamingTile ? (
-              <TypingIndicator />
-            ) : null}
+              {isStreaming && (streamingText.length > 0 || streamingTile) ? (
+                <AssistantMessage
+                  content={streamingText}
+                  tile={streamingTile}
+                />
+              ) : null}
+              {isStreaming && streamingText.length === 0 && !streamingTile ? (
+                <TypingIndicator />
+              ) : null}
 
-            {loadError ? (
-              <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
-                {loadError}
-              </div>
-            ) : null}
+              {loadError ? (
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
+                  {loadError}
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <KatieInput disabled={isStreaming} onSend={handleSend} />
-        <KatieFooter />
-      </div>
+          <KatieInput disabled={isStreaming} onSend={handleSend} />
+          <KatieFooter />
+        </div>
+      </DraftActionsProvider>
     </ImageAttachmentProvider>
   );
 }

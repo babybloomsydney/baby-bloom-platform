@@ -49,6 +49,13 @@ interface ImageAttachmentContextValue {
   setAttachment: (next: ImageAttachment | null) => void;
   /** Used by the preview chip to clear without triggering revoke twice. */
   clearAttachment: () => void;
+  /**
+   * Atomic read-and-clear. Returns whatever attachment is currently
+   * live and immediately clears it. Used by the draft-tile auto-
+   * adopt path so concurrent drafts can't both adopt the same
+   * attachment (the second caller gets `null`).
+   */
+  takeAttachment: () => ImageAttachment | null;
   error: string | null;
   setError: (next: string | null) => void;
 }
@@ -59,6 +66,7 @@ const FALLBACK: ImageAttachmentContextValue = {
   attachment: null,
   setAttachment: noop,
   clearAttachment: noop,
+  takeAttachment: () => null,
   error: null,
   setError: noop,
 };
@@ -86,6 +94,12 @@ export function ImageAttachmentProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Mirror of the live attachment kept in a ref so consumers can
+  // perform atomic read-and-clear. React state alone can't deliver
+  // that — `attachment` from useState is the value at last render,
+  // not "what's live right now".
+  const liveAttachmentRef = useRef<ImageAttachment | null>(null);
+
   const setAttachment = useCallback(
     (next: ImageAttachment | null) => {
       // Revoke whatever's currently live (if anything) before adopting
@@ -96,6 +110,7 @@ export function ImageAttachmentProvider({ children }: { children: ReactNode }) {
         revokeIfLive(prevLive);
       }
       livePreviewRef.current = next?.previewUrl ?? null;
+      liveAttachmentRef.current = next;
       setAttachmentState(next);
     },
     [revokeIfLive],
@@ -103,6 +118,19 @@ export function ImageAttachmentProvider({ children }: { children: ReactNode }) {
 
   const clearAttachment = useCallback(() => {
     setAttachment(null);
+  }, [setAttachment]);
+
+  const takeAttachment = useCallback((): ImageAttachment | null => {
+    // Read the ref (not the state) so a second caller in the same
+    // render tick — or a sibling in a concurrent useEffect — sees
+    // the cleared value as soon as the first caller takes it.
+    const taken = liveAttachmentRef.current;
+    if (!taken) return null;
+    // Use the live preview URL as the gate so revokeIfLive's idempotency
+    // protects against any double-revoke that might happen if both the
+    // taker AND a later setAttachment try to free the same URL.
+    setAttachment(null);
+    return taken;
   }, [setAttachment]);
 
   // Final cleanup if the provider unmounts with an attachment still
@@ -116,8 +144,15 @@ export function ImageAttachmentProvider({ children }: { children: ReactNode }) {
   }, [revokeIfLive]);
 
   const value = useMemo(
-    () => ({ attachment, setAttachment, clearAttachment, error, setError }),
-    [attachment, setAttachment, clearAttachment, error],
+    () => ({
+      attachment,
+      setAttachment,
+      clearAttachment,
+      takeAttachment,
+      error,
+      setError,
+    }),
+    [attachment, setAttachment, clearAttachment, takeAttachment, error],
   );
 
   return (

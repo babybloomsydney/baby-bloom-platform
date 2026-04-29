@@ -60,6 +60,132 @@ describe("isChatTile", () => {
     expect(isChatTile({ kind: "parent_placement", data: {} })).toBe(false);
   });
 
+  // ── Draft (sudo) tile validation — WU 8.22b ────────────────────────
+  it("accepts a draft wrapping a valid katie_note preview", () => {
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d-1",
+          toolName: "create_tile",
+          args: { body: "..." },
+          preview: {
+            kind: "katie_note",
+            data: { body: "Reminder: dentist tomorrow" },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts a draft wrapping a valid diary preview (feed-item shape)", () => {
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d-2",
+          toolName: "log_food",
+          args: { food: "banana" },
+          preview: {
+            kind: "diary",
+            data: {
+              item: {
+                id: "log-1",
+                child_client_id: "c1",
+                author_id: "u-1",
+                author_name: "Katie",
+                type: "diary",
+                status: "ready",
+                context: "adhoc",
+                parent_log_id: null,
+                data: { kind: "food", title: "Breakfast" },
+                created_at: "2026-04-30T00:00:00Z",
+                updated_at: "2026-04-30T00:00:00Z",
+              },
+            },
+          },
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a draft missing draftId / toolName / args", () => {
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          toolName: "x",
+          args: {},
+          preview: { kind: "katie_note", data: { body: "y" } },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d",
+          args: {},
+          preview: { kind: "katie_note", data: { body: "y" } },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d",
+          toolName: "x",
+          preview: { kind: "katie_note", data: { body: "y" } },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a draft whose preview kind is not draftable", () => {
+    // connection_request is a read tile — never appropriate as a
+    // draft preview.
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d",
+          toolName: "x",
+          args: {},
+          preview: { kind: "connection_request", data: { id: "c-1" } },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d",
+          toolName: "x",
+          args: {},
+          preview: {
+            kind: "verification_status",
+            data: { headline: "x", steps: [] },
+          },
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a draft whose preview itself fails validation", () => {
+    expect(
+      isChatTile({
+        kind: "draft",
+        data: {
+          draftId: "d",
+          toolName: "x",
+          args: {},
+          preview: { kind: "katie_note", data: { body: "" } }, // empty body fails katie_note check
+        },
+      }),
+    ).toBe(false);
+  });
+
   it("accepts a valid activity tile", () => {
     expect(
       isChatTile({

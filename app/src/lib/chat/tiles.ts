@@ -157,6 +157,46 @@ export interface JobMatchChatTile {
 }
 
 /**
+ * Draft / sudo tile (WU 8.22b). Wraps a "draftable" preview tile
+ * (the same kind it'll become after Accept) with three inline
+ * actions: Accept (commits), Amend (asks Katie what to change),
+ * Dismiss (vanishes from chat).
+ *
+ *   - `draftId`  is the client-generated id used by the accept
+ *     endpoint to reconcile this draft with the eventual persisted
+ *     entity. Stable across re-renders.
+ *   - `toolName` records which propose_X produced this draft so the
+ *     accept endpoint knows which apply path to run.
+ *   - `args`     is the args Katie passed to propose_X. The accept
+ *     endpoint uses them as-is unless an image attachment is added,
+ *     in which case the frontend merges `image_url` before posting.
+ *   - `preview`  is the visual the user sees. After Accept, this
+ *     same shape (with persisted ids and image_url filled in) is
+ *     what replaces the draft tile on the chat message.
+ *
+ * The draft kind is intentionally narrow: not every tile kind makes
+ * sense as a draft (read tiles like parent_position, connection_request,
+ * verification_status don't — they reflect existing state, not new
+ * writes). `DraftablePreview` whitelists the kinds that do.
+ */
+export type DraftablePreview =
+  | KatieNoteTile
+  | ActivityChatTile
+  | ObservationChatTile
+  | DiaryChatTile
+  | ProgressChatTile;
+
+export interface DraftChatTile {
+  kind: "draft";
+  data: {
+    draftId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+    preview: DraftablePreview;
+  };
+}
+
+/**
  * Parent's active position — id-only. Renders the SAME
  * `<PositionDetailView />` component used on /parent/position, in
  * compact + read-only mode. Fetches live from
@@ -206,7 +246,8 @@ export type ChatTile =
   | BsrJobChatTile
   | JobMatchChatTile
   | ParentPositionChatTile
-  | ParentPlacementChatTile;
+  | ParentPlacementChatTile
+  | DraftChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -264,6 +305,8 @@ export function isChatTile(value: unknown): value is ChatTile {
       return typeof data.id === "string" && data.id.length > 0;
     case "parent_placement":
       return typeof data.id === "string" && data.id.length > 0;
+    case "draft":
+      return isValidDraftData(data);
     default: {
       // Exhaustiveness guard: if a new ChatTile kind is added without
       // extending this switch, TS complains here at compile time.
@@ -285,6 +328,37 @@ function isFeedItemSnapshot(raw: unknown, expectedType: string): boolean {
     item.data != null &&
     typeof item.data === "object"
   );
+}
+
+const DRAFTABLE_KINDS = new Set([
+  "katie_note",
+  "activity",
+  "observation",
+  "diary",
+  "progress",
+]);
+
+/**
+ * Validate the `data` payload of a draft chat tile. Recurses into
+ * `preview` via `isChatTile` and additionally enforces that the
+ * inner kind is on the draftable allowlist (so a malformed draft
+ * can't smuggle, e.g., a connection_request preview into the
+ * action footer that wouldn't make sense for it).
+ */
+function isValidDraftData(data: Record<string, unknown>): boolean {
+  if (typeof data.draftId !== "string" || data.draftId.length === 0) {
+    return false;
+  }
+  if (typeof data.toolName !== "string" || data.toolName.length === 0) {
+    return false;
+  }
+  if (!data.args || typeof data.args !== "object") return false;
+
+  const preview = data.preview as { kind?: unknown } | undefined;
+  if (!preview || typeof preview !== "object") return false;
+  if (typeof preview.kind !== "string") return false;
+  if (!DRAFTABLE_KINDS.has(preview.kind)) return false;
+  return isChatTile(preview);
 }
 
 /**
