@@ -179,5 +179,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 422 });
   }
 
-  return NextResponse.json({ tile: result.tile, data: result.data });
+  return NextResponse.json({
+    tile: result.tile,
+    data: result.data,
+    // Surface warnings when the row persisted but a side-effect
+    // (e.g., progress cascade) failed. The frontend treats this
+    // as a non-fatal notice, not an error toast.
+    ...(result.warning ? { warning: result.warning } : {}),
+  });
 }

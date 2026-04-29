@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { observationsModule } from "./observations";
+import { observationsModule, applyLogObservation } from "./observations";
 import type { ChildSummary, ModuleContext } from "./types";
 
 vi.mock("@/lib/actions/bapp/progress", () => ({
@@ -52,10 +52,16 @@ function makeCtx(children: ChildSummary[] = [oliver]): {
   return { ctx, insertMock };
 }
 
-describe("observations module — log_observation", () => {
+// ── Propose path ──────────────────────────────────────────────────────────
+//
+// WU 8.22d: log_observation now returns a draft tile. The progress
+// cascade (recalculateProgress + writeHistorySnapshot) does NOT fire
+// at propose time — only on Accept (applyLogObservation).
+
+describe("observations module — log_observation (propose)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("logs a general observation with just a note", async () => {
+  it("returns a draft tile and does NOT insert or recalc", async () => {
     const { ctx, insertMock } = makeCtx();
     const r = await observationsModule.execute(
       "log_observation",
@@ -63,20 +69,21 @@ describe("observations module — log_observation", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.feedEntry).toBe(true);
-    expect(insertMock).toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
     expect(recalculateProgress).not.toHaveBeenCalled();
     expect(writeHistorySnapshot).not.toHaveBeenCalled();
-    // Inline chat tile — wraps the existing ObservationTile component
-    // so Katie renders the same visual the child feed shows.
-    expect(r.tile?.kind).toBe("observation");
-    if (r.tile?.kind === "observation") {
-      expect(r.tile.data.item.id).toBe("obs-1");
-      expect(r.tile.data.item.type).toBe("observation");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      expect((r.tile.data.item.data as any).note).toBe(
-        "Shared toys with the cat nicely",
-      );
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("log_observation");
+      const preview = r.tile.data.preview;
+      if (preview.kind === "observation") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((preview.data.item.data as any).note).toBe(
+          "Shared toys with the cat nicely",
+        );
+      } else {
+        throw new Error(`expected observation preview, got ${preview.kind}`);
+      }
     }
   });
 
@@ -91,7 +98,7 @@ describe("observations module — log_observation", () => {
     expect(r.error).toMatch(/note/i);
   });
 
-  it("triggers progress recalc when milestone_id + score provided", async () => {
+  it("does NOT trigger progress recalc at propose time even with milestone_id + score", async () => {
     const { ctx } = makeCtx();
     const r = await observationsModule.execute(
       "log_observation",
@@ -104,10 +111,9 @@ describe("observations module — log_observation", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(recalculateProgress).toHaveBeenCalledWith("c1", [
-      { id: "CL_12_18_1", score: 3 },
-    ]);
-    expect(writeHistorySnapshot).toHaveBeenCalledWith("c1", "obs-1");
+    expect(r.tile?.kind).toBe("draft");
+    expect(recalculateProgress).not.toHaveBeenCalled();
+    expect(writeHistorySnapshot).not.toHaveBeenCalled();
   });
 
   it("rejects score outside 1-4", async () => {
@@ -123,17 +129,6 @@ describe("observations module — log_observation", () => {
     );
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/score/i);
-  });
-
-  it("does not trigger progress recalc when only milestone_id (no score)", async () => {
-    const { ctx } = makeCtx();
-    const r = await observationsModule.execute(
-      "log_observation",
-      { note: "Still working on walking", milestone_id: "PD_12_18_1" },
-      ctx,
-    );
-    expect(r.success).toBe(true);
-    expect(recalculateProgress).not.toHaveBeenCalled();
   });
 
   it("surfaces error when child can't be resolved", async () => {
@@ -152,5 +147,67 @@ describe("observations module — log_observation", () => {
     const r = await observationsModule.execute("nope", {}, ctx);
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/Unknown tool/);
+  });
+});
+
+// ── Apply path ────────────────────────────────────────────────────────────
+
+describe("observations apply — log_observation", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts and returns a persisted observation tile", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogObservation(
+      { note: "Shared toys" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    expect(recalculateProgress).not.toHaveBeenCalled();
+    if (r.ok) {
+      expect(r.tile.kind).toBe("observation");
+      expect(r.data.log_id).toBe("obs-1");
+      expect(r.data.progress_updated).toBe(false);
+    }
+  });
+
+  it("triggers progress recalc + history snapshot when milestone_id + score present", async () => {
+    const { ctx } = makeCtx();
+    const r = await applyLogObservation(
+      {
+        note: "Said 'mummy'",
+        milestone_id: "CL_12_18_1",
+        score: 3,
+      },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(recalculateProgress).toHaveBeenCalledWith("c1", [
+      { id: "CL_12_18_1", score: 3 },
+    ]);
+    expect(writeHistorySnapshot).toHaveBeenCalledWith("c1", "obs-1");
+    if (r.ok) {
+      expect(r.data.progress_updated).toBe(true);
+    }
+  });
+
+  it("does not trigger recalc when only milestone_id (no score)", async () => {
+    const { ctx } = makeCtx();
+    const r = await applyLogObservation(
+      { note: "Working on walking", milestone_id: "PD_12_18_1" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(recalculateProgress).not.toHaveBeenCalled();
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogObservation(
+      { note: "" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });

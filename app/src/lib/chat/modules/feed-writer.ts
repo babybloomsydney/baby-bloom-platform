@@ -1,32 +1,47 @@
 /**
  * `feed-writer` module — Katie-authored tiles + soft-delete.
  *
- * create_tile: inserts bapp_logs rows with type='custom'. These render
- * via CustomTile.tsx in every existing feed surface (the tile-renderer
- * switch in BAppFeedView falls back through a `custom` case).
+ * Two-turn (WU 8.22d): create_tile is the propose path — returns a
+ * `kind: "draft"` tile carrying the would-be katie_note preview. The
+ * actual bapp_logs insert happens via applyCreateTile when the user
+ * clicks Accept.
  *
- * delete_tile: soft-delete via is_active=false. Access check enforced
- * in code (admin client bypasses RLS). Idempotent — deleting an
- * already-inactive row returns success without a second DB write.
+ * delete_tile remains a direct one-shot — not a log creation, so the
+ * draft pattern doesn't apply (per the WU spec "logs, progress,
+ * activity reports, diary entries"). Soft-delete via is_active=false
+ * is reversible enough that an Accept gate would just add friction.
  */
 
-import type { BloomBotModule, ToolResult } from "./types";
+import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import type { KatieNoteTile } from "@/lib/chat/tiles";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
 
-async function createTile(
+interface PreparedCustom {
+  child: ChildSummary;
+  data: Record<string, unknown>;
+  tilePreview: KatieNoteTile;
+}
+
+function prepareCustom(
   args: Record<string, unknown>,
-  ctx: Parameters<BloomBotModule["execute"]>[2],
-): Promise<ToolResult> {
-  const r = resolveChild(args.child_name, ctx.children);
-  if (r.error) return r.error;
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedCustom }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
   const child = r.child;
 
   const title = typeof args.title === "string" ? args.title.trim() : "";
   if (title.length === 0) {
-    return {
-      success: false,
-      error: "create_tile needs a `title`.",
-    };
+    return { ok: false, error: "create_tile needs a `title`." };
   }
 
   const body =
@@ -37,7 +52,7 @@ async function createTile(
         : "";
   if (body.length === 0) {
     return {
-      success: false,
+      ok: false,
       error: "create_tile needs a `body` describing what the tile says.",
     };
   }
@@ -49,6 +64,79 @@ async function createTile(
   if (typeof args.badge === "string" && args.badge.trim().length > 0) {
     data.badge = args.badge.trim();
   }
+
+  const tileImage =
+    typeof data.image_url === "string" && data.image_url.length > 0
+      ? data.image_url
+      : undefined;
+  const tileBadge =
+    typeof data.badge === "string" && data.badge.length > 0
+      ? data.badge
+      : undefined;
+  const tilePreview: KatieNoteTile = {
+    kind: "katie_note",
+    data: {
+      title,
+      body,
+      ...(tileImage ? { image_url: tileImage } : {}),
+      ...(tileBadge ? { badge: tileBadge } : {}),
+    },
+  };
+
+  return { ok: true, prepared: { child, data, tilePreview } };
+}
+
+// ── Propose path (LLM-callable) ──────────────────────────────────────────
+
+async function proposeCreateTile(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareCustom(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, tilePreview } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      title: tilePreview.data.title ?? null,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "create_tile",
+        args,
+        preview: tilePreview,
+      },
+    },
+  };
+}
+
+// ── Apply path (frontend-callable via /api/chat/drafts/accept) ───────────
+
+export interface CustomApplyResult {
+  ok: true;
+  tile: KatieNoteTile;
+  data: { log_id: string; child_name: string };
+}
+
+export interface CustomApplyError {
+  ok: false;
+  error: string;
+}
+
+export async function applyCreateTile(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<CustomApplyResult | CustomApplyError> {
+  const r = prepareCustom(args, ctx.children);
+  if (!r.ok) return { ok: false, error: r.error };
+  const { child, data, tilePreview } = r.prepared;
 
   const { data: inserted, error } = await ctx.supabase
     .from("bapp_logs")
@@ -65,42 +153,20 @@ async function createTile(
 
   if (error || !inserted) {
     return {
-      success: false,
+      ok: false,
       error: `Failed to create tile: ${error?.message ?? "unknown"}`,
     };
   }
-
   const logId = (inserted as { id: string }).id;
-  // Render the same content inline in Katie's deck. Without `tile`, the
-  // chat reply has no inline preview and the user has to switch decks to
-  // see what Katie just wrote.
-  const tileImage =
-    typeof data.image_url === "string" && data.image_url.length > 0
-      ? data.image_url
-      : undefined;
-  const tileBadge =
-    typeof data.badge === "string" && data.badge.length > 0
-      ? data.badge
-      : undefined;
+
   return {
-    success: true,
-    feedEntry: true,
-    data: {
-      log_id: logId,
-      child_name: child.firstName,
-      title,
-    },
-    tile: {
-      kind: "katie_note",
-      data: {
-        title,
-        body,
-        ...(tileImage ? { image_url: tileImage } : {}),
-        ...(tileBadge ? { badge: tileBadge } : {}),
-      },
-    },
+    ok: true,
+    data: { log_id: logId, child_name: child.firstName },
+    tile: tilePreview,
   };
 }
+
+// ── Direct (non-draft) tools ─────────────────────────────────────────────
 
 async function deleteTile(
   args: Record<string, unknown>,
@@ -117,7 +183,6 @@ async function deleteTile(
     };
   }
 
-  // Load the target to check ownership and current state.
   const { data: existing, error: readErr } = await ctx.supabase
     .from("bapp_logs")
     .select("id, child_client_id, is_active")
@@ -152,7 +217,6 @@ async function deleteTile(
   }
 
   if (row.is_active === false) {
-    // Already soft-deleted — no-op success.
     return {
       success: true,
       data: { log_id: logId, already_inactive: true },
@@ -183,13 +247,13 @@ export const feedWriterModule: BloomBotModule = {
   id: "feed-writer",
   name: "Feed Writer",
   description:
-    "Writes to the child-shared feed surface — bapp_logs rows with type='custom'. The feed is visible to BOTH the nanny and the child's parent. This module ONLY handles content about the child; anything private to the nanny or parent belongs in agent-memory instead.",
+    "Drafts custom tiles for the child-shared feed (bapp_logs type='custom'). The feed is visible to BOTH the nanny and the child's parent. ONLY for content about the child; anything private goes through agent-memory instead.",
 
   tools: [
     {
       name: "create_tile",
       description:
-        "Publish a custom tile to the child's SHARED feed. The tile is visible to BOTH the nanny and the child's parent — this is a co-owned developmental journal, NOT a private pinboard. ONLY use for content about the child: observations worth highlighting, educational summaries, shared notes about the child's week, captions for a photo of the child. NEVER use for nanny-private items (jobs being considered, applications, interviews, rate changes, professional reminders) or parent-private items (schedule conflicts, doubts about the placement, notes about the nanny). For anything private, use `write_memory` (scope='account') instead. If the user asks you to 'pin' or 'remember' something that isn't clearly about the child, default to memory, not create_tile.",
+        "Draft a custom tile for the child's SHARED feed (visible to BOTH the nanny and the child's parent — this is a co-owned developmental journal). Returns a draft tile the user must Accept; nothing is published until Accept. ONLY use for content about the child: observations worth highlighting, educational summaries, shared notes about the child's week, captions for a photo. NEVER use for private items (jobs, applications, interviews, schedule conflicts, doubts about a placement) — those go to `write_memory` with scope='account'.",
       parameters: {
         type: "object",
         properties: {
@@ -225,7 +289,7 @@ export const feedWriterModule: BloomBotModule = {
     {
       name: "delete_tile",
       description:
-        "Soft-delete a feed tile by id. Reversible: sets is_active=false; the row stays in the DB but won't show in feeds. Use when the user explicitly asks to remove something.",
+        "Soft-delete a feed tile by id. Reversible: sets is_active=false; the row stays in the DB but won't show in feeds. Direct one-shot — does NOT use the draft/Accept pattern. Use when the user explicitly asks to remove something.",
       parameters: {
         type: "object",
         properties: {
@@ -241,11 +305,11 @@ export const feedWriterModule: BloomBotModule = {
   ],
 
   async execute(toolName, args, ctx) {
-    if (toolName === "create_tile") return createTile(args, ctx);
+    if (toolName === "create_tile") return proposeCreateTile(args, ctx);
     if (toolName === "delete_tile") return deleteTile(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "CRITICAL: `create_tile` writes to the CHILD-SHARED feed. The other party (nanny ↔ parent) will see everything you put there. Use it ONLY for content about the child. If the user asks you to pin, note, or remember something that isn't about the child — a job prospect, an application, a private plan, a professional reminder, doubts, rate changes — reject that use of create_tile and route to `write_memory` with scope='account' instead. Example: user says 'add a tile about the Surry Hills job to my feed' → you save a memory, not a tile, and tell them: 'I'll keep that as a private note on your account. The child's feed is shared with [the parent / the nanny], so job-related items stay here with you.'\n\nUse `delete_tile` only when the user explicitly asks to remove something — confirm the tile contents back to them first so accidental deletes are hard. delete_tile is a soft-delete: rows stay in the DB with is_active=false, recoverable via raw SQL if needed.",
+    "CRITICAL: `create_tile` drafts a tile for the CHILD-SHARED feed. The other party (nanny ↔ parent) will see it after the user accepts. Use it ONLY for content about the child. If the user asks you to pin, note, or remember something that isn't about the child — a job prospect, an application, a private plan, a professional reminder, doubts, rate changes — reject that use of create_tile and route to `write_memory` with scope='account' instead.\n\n`create_tile` returns a DRAFT tile — say something like 'Drafted that — review and accept' and stop. The user's Accept publishes it.\n\nUse `delete_tile` only when the user explicitly asks to remove something — confirm the tile contents back to them first so accidental deletes are hard. delete_tile is a soft-delete and does NOT use the draft pattern; it executes immediately on call.",
 };

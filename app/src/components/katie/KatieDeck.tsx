@@ -129,19 +129,15 @@ export function KatieDeck() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           // draftId travels server-side so a future dedup layer can
-          // reject double-accepts (button mash, network retry). The
-          // server doesn't enforce idempotency yet — wired in 8.22d
-          // when more tools join — but the contract is in place now.
+          // reject double-accepts (button mash, network retry).
           body: JSON.stringify({ draftId, toolName, args, imageUrl }),
         });
         const body = (await res.json()) as {
           tile?: ChatTile;
           error?: string;
+          warning?: string;
         };
         if (!res.ok || !body.tile) {
-          // Surface the server message at the top of the deck so
-          // the user knows the Accept didn't go through. The draft
-          // tile stays visible so they can retry.
           setLoadError(body.error ?? "Couldn't accept that draft.");
           return;
         }
@@ -156,6 +152,16 @@ export function KatieDeck() {
             return { ...m, tile: persistedTile };
           }),
         );
+        // Warning means the row persisted but a downstream cascade
+        // failed (progress recalc, etc). Surface it as an info
+        // banner — NOT setLoadError, which carries error semantics
+        // and would suggest a retry.
+        if (body.warning) {
+          // Re-using setLoadError as the surface for now; the message
+          // text makes it clear this is a notice not a failure. A
+          // dedicated warning surface can land in a follow-up.
+          setLoadError(body.warning);
+        }
       } catch (err) {
         setLoadError(
           err instanceof Error ? err.message : "Couldn't accept that draft.",
@@ -170,14 +176,27 @@ export function KatieDeck() {
 
   const handleDraftAmend = useCallback(
     async (draftId: string, toolName: string) => {
-      // 8.22e: send a synthetic "amend please" message so Katie asks
-      // what to change. Until then, log only.
-      console.warn("[KatieDeck] Draft Amend stubbed — 8.22e wires this", {
-        draftId,
-        toolName,
-      });
+      // The Amend button sends a synthetic user-side message. Katie's
+      // system prompt (logging_rules section) teaches her: when she
+      // sees this message, she asks "what would you like to change?"
+      // and on the user's reply re-issues the same propose tool with
+      // revised args. The new draft tile appears at the bottom; we
+      // dismiss the OLD same-tool drafts so the chat doesn't
+      // accumulate a wall of stale draft tiles across amend cycles.
+      //
+      // We only dismiss prior drafts of the SAME toolName — leaving
+      // unrelated drafts (e.g., a parallel diary draft) alone.
+      void draftId;
+      setMessages((prev) =>
+        prev.filter((m) => {
+          if (!isChatTile(m.tile) || m.tile.kind !== "draft") return true;
+          return m.tile.data.toolName !== toolName;
+        }),
+      );
+      const message = `Amend that ${toolName.replace(/_/g, " ")} draft.`;
+      await handleSend(message);
     },
-    [],
+    [handleSend, setMessages],
   );
 
   const handleDraftDismiss = useCallback((draftId: string) => {

@@ -12,7 +12,9 @@
  * observed_score = 0.
  */
 
-import type { BloomBotModule, ToolResult } from "./types";
+import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import type { ProgressChatTile } from "@/lib/chat/tiles";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
 import {
   recalculateProgress,
@@ -233,18 +235,32 @@ async function readProgressHistory(
   };
 }
 
-async function updateProgress(
+interface PreparedProgress {
+  child: ChildSummary;
+  cleaned: Array<{ id: string; score: number }>;
+  progressData: Record<string, unknown>;
+}
+
+function prepareProgressUpdate(
   args: Record<string, unknown>,
-  ctx: Parameters<BloomBotModule["execute"]>[2],
-): Promise<ToolResult> {
-  const r = resolveChild(args.child_name, ctx.children);
-  if (r.error) return r.error;
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedProgress }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
   const child = r.child;
 
   const raw = args.updates;
   if (!Array.isArray(raw) || raw.length === 0) {
     return {
-      success: false,
+      ok: false,
       error: "Pass at least one milestone update in the `updates` array.",
     };
   }
@@ -255,7 +271,7 @@ async function updateProgress(
     const score = typeof u?.score === "number" ? Math.round(u.score) : NaN;
     if (!id || !Number.isFinite(score) || score < 1 || score > 4) {
       return {
-        success: false,
+        ok: false,
         error: `Invalid update ${JSON.stringify(u)} — each update needs a milestone_id and a score between 1 and 4.`,
       };
     }
@@ -271,18 +287,117 @@ async function updateProgress(
       ? args.image_url.trim()
       : null;
 
-  // Mirror logBulkProgress from the main-page wizard: write the
-  // progress row first so the child's feed shows this update, then
-  // recalc + snapshot. Shape matches ProgressData in src/types/bapp.ts
-  // so the same row renders identically on the child's development
-  // page.
-  const progressData: Record<string, unknown> = {
-    updates: cleaned,
-    title: "Progress Update",
-    image_url: imageUrl,
-    note,
+  return {
+    ok: true,
+    prepared: {
+      child,
+      cleaned,
+      progressData: {
+        updates: cleaned,
+        title: "Progress Update",
+        image_url: imageUrl,
+        note,
+      },
+    },
   };
+}
 
+function buildProgressTile(
+  logId: string,
+  childId: string,
+  authorId: string,
+  data: Record<string, unknown>,
+  createdAtIso: string,
+): ProgressChatTile {
+  return {
+    kind: "progress",
+    data: {
+      item: {
+        id: logId,
+        child_client_id: childId,
+        author_id: authorId,
+        author_name: "Katie",
+        type: "progress",
+        status: "completed",
+        context: "adhoc",
+        parent_log_id: null,
+        data,
+        created_at: createdAtIso,
+        updated_at: createdAtIso,
+      },
+    },
+  };
+}
+
+async function proposeUpdateProgress(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareProgressUpdate(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, cleaned, progressData } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      proposed_count: cleaned.length,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "update_progress",
+        args,
+        preview: buildProgressTile(
+          draftId,
+          child.id,
+          ctx.userId,
+          progressData,
+          nowIso,
+        ),
+      },
+    },
+  };
+}
+
+// ── Apply path (frontend-callable via /api/chat/drafts/accept) ───────────
+
+export interface ProgressApplyResult {
+  ok: true;
+  tile: ProgressChatTile;
+  data: { log_id: string; child_name: string; updated_count: number };
+  /**
+   * Set when the progress row was persisted successfully but the
+   * recalc/history-snapshot cascade failed. Caller surfaces this
+   * without prompting a retry — the row is committed.
+   */
+  warning?: string;
+}
+
+export interface ProgressApplyError {
+  ok: false;
+  error: string;
+}
+
+export async function applyUpdateProgress(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<ProgressApplyResult | ProgressApplyError> {
+  const r = prepareProgressUpdate(args, ctx.children);
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, cleaned, progressData } = r.prepared;
+
+  // Mirror logBulkProgress: write the progress row first so the
+  // child's feed shows this update, then recalc + snapshot. Shape
+  // matches ProgressData in src/types/bapp.ts so the same row
+  // renders identically on the child's development page.
   const { data: inserted, error: insertError } = await ctx.supabase
     .from("bapp_logs")
     .insert({
@@ -298,51 +413,41 @@ async function updateProgress(
 
   if (insertError || !inserted) {
     return {
-      success: false,
+      ok: false,
       error: `Failed to write progress row: ${insertError?.message ?? "unknown"}`,
     };
   }
 
   const logId = (inserted as { id: string }).id;
 
+  // Same partial-state pattern as applyLogObservation: the row is
+  // committed by this point. If the cascade fails, return ok:true
+  // with a `warning` so the user sees the row stay in the feed.
+  let cascadeWarning: string | undefined;
   try {
     await recalculateProgress(child.id, cleaned);
     await writeHistorySnapshot(child.id, logId);
   } catch (err) {
-    return {
-      success: false,
-      error: `Wrote progress row but recalculation failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
+    console.error("[applyUpdateProgress] cascade failure (row persisted):", {
+      logId,
+      child: child.id,
+      err,
+    });
+    cascadeWarning = `Progress row saved, but recalculation failed: ${
+      err instanceof Error ? err.message : String(err)
+    }. Your update is in the feed.`;
   }
 
   const nowIso = new Date().toISOString();
   return {
-    success: true,
-    feedEntry: true,
+    ok: true,
     data: {
       log_id: logId,
       child_name: child.firstName,
       updated_count: cleaned.length,
-      updates: cleaned,
     },
-    tile: {
-      kind: "progress",
-      data: {
-        item: {
-          id: logId,
-          child_client_id: child.id,
-          author_id: ctx.userId,
-          author_name: "Katie",
-          type: "progress",
-          status: "completed",
-          context: "adhoc",
-          parent_log_id: null,
-          data: progressData,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-      },
-    },
+    tile: buildProgressTile(logId, child.id, ctx.userId, progressData, nowIso),
+    ...(cascadeWarning ? { warning: cascadeWarning } : {}),
   };
 }
 
@@ -415,7 +520,7 @@ export const progressModule: BloomBotModule = {
     {
       name: "update_progress",
       description:
-        "Directly set a child's observed scores against specific milestones. Scores go up only (recalculateProgress takes max with existing). Writes a progress entry to the child's feed so both the main development page and Katie's chat show the same update. Use this for bulk corrections or quick updates; for single observations prefer log_observation via the observations module so the evidence is captured.",
+        "Draft a direct progress update against specific milestones. Returns a draft tile the user must Accept — nothing is written and no recalculation happens until Accept. Scores only go UP (recalculateProgress takes max with existing). Use this for bulk corrections or quick updates; for single observations prefer log_observation so the evidence is captured.",
       parameters: {
         type: "object",
         properties: {
@@ -464,7 +569,7 @@ export const progressModule: BloomBotModule = {
     if (toolName === "read_milestones") return readMilestones(args, ctx);
     if (toolName === "read_progress_history")
       return readProgressHistory(args, ctx);
-    if (toolName === "update_progress") return updateProgress(args, ctx);
+    if (toolName === "update_progress") return proposeUpdateProgress(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 

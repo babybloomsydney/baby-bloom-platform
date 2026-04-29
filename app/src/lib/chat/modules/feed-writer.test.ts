@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { feedWriterModule } from "./feed-writer";
+import { feedWriterModule, applyCreateTile } from "./feed-writer";
 import type { ChildSummary, ModuleContext } from "./types";
 
 const oliver: ChildSummary = {
@@ -73,10 +73,16 @@ function makeCtx(options?: {
   return { ctx, mocks: { insertMock, updateMock, getLogMock } };
 }
 
-describe("feed-writer — create_tile", () => {
+// ── Propose path ──────────────────────────────────────────────────────────
+//
+// WU 8.22d: create_tile now returns a draft tile and does not insert.
+// applyCreateTile (below) does the bapp_logs insert when the user
+// clicks Accept.
+
+describe("feed-writer — create_tile (propose)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("creates a custom tile with title + body", async () => {
+  it("returns a draft katie_note tile and does NOT insert", async () => {
     const { ctx, mocks } = makeCtx();
     const r = await feedWriterModule.execute(
       "create_tile",
@@ -84,11 +90,18 @@ describe("feed-writer — create_tile", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.feedEntry).toBe(true);
-    expect(mocks.insertMock).toHaveBeenCalled();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = r.data as any;
-    expect(data.log_id).toBe("tile-new-1");
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("create_tile");
+      const preview = r.tile.data.preview;
+      if (preview.kind === "katie_note") {
+        expect(preview.data.title).toBe("Today at the park");
+        expect(preview.data.body).toContain("Ran for 20 minutes");
+      } else {
+        throw new Error(`expected katie_note preview, got ${preview.kind}`);
+      }
+    }
   });
 
   it("rejects missing title", async () => {
@@ -113,7 +126,7 @@ describe("feed-writer — create_tile", () => {
     expect(r.error).toMatch(/body|content/i);
   });
 
-  it("accepts optional image_url", async () => {
+  it("threads image_url through into the draft preview without inserting", async () => {
     const { ctx, mocks } = makeCtx();
     const r = await feedWriterModule.execute(
       "create_tile",
@@ -125,7 +138,15 @@ describe("feed-writer — create_tile", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(mocks.insertMock).toHaveBeenCalled();
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    if (r.tile?.kind === "draft") {
+      const preview = r.tile.data.preview;
+      if (preview.kind === "katie_note") {
+        expect(preview.data.image_url).toBe(
+          "https://res.cloudinary.com/bb/img/abc.jpg",
+        );
+      }
+    }
   });
 
   it("surfaces error when child can't be resolved", async () => {
@@ -137,6 +158,36 @@ describe("feed-writer — create_tile", () => {
     );
     expect(r.success).toBe(false);
     expect(r.error).toMatch(/any children/);
+  });
+});
+
+// ── Apply path ────────────────────────────────────────────────────────────
+
+describe("feed-writer apply — create_tile", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts and returns the persisted katie_note tile", async () => {
+    const { ctx, mocks } = makeCtx();
+    const r = await applyCreateTile(
+      { title: "Today at the park", body: "Ran for 20 minutes." },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(mocks.insertMock).toHaveBeenCalled();
+    if (r.ok) {
+      expect(r.tile.kind).toBe("katie_note");
+      expect(r.data.log_id).toBe("tile-new-1");
+    }
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, mocks } = makeCtx();
+    const r = await applyCreateTile(
+      { body: "no title" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
   });
 });
 

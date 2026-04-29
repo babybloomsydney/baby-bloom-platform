@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { progressModule } from "./progress";
+import { progressModule, applyUpdateProgress } from "./progress";
 import type { ChildSummary, ModuleContext } from "./types";
 
 vi.mock("@/lib/actions/bapp/progress", () => ({
@@ -206,7 +206,10 @@ describe("progress module — update_progress", () => {
     expect(r.error).toMatch(/score/i);
   });
 
-  it("writes a bapp_logs progress row + delegates to recalc + snapshot", async () => {
+  // WU 8.22d: update_progress now returns a draft tile. The DB
+  // write + recalc + snapshot only fire on Accept.
+
+  it("returns a draft tile and does NOT write or recalc", async () => {
     const { ctx, mocks } = makeCtx();
     const r = await progressModule.execute(
       "update_progress",
@@ -219,32 +222,13 @@ describe("progress module — update_progress", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    // Row first, then recalc, then snapshot — so the feed row is the
-    // source of truth if any later step fails.
-    expect(mocks.insertMock).toHaveBeenCalled();
-    expect(recalculateProgress).toHaveBeenCalledWith("c1", [
-      { id: "CL_12_18_1", score: 4 },
-      { id: "PD_12_18_1", score: 2 },
-    ]);
-    expect(writeHistorySnapshot).toHaveBeenCalledWith("c1", "progress-log-1");
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(recalculateProgress).not.toHaveBeenCalled();
+    expect(writeHistorySnapshot).not.toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("draft");
   });
 
-  it("returns user-facing confirmation summary", async () => {
-    const { ctx } = makeCtx();
-    const r = await progressModule.execute(
-      "update_progress",
-      { updates: [{ milestone_id: "CL_12_18_1", score: 4 }] },
-      ctx,
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const data = r.data as any;
-    expect(data.updated_count).toBe(1);
-    expect(data.child_name).toBe("Oliver");
-  });
-
-  it("emits a ProgressChatTile wrapping the existing ProgressTile", async () => {
-    // Same row shape the child feed renders, so there is zero drift
-    // between Katie's chat view and /nanny/development/<child>.
+  it("returns a draft tile with progress preview", async () => {
     const { ctx } = makeCtx();
     const r = await progressModule.execute(
       "update_progress",
@@ -255,19 +239,23 @@ describe("progress module — update_progress", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(r.feedEntry).toBe(true);
-    expect(r.tile?.kind).toBe("progress");
-    if (r.tile?.kind === "progress") {
-      const item = r.tile.data.item;
-      expect(item.id).toBe("progress-log-1");
-      expect(item.type).toBe("progress");
-      const data = item.data as Record<string, unknown>;
-      expect(data.title).toBe("Progress Update");
-      expect(data.note).toBe("Set from chat");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const updates = data.updates as any[];
-      expect(updates).toHaveLength(1);
-      expect(updates[0]).toEqual({ id: "CL_12_18_1", score: 4 });
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("update_progress");
+      const preview = r.tile.data.preview;
+      if (preview.kind === "progress") {
+        const item = preview.data.item;
+        expect(item.type).toBe("progress");
+        const data = item.data as Record<string, unknown>;
+        expect(data.title).toBe("Progress Update");
+        expect(data.note).toBe("Set from chat");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const updates = data.updates as any[];
+        expect(updates).toHaveLength(1);
+        expect(updates[0]).toEqual({ id: "CL_12_18_1", score: 4 });
+      } else {
+        throw new Error(`expected progress preview, got ${preview.kind}`);
+      }
     }
   });
 });
@@ -413,5 +401,45 @@ describe("progress module — read_progress_history", () => {
       UW: 0,
       EAD: 0,
     });
+  });
+});
+
+// ── Apply path ────────────────────────────────────────────────────────────
+
+describe("progress apply — update_progress", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts the progress row and runs recalc + snapshot", async () => {
+    const { ctx, mocks } = makeCtx();
+    const r = await applyUpdateProgress(
+      {
+        updates: [
+          { milestone_id: "CL_12_18_1", score: 4 },
+          { milestone_id: "PD_12_18_1", score: 2 },
+        ],
+      },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(mocks.insertMock).toHaveBeenCalled();
+    expect(recalculateProgress).toHaveBeenCalledWith("c1", [
+      { id: "CL_12_18_1", score: 4 },
+      { id: "PD_12_18_1", score: 2 },
+    ]);
+    expect(writeHistorySnapshot).toHaveBeenCalledWith("c1", "progress-log-1");
+    if (r.ok) {
+      expect(r.data.updated_count).toBe(2);
+      expect(r.tile.kind).toBe("progress");
+    }
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, mocks } = makeCtx();
+    const r = await applyUpdateProgress(
+      { updates: [{ milestone_id: "CL_12_18_1", score: 9 }] },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
   });
 });

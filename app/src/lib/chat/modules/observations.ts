@@ -1,14 +1,19 @@
 /**
- * `observations` module — captures observations and cascades into progress.
+ * `observations` module — captures observations and cascades into
+ * progress on apply.
  *
- * Mirrors the core of logObservation() without the cookie-auth + insight-
- * generation + revalidatePath side-effects, which don't suit a streaming
- * tool handler. Insight generation stays with the server action for the
- * interactive UI; here the tool call is synchronous and blocks only on
- * the DB writes.
+ * Two-turn (WU 8.22d): the LLM-callable `log_observation` is the
+ * propose path — it validates and returns a `kind: "draft"` tile.
+ * Nothing is inserted, and the progress cascade does NOT fire. The
+ * apply path (`applyLogObservation` below, called by
+ * /api/chat/drafts/accept) does the bapp_logs insert and, when
+ * milestone_id + score are present, recalculates progress and writes
+ * a history snapshot.
  */
 
-import type { BloomBotModule, ToolResult } from "./types";
+import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import type { ObservationChatTile } from "@/lib/chat/tiles";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
 import {
   recalculateProgress,
@@ -26,18 +31,34 @@ const OBSERVATION_DOMAINS = [
   "UW",
 ] as const;
 
-async function logObservation(
+interface PreparedObservation {
+  child: ChildSummary;
+  domain: string;
+  milestoneId: string | null;
+  score: number | null;
+  observationData: Record<string, unknown>;
+}
+
+function prepareObservation(
   args: Record<string, unknown>,
-  ctx: Parameters<BloomBotModule["execute"]>[2],
-): Promise<ToolResult> {
-  const r = resolveChild(args.child_name, ctx.children);
-  if (r.error) return r.error;
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedObservation }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
   const child = r.child;
 
   const note = typeof args.note === "string" ? args.note.trim() : "";
   if (note.length === 0) {
     return {
-      success: false,
+      ok: false,
       error: "log_observation needs a `note` describing what was observed.",
     };
   }
@@ -60,7 +81,7 @@ async function logObservation(
     const raw = typeof args.score === "number" ? Math.round(args.score) : NaN;
     if (!Number.isFinite(raw) || raw < 1 || raw > 4) {
       return {
-        success: false,
+        ok: false,
         error: "score must be a number between 1 and 4.",
       };
     }
@@ -77,14 +98,124 @@ async function logObservation(
       ? args.image_url.trim()
       : null;
 
-  const observationData = {
-    title,
-    domain,
-    milestone_id: milestoneId,
-    score,
-    note,
-    image_url: imageUrl,
+  return {
+    ok: true,
+    prepared: {
+      child,
+      domain,
+      milestoneId,
+      score,
+      observationData: {
+        title,
+        domain,
+        milestone_id: milestoneId,
+        score,
+        note,
+        image_url: imageUrl,
+      },
+    },
   };
+}
+
+function buildObservationTile(
+  logId: string,
+  childId: string,
+  authorId: string,
+  data: Record<string, unknown>,
+  createdAtIso: string,
+): ObservationChatTile {
+  return {
+    kind: "observation",
+    data: {
+      item: {
+        id: logId,
+        child_client_id: childId,
+        author_id: authorId,
+        author_name: "Katie",
+        type: "observation",
+        status: "completed",
+        context: "adhoc",
+        parent_log_id: null,
+        data,
+        created_at: createdAtIso,
+        updated_at: createdAtIso,
+      },
+    },
+  };
+}
+
+// ── Propose path (LLM-callable) ──────────────────────────────────────────
+
+async function proposeLogObservation(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareObservation(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, observationData } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      preview: observationData,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "log_observation",
+        args,
+        preview: buildObservationTile(
+          draftId,
+          child.id,
+          ctx.userId,
+          observationData,
+          nowIso,
+        ),
+      },
+    },
+  };
+}
+
+// ── Apply path (frontend-callable via /api/chat/drafts/accept) ───────────
+
+export interface ObservationApplyResult {
+  ok: true;
+  tile: ObservationChatTile;
+  data: {
+    log_id: string;
+    child_name: string;
+    progress_updated: boolean;
+  };
+  /**
+   * Set when the observation row was persisted successfully but a
+   * downstream side-effect (progress recalc / history snapshot)
+   * failed. The caller should surface this to the user without
+   * suggesting they retry — the row IS in the feed.
+   */
+  warning?: string;
+}
+
+export interface ObservationApplyError {
+  ok: false;
+  error: string;
+}
+
+export async function applyLogObservation(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<ObservationApplyResult | ObservationApplyError> {
+  const r = prepareObservation(args, ctx.children);
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, milestoneId, score, observationData } = r.prepared;
+
   const { data: inserted, error: insertError } = await ctx.supabase
     .from("bapp_logs")
     .insert({
@@ -100,64 +231,67 @@ async function logObservation(
 
   if (insertError || !inserted) {
     return {
-      success: false,
+      ok: false,
       error: `Failed to log observation: ${insertError?.message ?? "unknown"}`,
     };
   }
 
   const logId = (inserted as { id: string }).id;
 
-  // Cascade into progress when the observation names a milestone + score.
+  // Cascade: recalculate progress + write history snapshot if the
+  // observation is evidence of a specific milestone with a score.
+  // The bapp_logs row is already committed at this point — if the
+  // cascade throws, we return ok:true with a `warning` instead of
+  // ok:false, because the user's observation IS persisted and a
+  // retry would just create a duplicate. The caller surfaces the
+  // warning text to the user without an error toast.
+  let progressUpdated = false;
+  let cascadeWarning: string | undefined;
   if (milestoneId && score) {
     try {
       await recalculateProgress(child.id, [{ id: milestoneId, score }]);
       await writeHistorySnapshot(child.id, logId);
+      progressUpdated = true;
     } catch (err) {
-      return {
-        success: false,
-        error: `Logged observation but progress recalculation failed: ${err instanceof Error ? err.message : String(err)}`,
-      };
+      console.error("[applyLogObservation] cascade failure (row persisted):", {
+        logId,
+        child: child.id,
+        milestoneId,
+        score,
+        err,
+      });
+      cascadeWarning = `Observation saved, but progress couldn't recalculate: ${
+        err instanceof Error ? err.message : String(err)
+      }. Your observation is in the feed.`;
     }
   }
 
   const nowIso = new Date().toISOString();
   return {
-    success: true,
-    feedEntry: true,
+    ok: true,
     data: {
       log_id: logId,
       child_name: child.firstName,
-      domain,
-      milestone_id: milestoneId,
-      score,
-      progress_updated: Boolean(milestoneId && score),
+      progress_updated: progressUpdated,
     },
-    tile: {
-      kind: "observation",
-      data: {
-        item: {
-          id: logId,
-          child_client_id: child.id,
-          author_id: ctx.userId,
-          author_name: "Katie",
-          type: "observation",
-          status: "completed",
-          context: "adhoc",
-          parent_log_id: null,
-          data: observationData,
-          created_at: nowIso,
-          updated_at: nowIso,
-        },
-      },
-    },
+    tile: buildObservationTile(
+      logId,
+      child.id,
+      ctx.userId,
+      observationData,
+      nowIso,
+    ),
+    ...(cascadeWarning ? { warning: cascadeWarning } : {}),
   };
 }
+
+// ── Module export ────────────────────────────────────────────────────────
 
 export const observationsModule: BloomBotModule = {
   id: "observations",
   name: "Observations",
   description:
-    "Captures observations about a child. Passing a milestone_id + score (1-4) cascades into a progress recalculation and a history snapshot.",
+    "Drafts observations about a child. Passing a milestone_id + score (1-4) cascades — on Accept — into a progress recalculation and a history snapshot.",
 
   proactiveTriggers: [
     {
@@ -198,7 +332,7 @@ export const observationsModule: BloomBotModule = {
     {
       name: "log_observation",
       description:
-        "Record an observation about a child — what the user saw them do, a moment worth capturing, or a milestone attempt. If the note is evidence of a specific milestone, pass milestone_id + score (1-4) to also update progress.",
+        "Draft an observation about a child — what the user saw them do, a moment worth capturing, or a milestone attempt. Returns a draft tile the user must Accept. NOTE: nothing is logged and progress is NOT recalculated until Accept.",
       parameters: {
         type: "object",
         properties: {
@@ -230,7 +364,7 @@ export const observationsModule: BloomBotModule = {
           score: {
             type: "number",
             description:
-              "Optional — mastery score 1-4. Only meaningful when milestone_id is also set. Triggers progress recalculation.",
+              "Optional — mastery score 1-4. Only meaningful when milestone_id is also set. Triggers progress recalculation on Accept.",
           },
           image_url: {
             type: "string",
@@ -243,10 +377,10 @@ export const observationsModule: BloomBotModule = {
   ],
 
   async execute(toolName, args, ctx) {
-    if (toolName === "log_observation") return logObservation(args, ctx);
+    if (toolName === "log_observation") return proposeLogObservation(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Use `log_observation` whenever the user describes something they saw the child do. If the observation is clearly evidence of a specific milestone (ask yourself: does this match one of the bracket's milestones from read_milestones?) include `milestone_id` + `score` (1-4) so progress updates automatically. Otherwise leave them out — a general observation is still valuable.",
+    "Use `log_observation` whenever the user describes something they saw the child do — it returns a DRAFT tile the user must Accept. If the observation is clearly evidence of a specific milestone include `milestone_id` + `score` (1-4) so progress updates on Accept. Otherwise leave them out. Don't claim 'logged' before the user accepts — say 'Drafted — review and accept' or similar.",
 };
