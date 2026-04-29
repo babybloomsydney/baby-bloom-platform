@@ -157,6 +157,32 @@ export interface JobMatchChatTile {
 }
 
 /**
+ * Parent's active position — id-only. Renders the SAME
+ * `<PositionDetailView />` component used on /parent/position, in
+ * compact + read-only mode. Fetches live from
+ * `/api/chat/position/[id]`.
+ */
+export interface ParentPositionChatTile {
+  kind: "parent_position";
+  data: {
+    id: string;
+  };
+}
+
+/**
+ * Parent's active placement (their hired nanny) — id-only. Renders
+ * the SAME `<PlacementCard />` component used on /parent/position, in
+ * compact + read-only mode (no inline editing, no 3-dot menu).
+ * Fetches live from `/api/chat/placement/[id]`.
+ */
+export interface ParentPlacementChatTile {
+  kind: "parent_placement";
+  data: {
+    id: string;
+  };
+}
+
+/**
  * Future interactive kinds follow an id-only shape — the rendering
  * component reads live data itself so we never diverge from the main
  * page. e.g.
@@ -178,7 +204,9 @@ export type ChatTile =
   | VerificationStatusChatTile
   | ConnectionRequestChatTile
   | BsrJobChatTile
-  | JobMatchChatTile;
+  | JobMatchChatTile
+  | ParentPositionChatTile
+  | ParentPlacementChatTile;
 
 // ── Runtime validation ───────────────────────────────────────────────────
 
@@ -231,6 +259,10 @@ export function isChatTile(value: unknown): value is ChatTile {
     case "bsr_job":
       return typeof data.id === "string" && data.id.length > 0;
     case "job_match":
+      return typeof data.id === "string" && data.id.length > 0;
+    case "parent_position":
+      return typeof data.id === "string" && data.id.length > 0;
+    case "parent_placement":
       return typeof data.id === "string" && data.id.length > 0;
     default: {
       // Exhaustiveness guard: if a new ChatTile kind is added without

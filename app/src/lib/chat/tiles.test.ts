@@ -47,6 +47,19 @@ describe("isChatTile", () => {
     expect(isChatTile({ kind: "job_match", data: {} })).toBe(false);
   });
 
+  it("accepts parent_position and parent_placement id-only tiles", () => {
+    expect(isChatTile({ kind: "parent_position", data: { id: "pos-1" } })).toBe(
+      true,
+    );
+    expect(isChatTile({ kind: "parent_placement", data: { id: "pl-1" } })).toBe(
+      true,
+    );
+    expect(isChatTile({ kind: "parent_position", data: { id: "" } })).toBe(
+      false,
+    );
+    expect(isChatTile({ kind: "parent_placement", data: {} })).toBe(false);
+  });
+
   it("accepts a valid activity tile", () => {
     expect(
       isChatTile({

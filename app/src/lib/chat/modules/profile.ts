@@ -46,7 +46,6 @@ import {
 } from "@/lib/actions/nanny";
 import { getPosition } from "@/lib/actions/parent";
 import { getParentPlacement } from "@/lib/actions/position-funnel";
-import { formatSydneyDate } from "@/lib/timezone";
 import { asUserFacingRole, type UserFacingRole } from "./utils";
 
 type ProfileRole = UserFacingRole;
@@ -196,36 +195,21 @@ function nannySnapshot(profile: NannyProfile): NannySnapshot {
 
 // ── Tile builders ─────────────────────────────────────────────────────────
 //
-// Read tools emit `katie_note` tiles with formatted summaries. This is
-// the v1 path — when dedicated `position` / `placement` / `profile`
-// tile kinds are extracted from the parent hub cards (deferred under
-// WU 8.18b), these helpers will switch to id-only payloads pointing at
-// the new components. The `katie_note` shape is intentionally simple
-// so the migration is a one-file change.
-
-function formatRateLine(rate: number | null | undefined): string {
-  return rate != null ? `$${rate}/hour` : "Rate not set";
-}
+// `read_my_profile` (both nanny and parent) still emits a generic
+// `katie_note` tile with the snapshot text — there's no dedicated
+// `profile` tile kind because the user hub layouts aren't card-shaped
+// (per WU 8.18 design discussion).
+//
+// `read_my_position` and `read_my_placement` emit dedicated
+// `parent_position` / `parent_placement` tiles (WU 8.18b) — the chat
+// renders the SAME PositionDetailView / PlacementCard used on
+// /parent/position. The tile builders for those were removed when the
+// kinds landed.
 
 function joinDays(days: string[]): string {
   if (days.length === 0) return "no set days";
   if (days.length === 7) return "every day";
   return days.join(", ");
-}
-
-// Format an ISO date / timestamp for display in a tile body. Wraps
-// `formatSydneyDate` and tolerates `null` so callers can pass through
-// possibly-missing values without an extra check at every site.
-function formatTileDate(value: string | null): string | null {
-  if (!value) return null;
-  try {
-    return formatSydneyDate(value);
-  } catch {
-    // formatSydneyDate parses leniently — but if a row ever lands here
-    // with an unparseable value, surface the raw string rather than
-    // crashing the whole read. ops will see this in the chat history.
-    return value;
-  }
 }
 
 function nannyProfileTileBody(snap: NannySnapshot): string {
@@ -286,57 +270,6 @@ function parentProfileTileBody(snap: ParentSnapshotInput): string {
   } else if (snap.has_active_position) {
     lines.push("No nanny placed yet.");
   }
-  return lines.filter((line): line is string => line !== null).join("\n");
-}
-
-interface PositionTileInput {
-  suburb: string | null;
-  urgency: string | null;
-  start_date: string | null;
-  hours_per_week: number | null;
-  days_required: string[];
-  hourly_rate: number | null;
-  num_children: number;
-}
-
-function positionTileBody(p: PositionTileInput): string {
-  // `urgency` is stored as the human-readable label itself ("As soon
-  // as possible", "At a later date", etc — see /parent/request
-  // questions). Rendering verbatim is correct; if the underlying
-  // schema ever changes to a code-style enum, replace this with a
-  // mapping rather than letting raw codes leak.
-  const startDate = formatTileDate(p.start_date);
-  const lines = [
-    `${p.num_children} child${p.num_children === 1 ? "" : "ren"} in ${p.suburb ?? "your area"}`,
-    `${p.hours_per_week ?? "?"}h/week — ${joinDays(p.days_required)}`,
-    `Pay: ${formatRateLine(p.hourly_rate)}`,
-    startDate ? `Start: ${startDate}` : null,
-    p.urgency ? `Urgency: ${p.urgency}` : null,
-  ];
-  return lines.filter((line): line is string => line !== null).join("\n");
-}
-
-interface PlacementTileInput {
-  nanny_name: string;
-  nanny_suburb: string | null;
-  weekly_hours: number | null;
-  hourly_rate: number | null;
-  hired_at: string;
-  start_date: string | null;
-}
-
-function placementTileBody(p: PlacementTileInput): string {
-  // Prefer the explicit start_date when set; fall back to the hired_at
-  // timestamp which is always populated. Both run through formatTileDate
-  // so an ISO row never reaches the rendered tile.
-  const dateLabel = p.start_date
-    ? `Started: ${formatTileDate(p.start_date)}`
-    : `Hired: ${formatTileDate(p.hired_at) ?? p.hired_at}`;
-  const lines = [
-    `${p.nanny_name}${p.nanny_suburb ? ` — ${p.nanny_suburb}` : ""}`,
-    `${p.weekly_hours ?? "?"}h/week at ${formatRateLine(p.hourly_rate)}`,
-    dateLabel,
-  ];
   return lines.filter((line): line is string => line !== null).join("\n");
 }
 
@@ -425,6 +358,16 @@ async function readMyProfile(
   };
 }
 
+/**
+ * Mixed tile kinds by branch — intentional:
+ *   - has-position → `parent_position` (id-only, renders the
+ *     SAME PositionDetailView as /parent/position)
+ *   - no-position → `katie_note` CTA (the dedicated kind needs an
+ *     id; without one we still want a clickable "Create a position"
+ *     prompt so the user has a path forward)
+ * Callers that branch on `tile.kind` for parent_position must be
+ * prepared to also see a katie_note from this same tool.
+ */
 async function readMyPosition(
   _args: Record<string, unknown>,
   ctx: Parameters<BloomBotModule["execute"]>[2],
@@ -455,35 +398,29 @@ async function readMyPosition(
     };
   }
 
-  const positionPayload: PositionTileInput = {
-    suburb: data.suburb ?? null,
-    urgency: data.urgency ?? null,
-    start_date: data.start_date ?? null,
-    hours_per_week: data.hours_per_week ?? null,
-    days_required: data.days_required ?? [],
-    hourly_rate: data.hourly_rate ?? null,
-    num_children: data.children.length,
-  };
-
   return {
     success: true,
     data: {
       has_active_position: true,
       position: {
-        ...positionPayload,
+        suburb: data.suburb ?? null,
+        urgency: data.urgency ?? null,
+        start_date: data.start_date ?? null,
+        hours_per_week: data.hours_per_week ?? null,
+        days_required: data.days_required ?? [],
+        hourly_rate: data.hourly_rate ?? null,
+        num_children: data.children.length,
         children_ages_months: data.children
           .map((c) => c.age_months)
           .filter((m): m is number => typeof m === "number"),
       },
     },
+    // Dedicated parent_position tile — fetches the live row in the
+    // browser and renders the same PositionDetailView used on the
+    // main page (compact + read-only). See WU 8.18b.
     tile: {
-      kind: "katie_note",
-      data: {
-        badge: "Your Position",
-        title: `Position in ${positionPayload.suburb ?? "your area"}`,
-        body: positionTileBody(positionPayload),
-        action: { label: "Edit position", href: "/parent/request" },
-      },
+      kind: "parent_position",
+      data: { id: data.id },
     },
   };
 }
@@ -514,29 +451,25 @@ async function readMyPlacement(
     };
   }
 
-  const placementPayload: PlacementTileInput = {
-    nanny_name: data.nannyName,
-    nanny_suburb: data.nannySuburb,
-    weekly_hours: data.weeklyHours,
-    hourly_rate: data.hourlyRate,
-    hired_at: data.hiredAt,
-    start_date: data.startDate,
-  };
-
   return {
     success: true,
     data: {
       has_active_placement: true,
-      placement: placementPayload,
-    },
-    tile: {
-      kind: "katie_note",
-      data: {
-        badge: "Your Nanny",
-        title: `Placed with ${data.nannyName}`,
-        body: placementTileBody(placementPayload),
-        action: { label: "Open connections", href: "/parent/connections" },
+      placement: {
+        nanny_name: data.nannyName,
+        nanny_suburb: data.nannySuburb,
+        weekly_hours: data.weeklyHours,
+        hourly_rate: data.hourlyRate,
+        hired_at: data.hiredAt,
+        start_date: data.startDate,
       },
+    },
+    // Dedicated parent_placement tile — fetches the live placement
+    // row in the browser and renders the same PlacementCard used on
+    // the main page (compact + read-only). See WU 8.18b.
+    tile: {
+      kind: "parent_placement",
+      data: { id: data.id },
     },
   };
 }

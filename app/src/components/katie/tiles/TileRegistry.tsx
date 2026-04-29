@@ -21,6 +21,8 @@ import { VerificationStatusTile } from "./VerificationStatusTile";
 import { ConnectionRequestTile } from "./ConnectionRequestTile";
 import { BsrJobTile } from "./BsrJobTile";
 import { JobMatchTile } from "./JobMatchTile";
+import { PositionTile } from "./PositionTile";
+import { PlacementTile } from "./PlacementTile";
 import { ActivityTile } from "@/components/bapp/tiles/ActivityTile";
 import { ObservationTile } from "@/components/bapp/tiles/ObservationTile";
 import { DiaryTile } from "@/components/bapp/tiles/DiaryTile";
@@ -66,6 +68,16 @@ export function RenderTile({ tile }: { tile: ChatTile }) {
       // DFY match notification live view — nanny-only. Fetches
       // /api/chat/job-matches/[id].
       return <JobMatchTile tile={tile} />;
+    case "parent_position":
+      // Parent's active position — id-only. Reuses the SAME
+      // PositionDetailView used on /parent/position, in compact +
+      // read-only mode. Fetches /api/chat/position/[id].
+      return <PositionTile tile={tile} />;
+    case "parent_placement":
+      // Parent's active placement (their hired nanny) — id-only.
+      // Reuses the SAME PlacementCard used on /parent/position, in
+      // compact + read-only mode. Fetches /api/chat/placement/[id].
+      return <PlacementTile tile={tile} />;
     // Future kinds — add here, importing the SAME component used on the
     // main page. e.g.:
     //   case "interview_request":

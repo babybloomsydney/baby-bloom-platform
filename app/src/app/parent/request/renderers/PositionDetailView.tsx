@@ -45,13 +45,21 @@ type TabId = (typeof TABS)[number]["id"];
 interface PositionDetailViewProps {
   initialData: Partial<TypeformFormData>;
   onClosePosition?: () => void;
-  onSave?: (data: Partial<TypeformFormData>) => Promise<{ success: boolean; error: string | null }>;
+  onSave?: (
+    data: Partial<TypeformFormData>,
+  ) => Promise<{ success: boolean; error: string | null }>;
   hideClosePosition?: boolean;
   /** When provided, controls editing externally (hides internal Edit button) */
   editingExternal?: boolean;
   onEditingChange?: (editing: boolean) => void;
   /** Optional slot rendered inline to the right of the tab bar */
   menuSlot?: React.ReactNode;
+  /**
+   * Compact mode — slightly smaller padding + tighter type. Used by
+   * Katie's chat tile so the position card fits the chat density.
+   * Applied universally (per WU 8.18b spec — main page can opt in too).
+   */
+  compact?: boolean;
 }
 
 export function PositionDetailView({
@@ -62,11 +70,13 @@ export function PositionDetailView({
   editingExternal,
   onEditingChange,
   menuSlot,
+  compact = false,
 }: PositionDetailViewProps) {
   const [data, setData] = useState<Partial<TypeformFormData>>(initialData);
   const [activeTab, setActiveTab] = useState<TabId>("children");
   const [isEditingInternal, setIsEditingInternal] = useState(false);
-  const isEditing = editingExternal !== undefined ? editingExternal : isEditingInternal;
+  const isEditing =
+    editingExternal !== undefined ? editingExternal : isEditingInternal;
   const [editingField, setEditingField] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,7 +100,9 @@ export function PositionDetailView({
   const handleSave = async () => {
     setIsSaving(true);
     setSaveError(null);
-    const result = onSave ? await onSave(data) : await saveTypeformPosition(data);
+    const result = onSave
+      ? await onSave(data)
+      : await saveTypeformPosition(data);
     setIsSaving(false);
     if (result.success) {
       setIsDirty(false);
@@ -146,11 +158,7 @@ export function PositionDetailView({
     cols?: number;
   }) => {
     const colClass =
-      cols === 3
-        ? "grid-cols-3"
-        : cols === 4
-          ? "grid-cols-4"
-          : "grid-cols-2";
+      cols === 3 ? "grid-cols-3" : cols === 4 ? "grid-cols-4" : "grid-cols-2";
     return (
       <div className={`grid ${colClass} gap-1.5`}>
         {options.map((o) => (
@@ -183,7 +191,7 @@ export function PositionDetailView({
 
   const optLabel = (
     options: SelectOption[],
-    val: string | null | undefined
+    val: string | null | undefined,
   ) => {
     if (!val) return "—";
     return options.find((o) => o.value === val)?.label ?? val;
@@ -204,9 +212,7 @@ export function PositionDetailView({
   }) => (
     <div className="flex items-start gap-2 py-3 border-b border-slate-50 last:border-0">
       <div className="flex-1 min-w-0">
-        <p className="text-[11px] font-medium text-slate-400 mb-0.5">
-          {label}
-        </p>
+        <p className="text-[11px] font-medium text-slate-400 mb-0.5">{label}</p>
         {editingField === id && editor ? (
           <div className="mt-1">{editor}</div>
         ) : (
@@ -254,7 +260,7 @@ export function PositionDetailView({
   /* ── Render ── */
 
   return (
-    <div className="pb-0">
+    <div className={cn("pb-0", compact && "text-sm leading-snug")}>
       {/* Edit toggle — hidden when controlled externally */}
       {editingExternal === undefined && (
         <div className="flex justify-end mb-2">
@@ -265,7 +271,7 @@ export function PositionDetailView({
               "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
               isEditing
                 ? "bg-violet-600 text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200",
             )}
           >
             {isEditing ? "Done" : "Edit"}
@@ -274,28 +280,28 @@ export function PositionDetailView({
       )}
 
       {/* Tab bar */}
-      <div className="flex items-center gap-2 mb-4">
-      <div className="flex flex-1 gap-0.5 rounded-lg bg-slate-100 p-0.5">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => {
-              setActiveTab(tab.id);
-              setEditingField(null);
-            }}
-            className={cn(
-              "flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium transition-all",
-              activeTab === tab.id
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-400 hover:text-slate-600"
-            )}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      {menuSlot}
+      <div className={cn("flex items-center gap-2", compact ? "mb-3" : "mb-4")}>
+        <div className="flex flex-1 gap-0.5 rounded-lg bg-slate-100 p-0.5">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setActiveTab(tab.id);
+                setEditingField(null);
+              }}
+              className={cn(
+                "flex flex-1 items-center justify-center rounded-md px-2 py-1.5 text-xs font-medium transition-all",
+                activeTab === tab.id
+                  ? "bg-white text-slate-900 shadow-sm"
+                  : "text-slate-400 hover:text-slate-600",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        {menuSlot}
       </div>
 
       {/* ── Children tab ── */}
@@ -379,9 +385,7 @@ export function PositionDetailView({
             label="Developmental conditions"
             display={
               data.child_needs_yn === "Yes" ? (
-                <span>
-                  Yes — {data.child_needs_details || "not specified"}
-                </span>
+                <span>Yes — {data.child_needs_details || "not specified"}</span>
               ) : (
                 (data.child_needs_yn ?? "—")
               )
@@ -545,8 +549,7 @@ export function PositionDetailView({
                       value={data.language_preference_details ?? ""}
                       onChange={(e) =>
                         onUpdate({
-                          language_preference_details:
-                            e.target.value || null,
+                          language_preference_details: e.target.value || null,
                         })
                       }
                       placeholder="e.g. Mandarin, Spanish"
@@ -739,9 +742,7 @@ export function PositionDetailView({
             label="Pets at home"
             display={
               data.has_pets === "Yes" ? (
-                <span>
-                  Yes — {data.has_pets_details || "not specified"}
-                </span>
+                <span>Yes — {data.has_pets_details || "not specified"}</span>
               ) : (
                 (data.has_pets ?? "—")
               )
@@ -820,7 +821,7 @@ export function PositionDetailView({
             display={
               data.placement_length === "Temporarily"
                 ? `Temporary — ${data.placement_duration ?? "not specified"}`
-                : data.placement_length ?? "—"
+                : (data.placement_length ?? "—")
             }
             editor={
               <div className="flex flex-col gap-2">
@@ -865,7 +866,7 @@ export function PositionDetailView({
             display={
               data.urgency === "At a later date"
                 ? `Later — ${data.start_date ?? "date not set"}`
-                : data.urgency ?? "—"
+                : (data.urgency ?? "—")
             }
             editor={
               <div className="flex flex-col gap-2">
@@ -998,7 +999,8 @@ export function PositionDetailView({
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 min-h-[160px] resize-y outline-none focus:border-violet-500"
             />
             <p className="mt-2 text-xs text-slate-400">
-              Optional — this won&apos;t appear in matching but can help when communicating with nannies.
+              Optional — this won&apos;t appear in matching but can help when
+              communicating with nannies.
             </p>
           </div>
         </Card>

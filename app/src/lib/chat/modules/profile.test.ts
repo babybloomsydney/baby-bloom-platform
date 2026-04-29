@@ -390,14 +390,15 @@ describe("profile module — tile emission (WU 8.18)", () => {
     expect(td.action?.href).toBe("/parent");
   });
 
-  it("read_my_position emits a tile with formatted urgency + start date", async () => {
+  // WU 8.18b — read_my_position now emits a parent_position id-only
+  // tile that fetches and renders the same PositionDetailView used on
+  // /parent/position. The structured fields stay in `data` so Gemini
+  // can narrate them.
+  it("read_my_position emits a parent_position id-only tile", async () => {
     vi.mocked(getPosition).mockResolvedValue({
       data: {
         id: "pos-1",
         suburb: "Surry Hills",
-        // Real urgency values are full plain-English labels (see
-        // /parent/request questions) — verify we render the string the
-        // user typed at form time, not a raw enum code.
         urgency: "As soon as possible",
         start_date: "2026-05-01",
         hours_per_week: 25,
@@ -413,34 +414,41 @@ describe("profile module — tile emission (WU 8.18)", () => {
       {},
       makeCtx("parent"),
     );
-    const td = expectKatieNoteTile(r.tile);
-    expect(td.badge).toBe("Your Position");
-    expect(td.title).toMatch(/Surry Hills/);
-    expect(td.body).toMatch(/2 children/);
-    expect(td.body).toMatch(/25h\/week/);
-    expect(td.body).toMatch(/\$42\/hour/);
-    expect(td.body).toMatch(/As soon as possible/);
-    // ISO date should be formatted, not echoed verbatim
-    expect(td.body).not.toMatch(/2026-05-01/);
-    expect(td.action?.href).toBe("/parent/request");
+    expect(r.success).toBe(true);
+    expect(r.tile?.kind).toBe("parent_position");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tileData = r.tile?.data as any;
+    expect(tileData.id).toBe("pos-1");
+    // Structured fields still flow back to Gemini via the `data` envelope.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.has_active_position).toBe(true);
+    expect(data.position.num_children).toBe(2);
   });
 
-  it("read_my_position emits a tile prompting position creation when none exists", async () => {
+  it("read_my_position emits a katie_note CTA tile when no position exists", async () => {
     vi.mocked(getPosition).mockResolvedValue({ data: null, error: null });
     const r = await profileModule.execute(
       "read_my_position",
       {},
       makeCtx("parent"),
     );
+    expect(r.success).toBe(true);
+    // No position id available, so the dedicated parent_position
+    // tile can't render — fall back to a katie_note CTA pointing at
+    // /parent/request. Different purpose than the data tile.
     const td = expectKatieNoteTile(r.tile);
     expect(td.badge).toBe("No Position");
-    expect(td.action?.label).toMatch(/Create/i);
     expect(td.action?.href).toBe("/parent/request");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.has_active_position).toBe(false);
   });
 
-  it("read_my_placement emits a tile when a placement exists, with formatted dates", async () => {
+  it("read_my_placement emits a parent_placement id-only tile", async () => {
     vi.mocked(getParentPlacement).mockResolvedValue({
       data: {
+        id: "placement-1",
         nannyName: "Jess Mahoney",
         nannySuburb: "Bondi",
         weeklyHours: 30,
@@ -456,13 +464,15 @@ describe("profile module — tile emission (WU 8.18)", () => {
       {},
       makeCtx("parent"),
     );
-    const td = expectKatieNoteTile(r.tile);
-    expect(td.title).toMatch(/Jess Mahoney/);
-    expect(td.body).toMatch(/Bondi/);
-    expect(td.body).toMatch(/30h\/week/);
-    // ISO date should be formatted, not echoed verbatim
-    expect(td.body).not.toMatch(/2026-03-15/);
-    expect(td.action?.href).toBe("/parent/connections");
+    expect(r.success).toBe(true);
+    expect(r.tile?.kind).toBe("parent_placement");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tileData = r.tile?.data as any;
+    expect(tileData.id).toBe("placement-1");
+    // Structured fields still in data envelope for Gemini.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = r.data as any;
+    expect(data.placement.nanny_name).toBe("Jess Mahoney");
   });
 
   it("read_my_placement does NOT emit a tile when no placement exists", async () => {
