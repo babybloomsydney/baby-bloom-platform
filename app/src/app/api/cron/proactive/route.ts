@@ -40,6 +40,12 @@ export async function GET(request: NextRequest) {
   const skippedWaking = results.filter(
     (r) => r.status === "skipped_waking",
   ).length;
+  // WU 14 — count of AI cron rows skipped because the bot's user has
+  // no connected child_client. Every increment is a Gemini call we
+  // didn't make.
+  const skippedNoChild = results.filter(
+    (r) => r.status === "skipped_no_child",
+  ).length;
   const errored = results.filter((r) => r.status === "error").length;
 
   console.log(
@@ -49,6 +55,7 @@ export async function GET(request: NextRequest) {
       considered: results.length,
       fired,
       skipped_waking: skippedWaking,
+      skipped_no_child: skippedNoChild,
       errored,
       duration_ms: durationMs,
     }),
@@ -59,6 +66,7 @@ export async function GET(request: NextRequest) {
     considered: results.length,
     fired,
     skipped_waking: skippedWaking,
+    skipped_no_child: skippedNoChild,
     errored,
     duration_ms: durationMs,
     results,

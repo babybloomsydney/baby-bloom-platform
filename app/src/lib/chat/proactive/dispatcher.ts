@@ -120,7 +120,11 @@ interface ChildRow {
 
 export interface DispatchResult {
   schedule_id: string;
-  status: "fired" | "skipped_waking" | "error";
+  status:
+    | "fired"
+    | "skipped_waking"
+    | "skipped_no_child" // WU 14 — bot's user has no connected child_client; AI cron is skipped
+    | "error";
   reason?: string;
   message_id?: string;
   next_run_at?: string;
@@ -438,6 +442,19 @@ export async function runDueSchedules(
   const botMap = new Map<string, BotRow>();
   for (const b of (bots ?? []) as BotRow[]) botMap.set(b.id, b);
 
+  // WU 14 — connected-child gate. Inactive nannies (signed up to the
+  // marketplace but never placed) are the cost-explosion case: they
+  // have a `bloombot` row but no developmental data to act on. Skip
+  // AI cron for any user without a connected child_client. Templates
+  // (mode === "template") still fire — they're cheap and may carry
+  // marketplace-relevant content. AI tiers (ai-minimal / ai-full)
+  // get short-circuited with status="skipped_no_child".
+  const { getUsersWithChildren } = await import("@/lib/chat/bot");
+  const userIdsToCheck = Array.from(
+    new Set(Array.from(botMap.values()).map((b) => b.user_id)),
+  );
+  const usersWithChildren = await getUsersWithChildren(userIdsToCheck);
+
   const childMap = new Map<string, ChildRow>();
   if (childIds.length > 0) {
     const { data: children } = await admin
@@ -477,6 +494,23 @@ export async function runDueSchedules(
     const child = row.child_client_id
       ? (childMap.get(row.child_client_id) ?? null)
       : null;
+
+    // WU 14 — connected-child gate for AI tiers. Templates always run
+    // (they're cheap, scripted, and may carry marketplace content).
+    // ai-minimal and ai-full are SKIPPED for users without a connected
+    // child_client. The schedule's next_run_at is still advanced so we
+    // don't re-attempt every tick — once the user gets a placement
+    // their next firing will succeed, so we treat the skip as a
+    // non-event from the schedule's perspective.
+    const userHasChild = usersWithChildren.has(bot.user_id);
+    if (!userHasChild && row.mode !== "template") {
+      results.push({ schedule_id: row.id, status: "skipped_no_child" });
+      await updateScheduleAfterFire(row, "skipped_waking", undefined, admin);
+      // Reusing the "skipped_waking" status for last_status so we don't
+      // need a schema migration. The DispatchResult above carries the
+      // accurate "skipped_no_child" signal for observability.
+      continue;
+    }
 
     try {
       if (row.mode === "template") {

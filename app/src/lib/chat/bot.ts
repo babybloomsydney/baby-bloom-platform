@@ -223,6 +223,85 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
   });
 }
 
+/**
+ * Batch check: returns the subset of `userIds` that have at least one
+ * connected child_client (either as direct nanny owner or via an
+ * active placement). Used by the proactive-cron dispatcher (WU 14)
+ * to skip AI work for bots whose user isn't an active app user.
+ *
+ * Mirrors the same access logic as `getUserChildren` but is shape-
+ * optimised for batch checks: returns just user_ids, not full
+ * child rows. Two queries total regardless of the input list size.
+ *
+ * Inactive nannies (signed up to the marketplace but never placed,
+ * with no child) are the cost-explosion case — they have a
+ * `bloombot` row but no developmental data to act on. Skipping
+ * AI-tier proactives for them is the single-largest cost win
+ * available. Marketplace-style notifications (job alerts, BSR
+ * alerts) are a separate channel and unaffected.
+ */
+export async function getUsersWithChildren(
+  userIds: string[],
+): Promise<Set<string>> {
+  const result = new Set<string>();
+  if (userIds.length === 0) return result;
+  const admin = createAdminClient();
+
+  // Step 1: direct nanny ownership.
+  const { data: direct } = await admin
+    .from("child_client")
+    .select("nanny_user_id")
+    .in("nanny_user_id", userIds)
+    .eq("under_three", true);
+  for (const row of (direct ?? []) as Array<{ nanny_user_id: string }>) {
+    if (row.nanny_user_id) result.add(row.nanny_user_id);
+  }
+
+  // Step 2: active placements — the placement table joins to
+  // nannies/parents, each of which has a user_id. We can filter the
+  // placement-side join, then collect the user_ids that match the
+  // input list.
+  const { data: placements } = await admin
+    .from("nanny_placements")
+    .select(
+      "child_client:child_client!inner(under_three), nannies:nannies!inner(user_id), parents:parents!inner(user_id)",
+    )
+    .eq("status", "active");
+  const lookup = new Set(userIds);
+  // Supabase types nested joins as arrays at the type level, even when
+  // the join is single-cardinality. We narrow inside the loop and use
+  // `unknown` casts to keep the call site readable while staying
+  // honest about the runtime shape.
+  for (const raw of (placements ?? []) as unknown as Array<
+    Record<string, unknown>
+  >) {
+    const cc = (raw.child_client ?? null) as
+      | { under_three?: boolean }
+      | { under_three?: boolean }[]
+      | null;
+    const ccObj = Array.isArray(cc) ? cc[0] : cc;
+    if (!ccObj?.under_three) continue;
+
+    const nannies = (raw.nannies ?? null) as
+      | { user_id?: string }
+      | { user_id?: string }[]
+      | null;
+    const nannyObj = Array.isArray(nannies) ? nannies[0] : nannies;
+    const nannyUid = nannyObj?.user_id;
+    if (nannyUid && lookup.has(nannyUid)) result.add(nannyUid);
+
+    const parents = (raw.parents ?? null) as
+      | { user_id?: string }
+      | { user_id?: string }[]
+      | null;
+    const parentObj = Array.isArray(parents) ? parents[0] : parents;
+    const parentUid = parentObj?.user_id;
+    if (parentUid && lookup.has(parentUid)) result.add(parentUid);
+  }
+
+  return result;
+}
+
 /** Get the user's stored role from user_roles. */
 export async function getUserRole(userId: string): Promise<BotRole | null> {
   const admin = createAdminClient();
