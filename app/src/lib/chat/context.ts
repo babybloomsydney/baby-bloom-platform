@@ -25,9 +25,11 @@ import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
 export type PromptSectionId =
   | "identity"
   | "voice"
+  | "personality"
   | "boundaries"
   | "data_surfaces"
   | "proactive_rules"
+  | "progress_proactivity"
   | "logging_rules"
   | "scheduling_constraints"
   | "role_nanny"
@@ -200,10 +202,12 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
   const sectionIds: PromptSectionId[] = [
     "identity",
     "voice",
+    "personality",
     "boundaries",
     "data_surfaces",
     "logging_rules",
     "proactive_rules",
+    "progress_proactivity",
     "scheduling_constraints",
     `role_${ctx.effectiveRole}` as PromptSectionId,
   ];
