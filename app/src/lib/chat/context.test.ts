@@ -202,7 +202,12 @@ describe("buildSystemPrompt", () => {
       children: [],
     });
     const diaryPos = prompt.indexOf("log_food for meals");
-    const feedPos = prompt.indexOf("read_recent_feed");
+    // Use the trailing period to disambiguate from other modules that
+    // also mention `read_recent_feed` (notably the activities module's
+    // complete_activity instruction added in WU 11.1). The mock's feed
+    // fragment is exactly "Use read_recent_feed." — terminal period
+    // is unique to the mock and pins this match to the feed module.
+    const feedPos = prompt.indexOf("Use read_recent_feed.");
     expect(diaryPos).toBeGreaterThan(-1);
     expect(feedPos).toBeGreaterThan(-1);
     expect(diaryPos).toBeLessThan(feedPos); // "diary" < "feed"

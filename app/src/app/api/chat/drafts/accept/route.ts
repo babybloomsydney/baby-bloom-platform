@@ -165,6 +165,43 @@ export async function POST(request: Request) {
   // accept; cache here in 8.22d if throughput warrants.)
   const children = await getUserChildren(userId);
 
+  // WU 11.3 — idempotency lock. INSERT-or-fail on chat_draft_locks
+  // keyed by the client-generated draftId. Second concurrent or
+  // retried call hits the unique violation (Postgres code 23505),
+  // which we translate to 409. The lock stays after success so a
+  // retry-after-success also returns 409. On apply failure we DELETE
+  // the lock so the user can retry.
+  //
+  // Fail-open on unexpected lock errors: better a rare duplicate than
+  // a blocked accept. The downstream apply paths have their own
+  // guards (e.g. complete_activity checks status='completed' before
+  // re-cascading) so the worst-case dupe is bounded.
+  const { error: lockErr } = await admin.from("chat_draft_locks").insert({
+    draft_id: body.draftId,
+    user_id: userId,
+    tool_name: body.toolName,
+  });
+  if (lockErr) {
+    // PostgREST surfaces the underlying Postgres SQLSTATE in `code`.
+    // 23505 is unique_violation — the only outcome we want to treat
+    // as "already accepted". Anything else is unexpected and we
+    // fail-open (proceed with apply) so the table being missing or
+    // RLS-denied can't lock the whole accept path out.
+    if (lockErr.code === "23505") {
+      return NextResponse.json(
+        {
+          error: "This draft has already been processed.",
+          code: "ALREADY_ACCEPTED",
+        },
+        { status: 409 },
+      );
+    }
+    console.error(
+      "[chat/drafts/accept] lock acquire failed (failing open):",
+      lockErr,
+    );
+  }
+
   const result = await applyDraft(
     body.toolName,
     body.args,
@@ -175,7 +212,9 @@ export async function POST(request: Request) {
   if (!result.ok) {
     // Apply errors are user-visible: invalid args, missing child,
     // failed insert. 422 keeps it distinct from 4xx body issues
-    // and 5xx server faults.
+    // and 5xx server faults. Release the lock so a corrected retry
+    // can succeed.
+    await admin.from("chat_draft_locks").delete().eq("draft_id", body.draftId);
     return NextResponse.json({ error: result.error }, { status: 422 });
   }
 

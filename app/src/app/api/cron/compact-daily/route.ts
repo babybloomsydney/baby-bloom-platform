@@ -63,6 +63,32 @@ export async function GET(request: NextRequest) {
   ).length;
   const errored = results.filter((r) => r.status === "error").length;
 
+  // WU 11.3 — prune draft idempotency locks older than 7 days. The
+  // table grows by one row per accepted draft and the chat client
+  // can't possibly retry an accept on a draft that's a week+ old
+  // (it's not in any open chat session). Keeping the rows around
+  // forever just bloats the table for no protection benefit. We log
+  // the deleted count so a sudden spike or drop is visible without
+  // having to query the table directly.
+  const sevenDaysAgo = new Date(
+    Date.now() - 7 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  let prunedLocks = 0;
+  let prunePq: string | null = null;
+  try {
+    const { error: pruneErr, count } = await admin
+      .from("chat_draft_locks")
+      .delete({ count: "exact" })
+      .lt("acquired_at", sevenDaysAgo);
+    if (pruneErr) {
+      prunePq = pruneErr.message;
+    } else {
+      prunedLocks = count ?? 0;
+    }
+  } catch (err) {
+    prunePq = err instanceof Error ? err.message : String(err);
+  }
+
   console.log(
     JSON.stringify({
       ts: new Date().toISOString(),
@@ -73,6 +99,8 @@ export async function GET(request: NextRequest) {
       skipped,
       errored,
       duration_ms: durationMs,
+      pruned_draft_locks: prunedLocks,
+      ...(prunePq ? { prune_error: prunePq } : {}),
     }),
   );
 
@@ -84,6 +112,7 @@ export async function GET(request: NextRequest) {
     skipped,
     errored,
     duration_ms: durationMs,
+    pruned_draft_locks: prunedLocks,
     results,
   });
 }

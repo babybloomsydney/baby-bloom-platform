@@ -128,10 +128,18 @@ export function KatieDeck() {
         const res = await fetch("/api/chat/drafts/accept", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // draftId travels server-side so a future dedup layer can
-          // reject double-accepts (button mash, network retry).
+          // draftId travels server-side so the dedup layer (WU 11.3)
+          // can reject double-accepts (button mash, network retry).
           body: JSON.stringify({ draftId, toolName, args, imageUrl }),
         });
+        // WU 11.3 — 409 means this draft was already accepted on a
+        // prior click. The first click already produced the persisted
+        // tile; this retry has nothing to add. Treat as silent no-op
+        // rather than surfacing an error — the user already saw
+        // success and the second click is just noise.
+        if (res.status === 409) {
+          return;
+        }
         const body = (await res.json()) as {
           tile?: ChatTile;
           error?: string;

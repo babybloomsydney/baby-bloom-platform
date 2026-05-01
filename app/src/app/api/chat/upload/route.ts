@@ -27,11 +27,65 @@
  */
 
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { KATIE_ENABLED } from "@/lib/chat/flags";
 
 export const runtime = "nodejs";
+
+/**
+ * Strips EXIF / IPTC / XMP / GPS metadata from an uploaded image (WU 11.4).
+ *
+ * Privacy guarantee: phone photos commonly carry GPS coordinates of where
+ * the photo was taken, plus camera serial, timestamps, and other
+ * identifiers. Tiles backed by these images render a public Storage URL
+ * that the child's whole shared circle can see — and a future leak of
+ * any one image leaks all of that bundled metadata. Sharp's default
+ * encode behaviour is to DROP every metadata block unless `.withMetadata`
+ * is called, so a `rotate().toBuffer()` round-trip is a clean strip.
+ *
+ * `.rotate()` with no args reads the EXIF orientation FIRST and applies
+ * it before the strip — without it, portrait shots from many phones
+ * encode the pixel data sideways and rely on EXIF to display upright.
+ *
+ * HEIC/HEIF: sharp's HEIC support depends on the libvips build. We
+ * convert HEIC to JPEG unconditionally so the output is portable AND
+ * stripped. If sharp can't decode the input at all (corrupt file,
+ * unsupported variant), we fail-closed — better to reject the upload
+ * than to ship an image with unknown metadata to a public bucket.
+ */
+async function stripMetadata(
+  buffer: Buffer,
+  contentType: string,
+): Promise<{
+  buffer: Buffer;
+  contentType: string;
+  ext: string;
+}> {
+  if (contentType === "image/heic" || contentType === "image/heif") {
+    const out = await sharp(buffer).rotate().jpeg({ quality: 90 }).toBuffer();
+    return { buffer: out, contentType: "image/jpeg", ext: "jpg" };
+  }
+  // Non-HEIC: preserve format. sharp picks the encoder from the input
+  // unless we explicitly chain a format conversion.
+  const out = await sharp(buffer).rotate().toBuffer();
+  const ext = (() => {
+    switch (contentType) {
+      case "image/jpeg":
+        return "jpg";
+      case "image/png":
+        return "png";
+      case "image/webp":
+        return "webp";
+      case "image/gif":
+        return "gif";
+      default:
+        return "bin";
+    }
+  })();
+  return { buffer: out, contentType, ext };
+}
 
 // Route segment config — informs Vercel of the expected request body
 // size. Without this, the platform applies its default cap (4.5 MB
@@ -176,23 +230,40 @@ export async function POST(request: Request) {
     );
   }
 
-  // Path prefix scopes chat uploads to their own folder inside the
-  // shared `development-images` bucket. The user-id segment makes
-  // every object discoverable per-user (useful for housekeeping or
-  // future per-user retention rules) without needing a separate
-  // bucket.
-  const ext = deriveExt(file);
+  // WU 11.4 — strip EXIF/GPS BEFORE upload. Fail-closed on decode
+  // errors: an image we can't process is one we can't be sure is
+  // metadata-free, and the bucket is publicly-readable so a leak of
+  // raw GPS coords to anyone with the URL is a real privacy harm.
+  const inputBuffer = Buffer.from(await file.arrayBuffer());
+  let stripped: { buffer: Buffer; contentType: string; ext: string };
+  try {
+    stripped = await stripMetadata(inputBuffer, file.type);
+  } catch (err) {
+    console.error("[chat/upload] EXIF strip failed:", err);
+    return NextResponse.json(
+      {
+        error:
+          "Couldn't process that image — try a different photo, or convert to JPEG and re-upload.",
+      },
+      { status: 422 },
+    );
+  }
+
+  // Use the post-strip extension/content-type. For HEIC inputs the
+  // strip path converts to JPEG, so the storage object lands as
+  // .jpg. Fall back to the filename-derived ext only if the strip
+  // returned "bin" (shouldn't happen with the allowlist gate above
+  // but kept as belt-and-braces).
+  const ext = stripped.ext === "bin" ? deriveExt(file) : stripped.ext;
   const path = `${PATH_PREFIX}/${userId}/${crypto.randomUUID()}.${ext}`;
 
   // Admin client for the upload — same pattern as the existing
   // bapp upload-image action. Bucket is publicly readable; RLS on
-  // writes is bypassed by the service role. (Reusing the `admin`
-  // instance from the role check above.)
-  const arrayBuffer = await file.arrayBuffer();
+  // writes is bypassed by the service role.
   const { error: uploadError } = await admin.storage
     .from(BUCKET)
-    .upload(path, new Uint8Array(arrayBuffer), {
-      contentType: file.type,
+    .upload(path, new Uint8Array(stripped.buffer), {
+      contentType: stripped.contentType,
       upsert: false,
     });
   if (uploadError) {
@@ -210,7 +281,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     url: publicUrl,
     path,
-    size: file.size,
-    type: file.type,
+    size: stripped.buffer.length,
+    type: stripped.contentType,
   });
 }

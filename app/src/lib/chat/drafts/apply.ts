@@ -19,7 +19,10 @@ import type { ChildSummary } from "@/lib/chat/modules/types";
 import { applyLogFood, applyLogSleep } from "@/lib/chat/modules/diary";
 import { applyLogObservation } from "@/lib/chat/modules/observations";
 import { applyUpdateProgress } from "@/lib/chat/modules/progress";
-import { applyPlanActivity } from "@/lib/chat/modules/activities";
+import {
+  applyPlanActivity,
+  applyCompleteActivity,
+} from "@/lib/chat/modules/activities";
 import { applyCreateTile } from "@/lib/chat/modules/feed-writer";
 
 export interface ApplyContext {
@@ -87,6 +90,8 @@ export async function applyDraft(
       return applyUpdateProgress(merged, ctx);
     case "plan_activity":
       return applyPlanActivity(merged, ctx);
+    case "complete_activity":
+      return applyCompleteActivity(merged, ctx);
     case "create_tile":
       return applyCreateTile(merged, ctx);
     // Any unrecognised toolName surfaces here as a 400 to the

@@ -29,6 +29,10 @@ import {
   buildActivityUserPrompt,
 } from "@/lib/ai/prompts/bapp-activity-generation";
 import type { ActivityPlan } from "@/types/bapp";
+import {
+  recalculateProgress,
+  writeHistorySnapshot,
+} from "@/lib/actions/bapp/progress";
 
 interface MilestoneContextRow {
   id: string;
@@ -369,13 +373,425 @@ export async function applyPlanActivity(
   };
 }
 
+// ── complete_activity (WU 11.1) ──────────────────────────────────────────
+//
+// Closes the activity loop. plan_activity creates a row at status='ready';
+// without complete_activity the dashboard accumulates "ready" rows that
+// never resolve and the targeted milestones never get scored.
+//
+// Two-turn shape: propose drafts a katie_note preview describing what the
+// completion will do; apply runs the report cascade (insert report +
+// progress logs, recalc progress, write history snapshot, mark activity
+// 'completed').
+//
+// Idempotency: the apply path checks the activity's current status before
+// running the cascade — if already 'completed', returns the existing
+// report log id without re-cascading. Protects against double-clicks +
+// the WU 11.3 draft-accept dedup as defence-in-depth.
+
+interface ActivityRowForCompletion {
+  id: string;
+  child_client_id: string;
+  status: string;
+  data: { milestone_ids?: string[]; title?: string } | null;
+}
+
+interface ActivityRating {
+  milestone_id: string;
+  score: 1 | 2 | 3 | 4;
+}
+
+interface PreparedCompletion {
+  child: ChildSummary;
+  activity: ActivityRowForCompletion;
+  ratings: ActivityRating[];
+  feedback: string | null;
+  imageUrl: string | null;
+}
+
+async function prepareCompletion(
+  args: Record<string, unknown>,
+  ctx: { children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<
+  | { ok: true; prepared: PreparedCompletion }
+  | { ok: false; error: string; terminal?: boolean }
+> {
+  const activityId =
+    typeof args.activity_id === "string" && args.activity_id.trim().length > 0
+      ? args.activity_id.trim()
+      : null;
+  if (!activityId) {
+    return {
+      ok: false,
+      error:
+        "complete_activity needs `activity_id` — the bapp_logs id of the activity row to mark done. Call read_recent_feed with type_filter='activity' to find pending activities (status='ready').",
+    };
+  }
+
+  const { data: row, error } = await ctx.supabase
+    .from("bapp_logs")
+    .select("id, child_client_id, status, type, data")
+    .eq("id", activityId)
+    .maybeSingle();
+  if (error) {
+    return {
+      ok: false,
+      error: `Failed to load activity: ${error.message}`,
+    };
+  }
+  if (!row || (row as { type?: string }).type !== "activity") {
+    return {
+      ok: false,
+      error: `Activity ${activityId} not found.`,
+      terminal: true,
+    };
+  }
+  const activity = row as ActivityRowForCompletion;
+
+  // Resolve child via the activity's child_client_id, not the args.
+  // This protects against the model passing a wrong child_name when
+  // the user has multiple children — the activity row is the source
+  // of truth.
+  const child = ctx.children.find((c) => c.id === activity.child_client_id);
+  if (!child) {
+    return {
+      ok: false,
+      error:
+        "That activity belongs to a child you don't have access to in this account.",
+      terminal: true,
+    };
+  }
+
+  // Ratings: optional but strongly encouraged. The activity targets
+  // specific milestones; completing without scoring them defeats the
+  // whole purpose of the loop. If ratings missing, we still allow the
+  // completion (textual report only) — Katie's prompt nudges her to
+  // collect them.
+  const ratings: ActivityRating[] = [];
+  if (Array.isArray(args.ratings)) {
+    for (const r of args.ratings as Array<unknown>) {
+      if (typeof r !== "object" || r === null) continue;
+      const obj = r as { milestone_id?: unknown; score?: unknown };
+      if (typeof obj.milestone_id !== "string") continue;
+      if (typeof obj.score !== "number") continue;
+      const s = Math.round(obj.score);
+      if (s < 1 || s > 4) continue;
+      ratings.push({
+        milestone_id: obj.milestone_id.trim(),
+        score: s as 1 | 2 | 3 | 4,
+      });
+    }
+  }
+
+  const feedback =
+    typeof args.feedback === "string" && args.feedback.trim().length > 0
+      ? args.feedback.trim()
+      : null;
+
+  const imageUrl =
+    typeof args.image_url === "string" && args.image_url.trim().length > 0
+      ? args.image_url.trim()
+      : null;
+
+  return {
+    ok: true,
+    prepared: { child, activity, ratings, feedback, imageUrl },
+  };
+}
+
+function buildCompletionPreviewBody(
+  prepared: PreparedCompletion,
+  milestoneDescriptions: Map<string, string>,
+): string {
+  const lines: string[] = [];
+  const title = prepared.activity.data?.title ?? "Activity";
+  lines.push(`**${title}** — marking complete.`);
+
+  if (prepared.ratings.length > 0) {
+    lines.push("");
+    lines.push("Progress updates on accept:");
+    for (const r of prepared.ratings) {
+      const desc = milestoneDescriptions.get(r.milestone_id) ?? r.milestone_id;
+      lines.push(`- ${desc} → ${r.score}/4`);
+    }
+  } else {
+    lines.push("");
+    lines.push(
+      "No milestone scores attached — completion will save without progress updates.",
+    );
+  }
+
+  if (prepared.feedback) {
+    lines.push("");
+    lines.push(`Note: ${prepared.feedback}`);
+  }
+
+  return lines.join("\n");
+}
+
+async function proposeCompleteActivity(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = await prepareCompletion(args, {
+    children: ctx.children,
+    supabase: ctx.supabase,
+  });
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+
+  // Translate the milestone IDs in the ratings to human-readable
+  // descriptions for the draft preview. The user reads the preview, not
+  // the IDs — this is the same hide-internal-IDs rule applied at the
+  // tile level.
+  const milestoneDescriptions = new Map<string, string>();
+  if (r.prepared.ratings.length > 0) {
+    const ids = r.prepared.ratings.map((rt) => rt.milestone_id);
+    const { data: descRows } = await ctx.supabase
+      .from("bapp_milestones")
+      .select("id, description")
+      .in("id", ids);
+    for (const row of (descRows ?? []) as Array<{
+      id: string;
+      description: string;
+    }>) {
+      milestoneDescriptions.set(row.id, row.description);
+    }
+  }
+
+  const body = buildCompletionPreviewBody(r.prepared, milestoneDescriptions);
+  const draftId = `draft_${crypto.randomUUID()}`;
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: r.prepared.child.firstName,
+      activity_id: r.prepared.activity.id,
+      ratings_count: r.prepared.ratings.length,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "complete_activity",
+        args,
+        preview: {
+          kind: "katie_note",
+          data: {
+            badge: "Activity completion",
+            title: r.prepared.activity.data?.title ?? "Activity",
+            body,
+            ...(r.prepared.imageUrl ? { image_url: r.prepared.imageUrl } : {}),
+          },
+        },
+      },
+    },
+  };
+}
+
+// ── Apply path for complete_activity ─────────────────────────────────────
+
+export interface CompleteActivityApplyResult {
+  ok: true;
+  tile: ActivityChatTile;
+  data: {
+    activity_id: string;
+    /**
+     * UUID of the report log row created by this completion. `null`
+     * only on the idempotent "already completed" branch when no
+     * prior report row could be located (rare — would mean the
+     * activity was marked completed without going through the
+     * cascade, e.g. via direct SQL).
+     */
+    report_log_id: string | null;
+    child_name: string;
+    progress_updated: boolean;
+  };
+  warning?: string;
+}
+
+export interface CompleteActivityApplyError {
+  ok: false;
+  error: string;
+}
+
+export async function applyCompleteActivity(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<CompleteActivityApplyResult | CompleteActivityApplyError> {
+  const r = await prepareCompletion(args, {
+    children: ctx.children,
+    supabase: ctx.supabase,
+  });
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, activity, ratings, feedback, imageUrl } = r.prepared;
+
+  // Idempotency: if the activity is already completed we treat it as
+  // a no-op success and return the most-recent report row associated
+  // with it. Avoids double-cascading on retried accept.
+  if (activity.status === "completed") {
+    const { data: existingReport } = await ctx.supabase
+      .from("bapp_logs")
+      .select("id, data, created_at, updated_at")
+      .eq("parent_log_id", activity.id)
+      .eq("type", "report")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const reportId = (existingReport as { id?: string } | null)?.id ?? null;
+    return {
+      ok: true,
+      data: {
+        activity_id: activity.id,
+        report_log_id: reportId,
+        child_name: child.firstName,
+        progress_updated: false,
+      },
+      tile: buildActivityTile(
+        activity.id,
+        child.id,
+        ctx.userId,
+        { ...(activity.data ?? {}), status_label: "completed" },
+        new Date().toISOString(),
+      ),
+      warning: "This activity was already marked complete.",
+    };
+  }
+
+  // 1. Insert the report log (parent_log_id = activityId)
+  const { data: reportRow, error: reportErr } = await ctx.supabase
+    .from("bapp_logs")
+    .insert({
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "report",
+      status: "completed",
+      context: "adhoc",
+      parent_log_id: activity.id,
+      data: {
+        feedback,
+        rating_count: ratings.length,
+        title: "Activity Report",
+        image_url: imageUrl,
+      },
+    })
+    .select("id")
+    .single<{ id: string }>();
+  if (reportErr || !reportRow) {
+    return {
+      ok: false,
+      error: `Failed to write report log: ${reportErr?.message ?? "unknown"}`,
+    };
+  }
+  const reportId = reportRow.id;
+
+  // 2. Optional progress + observation child logs (mirror submitReport).
+  // Both are best-effort: if either fails the report is already saved.
+  let cascadeWarning: string | undefined;
+  if (ratings.length > 0) {
+    const { error: progressErr } = await ctx.supabase.from("bapp_logs").insert({
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "progress",
+      status: "completed",
+      context: "activity",
+      parent_log_id: reportId,
+      data: {
+        ratings,
+        source_activity_id: activity.id,
+      },
+    });
+    if (progressErr) {
+      cascadeWarning = `Progress log couldn't be written: ${progressErr.message}.`;
+    }
+  }
+
+  if (feedback) {
+    const { error: obsErr } = await ctx.supabase.from("bapp_logs").insert({
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "observation",
+      status: "completed",
+      context: "activity",
+      parent_log_id: reportId,
+      data: {
+        note: feedback,
+        title: "Activity feedback",
+        image_url: imageUrl,
+        source_activity_id: activity.id,
+      },
+    });
+    if (obsErr) {
+      cascadeWarning = cascadeWarning
+        ? `${cascadeWarning} Feedback observation also failed.`
+        : `Feedback observation couldn't be written: ${obsErr.message}.`;
+    }
+  }
+
+  // 3. Cascade progress: recalc + history snapshot. recalculateProgress
+  // is idempotent on equal-score repeats (Math.max), so a partial
+  // re-run from a retried accept doesn't inflate scores.
+  let progressUpdated = false;
+  if (ratings.length > 0) {
+    try {
+      await recalculateProgress(
+        child.id,
+        ratings.map((rt) => ({ id: rt.milestone_id, score: rt.score })),
+      );
+      await writeHistorySnapshot(child.id, reportId);
+      progressUpdated = true;
+    } catch (err) {
+      console.error("[applyCompleteActivity] cascade failure:", { err });
+      cascadeWarning =
+        cascadeWarning ??
+        `Activity is marked complete but progress couldn't recalculate: ${
+          err instanceof Error ? err.message : String(err)
+        }.`;
+    }
+  }
+
+  // 4. Mark the activity completed. Run AFTER the cascade so a cascade
+  // crash leaves the activity 'ready' and the next accept re-runs.
+  const { error: updateErr } = await ctx.supabase
+    .from("bapp_logs")
+    .update({ status: "completed" })
+    .eq("id", activity.id);
+  if (updateErr) {
+    cascadeWarning = cascadeWarning
+      ? `${cascadeWarning} Activity also couldn't be marked completed.`
+      : `Couldn't mark the activity completed: ${updateErr.message}.`;
+  }
+
+  const nowIso = new Date().toISOString();
+  return {
+    ok: true,
+    data: {
+      activity_id: activity.id,
+      report_log_id: reportId,
+      child_name: child.firstName,
+      progress_updated: progressUpdated,
+    },
+    tile: buildActivityTile(
+      activity.id,
+      child.id,
+      ctx.userId,
+      { ...(activity.data ?? {}), status_label: "completed" },
+      nowIso,
+    ),
+    ...(cascadeWarning ? { warning: cascadeWarning } : {}),
+  };
+}
+
 // ── Module export ────────────────────────────────────────────────────────
 
 export const activitiesModule: BloomBotModule = {
   id: "activities",
   name: "Activities",
   description:
-    "Drafts activity plans targeting specific milestones. Generation runs at propose time so the user sees the plan before accepting; Accept inserts the bapp_logs row.",
+    "Drafts activity plans targeting specific milestones, and closes the loop by completing them after they've been done. Generation for plans runs at propose time so the user sees the plan before accepting; Accept inserts the bapp_logs row. Completion runs the full report cascade on Accept.",
 
   tools: [
     {
@@ -405,13 +821,58 @@ export const activitiesModule: BloomBotModule = {
         required: ["milestone_ids"],
       },
     },
+    {
+      name: "complete_activity",
+      description:
+        "Mark a previously-planned activity as done. Drafts a tile that, when Accepted, runs the full report cascade — writes the report row, optionally records milestone progress updates, records feedback as an observation, recalculates progress, and flips the activity row from status='ready' to 'completed'. Use this after the user has actually done the activity (or says they did) — typically the next day. Call read_recent_feed with type_filter='activity' first to find the pending activity_id.",
+      parameters: {
+        type: "object",
+        properties: {
+          activity_id: {
+            type: "string",
+            description:
+              "The bapp_logs id of the ready activity. Get it from read_recent_feed (look for type='activity' status='ready').",
+          },
+          ratings: {
+            type: "array",
+            description:
+              "Milestone scores you observed during the activity. Strongly encouraged — without ratings the completion produces a textual report only and progress isn't updated. Use the milestone_ids that the activity originally targeted (visible in the activity's data.milestone_ids).",
+            items: {
+              type: "object",
+              properties: {
+                milestone_id: { type: "string" },
+                score: {
+                  type: "number",
+                  description:
+                    "1=emerging, 2=developing, 3=established, 4=secure.",
+                },
+              },
+              required: ["milestone_id", "score"],
+            },
+          },
+          feedback: {
+            type: "string",
+            description:
+              "Optional short note from the user about how the activity went.",
+          },
+          image_url: {
+            type: "string",
+            description:
+              "Optional image URL if the user attached a photo of the activity in progress.",
+          },
+        },
+        required: ["activity_id"],
+      },
+    },
   ],
 
   async execute(toolName, args, ctx) {
     if (toolName === "plan_activity") return proposePlanActivity(args, ctx);
+    if (toolName === "complete_activity")
+      return proposeCompleteActivity(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Use `plan_activity` to draft an activity plan for the child. Always call `read_milestones` first so you pick LOW-scored milestones (observed_score < 3). The tool returns a DRAFT tile — say something like 'Drafted: <creativeName>. Review and accept.' and stop. The plan is already generated when you see the draft; the user's Accept commits it.",
+    "Activities have a two-step lifecycle: PLAN (status='ready') and COMPLETE (status='completed'). Use `plan_activity` to draft a new activity targeting LOW-scored milestones (call read_milestones first; pick observed_score < 3). Use `complete_activity` after the user has done it — surface an existing 'ready' activity from read_recent_feed if the user mentions doing one or asks how to track results. ALWAYS attach `ratings` (milestone_id + score 1-4) when completing, otherwise progress doesn't update and the loop is broken. Both tools return a DRAFT tile — say 'Drafted: <title>. Review and accept.' and stop.",
 };
