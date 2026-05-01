@@ -41,6 +41,7 @@ import {
 } from "@/lib/ai/gemini-client";
 import { buildSystemPrompt, type CurrentSurface } from "@/lib/chat/context";
 import { buildMemoryTable } from "@/lib/chat/memory/context-builder";
+import { buildDevelopmentalSnapshots } from "@/lib/chat/developmental-snapshot";
 import {
   updateDailyCost,
   checkDailyLimit,
@@ -202,6 +203,26 @@ export async function POST(req: NextRequest) {
         supabase: admin,
       });
 
+      // WU 10.4: developmental snapshot — full milestone landscape per
+      // child so Katie reasons from real data, can never invent a
+      // milestone id, and can apply the implicit-mastery inference
+      // rule from `progress_proactivity`. Fail-open on errors: the
+      // snapshot is informational enrichment, not a reliability
+      // dependency. If the queries throw (DB outage, transient blip),
+      // the turn proceeds without the snapshot rather than aborting.
+      // Katie falls back to read_milestones mid-conversation if she
+      // needs grounding.
+      const developmentalSnapshot = await buildDevelopmentalSnapshots(
+        children,
+        admin,
+      ).catch((err) => {
+        console.error(
+          "[api/chat] developmental snapshot failed (continuing without it):",
+          err,
+        );
+        return null;
+      });
+
       // Load last 20 messages BEFORE buildSystemPrompt so the
       // gap-aware continuity header gets the most-recent timestamp.
       // Select `id` to exclude the just-saved user message by id
@@ -245,6 +266,7 @@ export async function POST(req: NextRequest) {
         children,
         currentSurface: body.currentSurface ?? null,
         memoryTable,
+        developmentalSnapshot,
         lastInteractionAt,
       });
 

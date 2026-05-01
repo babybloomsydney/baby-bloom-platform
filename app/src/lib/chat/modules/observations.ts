@@ -144,13 +144,71 @@ function buildObservationTile(
   };
 }
 
+// ── Silent milestone scrubber (WU 10.4) ──────────────────────────────────
+//
+// If Katie hands us a `milestone_id` that doesn't exist in
+// `bapp_milestones`, we strip it (and the dependent `score`) silently
+// and let the observation through as a textual-only entry. The user
+// never sees a "milestone not found" error — that would expose internal
+// machinery and admit the model hallucinated. The observation is still
+// useful without a milestone attachment.
+//
+// We log to console for our own observability so we can measure the
+// hallucination rate post-deploy. Catch path: if the lookup itself
+// throws (DB blip), we fail-open — keep the milestone_id as-is and let
+// downstream surfaces handle it. The cost of a rare false-positive
+// (real milestone dropped due to a transient DB error) is a missed
+// progress recalc, which the user can re-trigger by repeating the
+// observation. The cost of fail-closed (blocking the observation) is
+// worse: lost user content.
+async function scrubInvalidMilestone(
+  args: Record<string, unknown>,
+  supabase: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  const raw = args.milestone_id;
+  if (typeof raw !== "string" || raw.trim().length === 0) return args;
+  const milestoneId = raw.trim();
+  try {
+    const { data, error } = await supabase
+      .from("bapp_milestones")
+      .select("id")
+      .eq("id", milestoneId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (error) {
+      // Fail-open on DB error — don't block the user's observation.
+      console.warn("[observations] milestone lookup error (fail-open):", {
+        milestoneId,
+        error: error.message,
+      });
+      return args;
+    }
+    if (data) return args; // valid — pass through
+    // Hallucinated id — strip silently. Clone so callers see new args.
+    console.warn("[observations] hallucinated milestone_id stripped:", {
+      milestoneId,
+    });
+    const cloned = { ...args };
+    delete cloned.milestone_id;
+    delete cloned.score;
+    return cloned;
+  } catch (err) {
+    console.warn("[observations] milestone lookup threw (fail-open):", {
+      milestoneId,
+      err,
+    });
+    return args;
+  }
+}
+
 // ── Propose path (LLM-callable) ──────────────────────────────────────────
 
 async function proposeLogObservation(
   args: Record<string, unknown>,
   ctx: Parameters<BloomBotModule["execute"]>[2],
 ): Promise<ToolResult> {
-  const r = prepareObservation(args, ctx.children);
+  const scrubbedArgs = await scrubInvalidMilestone(args, ctx.supabase);
+  const r = prepareObservation(scrubbedArgs, ctx.children);
   if (!r.ok) {
     return { success: false, error: r.error, terminal: r.terminal };
   }
@@ -169,7 +227,11 @@ async function proposeLogObservation(
       data: {
         draftId,
         toolName: "log_observation",
-        args,
+        // Use scrubbed args so a hallucinated milestone_id doesn't ride
+        // through to the apply call. The user's draft tile and the
+        // eventual persisted row stay aligned — both either have a real
+        // milestone or none at all.
+        args: scrubbedArgs,
         preview: buildObservationTile(
           draftId,
           child.id,
@@ -210,7 +272,11 @@ export async function applyLogObservation(
   args: Record<string, unknown>,
   ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
 ): Promise<ObservationApplyResult | ObservationApplyError> {
-  const r = prepareObservation(args, ctx.children);
+  // Defense-in-depth: scrub here too so a forged accept call (with
+  // args edited client-side or replayed from cache) can't bypass the
+  // validation that the propose path already ran.
+  const scrubbedArgs = await scrubInvalidMilestone(args, ctx.supabase);
+  const r = prepareObservation(scrubbedArgs, ctx.children);
   if (!r.ok) {
     return { ok: false, error: r.error };
   }

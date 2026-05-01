@@ -67,6 +67,14 @@ export interface BotContext {
   /** Pre-rendered memory table (from memory/context-builder — Phase 2). Null in Phase 1. */
   memoryTable?: string | null;
   /**
+   * Pre-rendered developmental snapshot block (WU 10.4). Lists every
+   * milestone across the child's previous + current + next bracket along
+   * with their observed scores, so Katie reasons from real data and can
+   * never invent a milestone id. Null when the user has no children
+   * linked to the account.
+   */
+  developmentalSnapshot?: string | null;
+  /**
    * ISO timestamp of the most recent prior chat_messages row (any role)
    * for this bot, before the current turn. Used to render a "user
    * returning after N hours/days" note in the runtime header so Gemini
@@ -243,6 +251,7 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
 
   // Runtime-injected blocks (not stored in katie_prompt)
   parts.push(renderRuntimeHeader(ctx));
+  if (ctx.developmentalSnapshot) parts.push(ctx.developmentalSnapshot);
   if (ctx.memoryTable) parts.push(ctx.memoryTable);
 
   return parts.filter(Boolean).join("\n\n");
