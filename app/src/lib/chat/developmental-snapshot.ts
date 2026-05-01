@@ -55,7 +55,6 @@ interface MilestoneRow {
   domain: string;
   age_bracket: string;
   description: string;
-  sort_order: number | null;
 }
 
 interface ProgressScoreRow {
@@ -123,10 +122,12 @@ export async function buildDevelopmentalSnapshots(
     for (const b of list) allBrackets.add(b);
   }
 
-  // Single milestones fetch covering every bracket needed.
+  // Single milestones fetch covering every bracket needed. We DON'T select
+  // sort_order — the model never uses it for reasoning, and it adds ~5%
+  // bytes per row across ~140 rows for multi-child families.
   const { data: milestoneRows } = await supabase
     .from("bapp_milestones")
-    .select("id, domain, age_bracket, description, sort_order")
+    .select("id, domain, age_bracket, description")
     .in("age_bracket", Array.from(allBrackets))
     .eq("is_active", true)
     .order("sort_order", { ascending: true });
@@ -152,8 +153,11 @@ export async function buildDevelopmentalSnapshots(
 
   const now = new Date();
   const blocks: string[] = ["## Developmental Snapshot"];
+  // Compact framing — the substantive grounding rules live in the
+  // `progress_proactivity` section, no need to repeat them here. Score
+  // legend is short enough to keep inline.
   blocks.push(
-    "Below is the live milestone landscape for each child you have access to. Use this to ground every progress-related suggestion: never invent IDs, never propose milestones that aren't in this list. The score column is `0=unobserved · 1=emerging · 2=developing · 3=established · 4=secure`. Earlier-bracket rows showing 0 may still be implicitly mastered if a later milestone in the same domain is at 3+ — apply the inference rule from `progress_proactivity` before deciding what to suggest or score.",
+    "Live milestone landscape per child. Score: 0=unobserved · 1=emerging · 2=developing · 3=established · 4=secure. Use ONLY ids that appear here.",
   );
 
   for (const child of children) {
@@ -199,11 +203,9 @@ export async function buildDevelopmentalSnapshots(
       const isCurrent = bracket === currentBracket;
       const isNext =
         currentIdx !== -1 && BRACKETS.indexOf(bracket) === currentIdx + 1;
-      const tag = isCurrent
-        ? " (CURRENT)"
-        : isNext
-          ? " (NEXT — peek for stretch / advanced behaviour matching only)"
-          : "";
+      // Tag tags — short. The semantics (NEXT = peek-for-stretch only)
+      // are taught in `progress_proactivity`; no need to restate inline.
+      const tag = isCurrent ? " [CURRENT]" : isNext ? " [NEXT]" : "";
 
       blocks.push("");
       blocks.push(`${bracket}${tag}:`);

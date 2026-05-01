@@ -38,6 +38,20 @@ export interface TokenUsage {
 /**
  * Calculates USD cost for a single AI turn.
  * Stamp this value into chat_messages.metadata.cost_usd at write time.
+ *
+ * WU 13.5 — Gemini's `usageMetadata.promptTokenCount` is the FULL prompt
+ * size including any tokens served from cache. `cachedContentTokenCount`
+ * is the cache-served subset. Charging both inputTokens at the full rate
+ * AND cachedTokens at the cached rate would double-bill the cached
+ * portion. The correct math is:
+ *   non_cached_input = inputTokens - cachedTokens
+ *   cost = non_cached_input × input_rate
+ *        + cachedTokens     × cached_rate
+ *        + outputTokens     × output_rate
+ *
+ * Math.max(..., 0) guard against the unlikely-but-possible case where
+ * Gemini reports cachedTokens > promptTokenCount (e.g. SDK bug). Better
+ * to under-report than to surface a negative cost.
  */
 export function calculateMessageCost(
   model: GeminiModelId,
@@ -47,8 +61,9 @@ export function calculateMessageCost(
   if (!rates) {
     throw new Error(`Unknown model for cost calculation: ${model}`);
   }
+  const nonCachedInput = Math.max(0, usage.inputTokens - usage.cachedTokens);
   return (
-    (usage.inputTokens * rates.input_per_million) / 1_000_000 +
+    (nonCachedInput * rates.input_per_million) / 1_000_000 +
     (usage.outputTokens * rates.output_per_million) / 1_000_000 +
     (usage.cachedTokens * rates.cached_per_million) / 1_000_000
   );

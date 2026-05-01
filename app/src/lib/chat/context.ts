@@ -199,6 +199,39 @@ export function interpolate(
  *   10. user/children/current-surface/date header (runtime)
  */
 export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
+  // Compatibility shim: composes the static + runtime halves into a
+  // single string. Used by callers that don't need the split (tests,
+  // any caller that's not the cached chat path). The cached path in
+  // `route.ts` calls buildStaticPrompt + buildRuntimeContext directly
+  // so the static half can be cached on the Gemini side.
+  const { staticPrompt } = await buildStaticPrompt(ctx);
+  const runtime = buildRuntimeContext(ctx);
+  return [staticPrompt, runtime].filter(Boolean).join("\n\n");
+}
+
+/**
+ * The CACHEABLE half of the system prompt — everything that doesn't
+ * depend on per-user runtime state. Returns both the rendered string
+ * and the active prompt-version hash so the caller can key the Gemini
+ * cache without a second DB round-trip.
+ *
+ * Variables NOT interpolated here:
+ *   - `{user_name}` — per-user, lives in the runtime block.
+ *   - `{current_date}`, `{day_of_week}`, `{current_time}` — per-turn,
+ *     live in the runtime block.
+ * Variables that ARE interpolated:
+ *   - `{user_role}` — stable for a given cache key (the cache key
+ *     includes effectiveRole as its third dimension).
+ *
+ * To keep the cache shareable across users on the same role+model+
+ * prompt-hash, `{user_name}` is rendered as the placeholder string
+ * "the user". The runtime block then provides the real name in the
+ * runtime header so Katie can address them properly.
+ */
+export async function buildStaticPrompt(
+  ctx: Pick<BotContext, "effectiveRole" | "role">,
+): Promise<{ staticPrompt: string; versionHash: string }> {
+  const isAdmin = ctx.effectiveRole === "admin";
   const sectionIds: PromptSectionId[] = [
     "identity",
     "voice",
@@ -207,45 +240,54 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
     "data_surfaces",
     "logging_rules",
     "proactive_rules",
-    "progress_proactivity",
+    // WU 13.1 — conditional section loading. progress_proactivity is
+    // ~1800 tokens of developmental coaching that's irrelevant to
+    // admin (they're inspecting/training, not parenting).
+    ...(isAdmin ? [] : (["progress_proactivity"] as const)),
     "scheduling_constraints",
     `role_${ctx.effectiveRole}` as PromptSectionId,
   ];
 
+  // Fetch hash AND sections together. The version_hash drives cache
+  // invalidation on the Gemini side — every prompt edit bumps it via
+  // the trg_katie_prompt_bump_version trigger.
+  const versionHash = await fetchVersionHash();
   const sections = await loadActiveSections();
   const parts: string[] = [];
+
+  // Static-safe interpolation: stable variables only. Per-user / per-turn
+  // variables are rendered as stable placeholders.
+  const staticVars: Record<string, string> = {
+    user_name: "the user",
+    user_role: ctx.effectiveRole,
+    current_date: "{current_date}",
+    day_of_week: "{day_of_week}",
+    current_time: "{current_time}",
+  };
 
   for (const id of sectionIds) {
     const s = sections.get(id);
     if (s) {
-      parts.push(interpolate(s.content, buildVariables(ctx)));
+      parts.push(interpolate(s.content, staticVars));
     } else if (id === "identity") {
-      // Minimum viable fallback if seed hasn't run
       parts.push(FALLBACK_IDENTITY);
     }
   }
 
-  // Module fragments: prefer DB rows (editable by admin Katie), fall back
-  // to each module's own systemPromptFragment when no DB row exists.
-  // Deterministic alphabetical order by module id.
+  // Module fragments — DB rows preferred (editable by admin Katie),
+  // fall back to each module's own systemPromptFragment.
   const byModuleId = new Map<string, string>();
-
-  // 1. DB-sourced module.* rows (can be for modules that aren't registered
-  //    yet — admin Katie may stage them ahead of release; we still emit).
   for (const [id, s] of sections) {
     if (!id.startsWith("module.")) continue;
     const modId = id.slice("module.".length);
-    byModuleId.set(modId, interpolate(s.content, buildVariables(ctx)));
+    byModuleId.set(modId, interpolate(s.content, staticVars));
   }
-
-  // 2. Registered modules whose fragment hasn't already been provided by DB.
   for (const mod of getActiveModules(ctx.effectiveRole)) {
     if (byModuleId.has(mod.id)) continue;
     if (mod.systemPromptFragment) {
       byModuleId.set(mod.id, mod.systemPromptFragment);
     }
   }
-
   const ordered = Array.from(byModuleId.entries()).sort((a, b) =>
     a[0].localeCompare(b[0]),
   );
@@ -253,11 +295,23 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
     parts.push(content);
   }
 
-  // Runtime-injected blocks (not stored in katie_prompt)
-  parts.push(renderRuntimeHeader(ctx));
+  return {
+    staticPrompt: parts.filter(Boolean).join("\n\n"),
+    versionHash,
+  };
+}
+
+/**
+ * The PER-TURN half of the system prompt — runtime header, memory
+ * table, developmental snapshot, anything that varies per user/turn.
+ * The cached chat path injects this as a synthetic priming turn at
+ * position 0 of `contents`; the uncached path appends it to the
+ * static prompt as systemInstruction.
+ */
+export function buildRuntimeContext(ctx: BotContext): string {
+  const parts: string[] = [renderRuntimeHeader(ctx)];
   if (ctx.developmentalSnapshot) parts.push(ctx.developmentalSnapshot);
   if (ctx.memoryTable) parts.push(ctx.memoryTable);
-
   return parts.filter(Boolean).join("\n\n");
 }
 

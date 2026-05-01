@@ -39,9 +39,18 @@ import {
   type GeminiTool,
   type GeminiTurn,
 } from "@/lib/ai/gemini-client";
-import { buildSystemPrompt, type CurrentSurface } from "@/lib/chat/context";
+import {
+  buildStaticPrompt,
+  buildRuntimeContext,
+  type CurrentSurface,
+} from "@/lib/chat/context";
 import { buildMemoryTable } from "@/lib/chat/memory/context-builder";
 import { buildDevelopmentalSnapshots } from "@/lib/chat/developmental-snapshot";
+import {
+  getOrCreateCachedContent,
+  evictCacheEntry,
+  isStaleCacheError,
+} from "@/lib/ai/gemini-cache-manager";
 import {
   updateDailyCost,
   checkDailyLimit,
@@ -171,6 +180,24 @@ export async function POST(req: NextRequest) {
         );
         return;
       }
+      // WU 13.5 — server-side soft warning at 90% of cap. NO user-visible
+      // change; just an observability signal so we can see who's
+      // approaching the cap before they hit it. The user said
+      // "no UX degradation" — degrading the experience at 90% would
+      // violate that. The hard cap above is the only point at which
+      // service is interrupted.
+      if (limit.nearCap) {
+        console.warn(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            event: "katie.cap_warning",
+            bot_id: bot.id,
+            spent: limit.spent,
+            limit: limit.limit,
+            remaining: limit.remaining,
+          }),
+        );
+      }
 
       const children = await getUserChildren(userId);
       const admin = createAdminClient();
@@ -255,7 +282,13 @@ export async function POST(req: NextRequest) {
           ? historyRows[historyRows.length - 1].created_at
           : null;
 
-      const systemPrompt = await buildSystemPrompt({
+      // WU 13.2 — split prompt into static (cacheable on Gemini) + runtime
+      // (per-turn, cannot be cached). The static portion is shared across
+      // all users on the same (model, effectiveRole, prompt-version-hash);
+      // the runtime portion (header + snapshot + memory) is injected as
+      // a synthetic priming turn at position 0 of `contents` when caching
+      // is active.
+      const ctxForPrompt = {
         botId: bot.id,
         userId,
         role: bot.role,
@@ -268,13 +301,47 @@ export async function POST(req: NextRequest) {
         memoryTable,
         developmentalSnapshot,
         lastInteractionAt,
+      };
+      const { staticPrompt, versionHash } = await buildStaticPrompt({
+        effectiveRole,
+        role: bot.role,
       });
+      const runtimeContext = buildRuntimeContext(ctxForPrompt);
+
+      // Try to get / create the Gemini cache for this (model, role, hash).
+      // Returns null on any failure — the route then falls back to passing
+      // the full systemPrompt uncached.
+      const cacheName = await getOrCreateCachedContent(
+        model,
+        effectiveRole,
+        versionHash,
+        staticPrompt,
+      );
 
       // Prefix USER turns with `[N min ago] / [yesterday] / etc` so
       // Gemini can reason about how long ago things were said. Assistant
       // turns are NOT timestamped — see WU 8.20.
       const renderTime = new Date();
+
+      // When cached, the runtime context enters via a synthetic priming
+      // pair at position 0 of the contents array (Gemini's documented
+      // pattern for adding per-call context to a cached systemInstruction).
+      // The model turn is exactly "Understood." — no thinking parts, no
+      // function parts — so the agentic loop's echoModelParts +
+      // thoughtSignature handling can't be confused by it.
+      const primingTurns: GeminiTurn[] =
+        cacheName !== null
+          ? [
+              {
+                role: "user",
+                parts: [{ text: `[context]\n${runtimeContext}` }],
+              },
+              { role: "model", parts: [{ text: "Understood." }] },
+            ]
+          : [];
+
       const conversationTurns: GeminiTurn[] = [
+        ...primingTurns,
         ...historyRows.map((r) => ({
           role: r.role === "assistant" ? ("model" as const) : ("user" as const),
           parts: [
@@ -288,6 +355,11 @@ export async function POST(req: NextRequest) {
         })),
         { role: "user", parts: [{ text: `[just now] ${body.message}` }] },
       ];
+
+      // The fallback systemPrompt for the uncached path. When caching is
+      // active, this is unused (the cache provides systemInstruction,
+      // and runtime is in the priming turns).
+      const fallbackSystemPrompt = `${staticPrompt}\n\n${runtimeContext}`;
 
       const toolDefs = collectTools(effectiveRole);
       const tools: GeminiTool[] | undefined =
@@ -380,13 +452,60 @@ export async function POST(req: NextRequest) {
         // tools + continues OR breaks if the model converged to text.
         const runningTurns: GeminiTurn[] = [...conversationTurns];
 
+        // Track whether the cached path is still viable across rounds.
+        // If a stale-cache error is detected mid-loop, we evict +
+        // re-run with the full systemPrompt for the rest of the turn.
+        let useCacheForThisTurn = cacheName !== null;
+        let primingDropped = false;
+
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-          const stream = await generateStream({
-            model,
-            systemPrompt,
-            contents: runningTurns,
-            tools,
-          });
+          // WU 13.2 — cached vs uncached call shape:
+          //   cached:    cachedContent set, NO systemPrompt, runtime in priming turns
+          //   uncached:  systemPrompt set, NO cachedContent, runtime in systemPrompt
+          let stream;
+          try {
+            stream = await generateStream({
+              model,
+              ...(useCacheForThisTurn
+                ? { cachedContent: cacheName! }
+                : { systemPrompt: fallbackSystemPrompt }),
+              contents: runningTurns,
+              tools,
+            });
+          } catch (err) {
+            // Stale cache (TTL expired between create and use)? Evict +
+            // retry once uncached. The user never sees a break.
+            //
+            // Round-safety: a stale-cache error can only originate from
+            // the *first* generateStream call of a turn, because the
+            // cache is consulted up front (getOrCreateCachedContent at
+            // turn start). After round 0 succeeds, the model has already
+            // committed to the cached prompt for the rest of the turn —
+            // mid-loop expiry would require an hour to elapse between
+            // tool rounds, which is impossible at typical agentic-loop
+            // wall-times (seconds). The splice below assumes priming
+            // turns are still at the head of runningTurns; this assumption
+            // would only break if Gemini's stale-cache semantics change
+            // in a future SDK to fire mid-stream.
+            if (useCacheForThisTurn && isStaleCacheError(err)) {
+              evictCacheEntry(model, effectiveRole, versionHash);
+              useCacheForThisTurn = false;
+              // Drop the priming turns — they're redundant when systemPrompt
+              // is back to carrying the runtime context.
+              if (!primingDropped) {
+                runningTurns.splice(0, primingTurns.length);
+                primingDropped = true;
+              }
+              stream = await generateStream({
+                model,
+                systemPrompt: fallbackSystemPrompt,
+                contents: runningTurns,
+                tools,
+              });
+            } else {
+              throw err;
+            }
+          }
 
           let roundText = "";
           // Use the SDK's FunctionCall type so the `id` and other fields
@@ -551,6 +670,13 @@ export async function POST(req: NextRequest) {
               success: tc.result.success,
             })),
             duration_ms: Date.now() - startedAt,
+            // WU 13.2 — cache observability. cache_hit signals whether the
+            // turn used a Gemini cachedContent. prompt_version_hash lets
+            // future analyses correlate prompt edits with behaviour
+            // changes.
+            cache_hit: cacheName !== null && useCacheForThisTurn,
+            cache_name: cacheName,
+            prompt_version_hash: versionHash,
           },
         });
 
@@ -569,6 +695,8 @@ export async function POST(req: NextRequest) {
             tool_calls: toolCalls.length,
             duration_ms: Date.now() - startedAt,
             surface: body.currentSurface?.route ?? null,
+            cache_hit: cacheName !== null && useCacheForThisTurn,
+            prompt_version_hash: versionHash,
           }),
         );
 

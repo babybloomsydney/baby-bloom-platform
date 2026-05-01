@@ -185,7 +185,12 @@ describe("buildSystemPrompt", () => {
       userName: "Bailey",
       children: [],
     });
-    expect(prompt).toContain("You are Katie, Bailey's assistant.");
+    // WU 13.2 — `{user_name}` is rendered as the placeholder "the user"
+    // in the static (cacheable) portion so the cache can be shared
+    // across users. The real name appears in the runtime header
+    // section ("Name: Bailey") — verify both halves are present.
+    expect(prompt).toContain("You are Katie, the user's assistant.");
+    expect(prompt).toContain("Name: Bailey");
     expect(prompt).toContain("Be concise.");
     expect(prompt).toContain("User is a nanny.");
     expect(prompt).not.toContain("User is a parent.");

@@ -26,7 +26,6 @@ interface MilestoneRow {
   domain: string;
   age_bracket: string;
   description: string;
-  sort_order: number | null;
 }
 
 interface ProgressScoreRow {
@@ -49,13 +48,28 @@ async function readMilestones(
       ? args.age_bracket
       : child.ageBracket;
 
+  // WU 13.3 — optional domain filter. Lets the caller scope to one
+  // domain when they only need that subset (e.g. "what are her
+  // language milestones?"). Without this filter the tool returns all
+  // 35 (5 × 7) bracket-rows even when the model just wanted CL.
+  const domainFilter =
+    typeof args.domain === "string" && args.domain.trim().length > 0
+      ? args.domain.trim().toUpperCase()
+      : null;
+
   // 1. Load milestones for the bracket (public read — active only).
-  const { data: milestones, error: mError } = await ctx.supabase
+  // sort_order isn't selected — the model never uses it for reasoning,
+  // and dropping it matches the snapshot trim from WU 13.1.
+  let milestonesQuery = ctx.supabase
     .from("bapp_milestones")
-    .select("id, domain, age_bracket, description, sort_order")
+    .select("id, domain, age_bracket, description")
     .eq("age_bracket", ageBracket)
-    .eq("is_active", true)
-    .order("domain");
+    .eq("is_active", true);
+  if (domainFilter) {
+    milestonesQuery = milestonesQuery.eq("domain", domainFilter);
+  }
+  const { data: milestones, error: mError } =
+    await milestonesQuery.order("domain");
 
   if (mError) {
     return {
@@ -106,7 +120,6 @@ async function readMilestones(
     domain: m.domain,
     age_bracket: m.age_bracket,
     description: m.description,
-    sort_order: m.sort_order ?? 0,
     observed_score: observed.get(m.id) ?? 0,
   }));
 
@@ -482,6 +495,12 @@ export const progressModule: BloomBotModule = {
             ],
             description:
               "Override the child's current age bracket (optional). Defaults to the child's own bracket.",
+          },
+          domain: {
+            type: "string",
+            enum: ["CL", "PSE", "PD", "LIT", "NUM", "UW", "EAD"],
+            description:
+              "Optional — scope to a single domain when the user's question is domain-specific (e.g. 'what are her language milestones'). Returns 5 rows instead of 35. Omit when you want the full bracket.",
           },
         },
         required: [],
