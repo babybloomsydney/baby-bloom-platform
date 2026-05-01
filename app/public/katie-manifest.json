@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-04-29T03:05:38.501Z",
+  "generated_at": "2026-05-01T02:39:16.342Z",
   "summary": {
-    "route_count": 48,
+    "route_count": 52,
     "page_count": 96,
     "cron_count": 6,
     "migration_count": 12,
@@ -89,6 +89,11 @@
       "file": "src/app/api/chat/connections/[id]/route.ts"
     },
     {
+      "path": "/api/chat/drafts/accept",
+      "methods": ["POST"],
+      "file": "src/app/api/chat/drafts/accept/route.ts"
+    },
+    {
       "path": "/api/chat/job-matches/[id]",
       "methods": ["GET"],
       "file": "src/app/api/chat/job-matches/[id]/route.ts"
@@ -104,9 +109,24 @@
       "file": "src/app/api/chat/messages/route.ts"
     },
     {
+      "path": "/api/chat/placement/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/placement/[id]/route.ts"
+    },
+    {
+      "path": "/api/chat/position/[id]",
+      "methods": ["GET"],
+      "file": "src/app/api/chat/position/[id]/route.ts"
+    },
+    {
       "path": "/api/chat",
       "methods": ["POST"],
       "file": "src/app/api/chat/route.ts"
+    },
+    {
+      "path": "/api/chat/upload",
+      "methods": ["POST"],
+      "file": "src/app/api/chat/upload/route.ts"
     },
     {
       "path": "/api/check-share-screenshot",

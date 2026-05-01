@@ -65,21 +65,30 @@ export function KatieInput({
     e.preventDefault();
     if (!canSend) return;
     const trimmed = value.trim();
-    // The bracketed marker is only meaningful once the system prompt
-    // teaches Katie to recognise it (WU 8.22e). Until that ships, we
-    // gate the append so the marker doesn't reach the model and
-    // confuse the response. The image stays in the attachment chip
-    // so the user knows it was uploaded; it just doesn't enter the
-    // chat history yet.
+    // Marker is gated behind KATIE_IMAGE_MARKER_ENABLED. It's ON by
+    // default since WU 9.1 (the system prompt teaches Katie how to
+    // route the marker), but the env var stays as a kill-switch.
     const marker =
       attachment && KATIE_IMAGE_MARKER_ENABLED
         ? `[Image attached: ${attachment.url}]`
         : "";
     const msg = [trimmed, marker].filter(Boolean).join("\n\n");
+    // Defense-in-depth: if both text and marker collapsed to empty
+    // (would happen if marker flag is off AND user sent only an
+    // image), substitute a default message so /api/chat doesn't
+    // reject with 400. The user uploaded an image — assume they
+    // want Katie to act on it.
+    const finalMsg =
+      msg.length > 0
+        ? msg
+        : attachment
+          ? "I've attached an image — please make a tile from it."
+          : "";
+    if (finalMsg.length === 0) return;
     setValue("");
     clearAttachment();
     setError(null);
-    await onSend(msg);
+    await onSend(finalMsg);
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -95,21 +104,16 @@ export function KatieInput({
       className="flex flex-col gap-1.5 border-t border-slate-200 bg-white px-3 py-2"
     >
       {attachment && (
-        <div className="flex items-start gap-2 rounded-md bg-slate-50 p-1.5">
+        <div className="flex items-center gap-2 rounded-md bg-slate-50 p-1.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={attachment.previewUrl}
             alt="Attached image preview"
             className="h-12 w-12 rounded object-cover"
           />
-          <div className="flex-1 text-xs text-slate-600">
-            <div className="flex items-center gap-1 font-medium">
-              <ImageIcon className="h-3 w-3" aria-hidden="true" />
-              Image attached
-            </div>
-            <p className="mt-0.5 text-slate-500">
-              Send a message and Katie will figure out what to do with it.
-            </p>
+          <div className="flex-1 text-xs font-medium text-slate-600">
+            <ImageIcon className="mr-1 inline h-3 w-3" aria-hidden="true" />
+            Image attached
           </div>
           <button
             type="button"

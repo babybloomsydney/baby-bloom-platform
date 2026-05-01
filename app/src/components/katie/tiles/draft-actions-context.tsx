@@ -32,7 +32,20 @@ export interface DraftActionsContextValue {
     args: Record<string, unknown>,
     imageUrl: string | null,
   ) => void | Promise<void>;
-  onAmend: (draftId: string, toolName: string) => void | Promise<void>;
+  /**
+   * Triggered when the user submits an amendment from the inline
+   * textbox on the draft tile. `changeText` is the user's typed
+   * description of what to change — the parent forwards it to
+   * Katie as a synthetic user message so she can re-propose with
+   * revised args. Empty/undefined means the user hit Amend with no
+   * change text (treated as a generic "what to change?" prompt for
+   * back-compat).
+   */
+  onAmend: (
+    draftId: string,
+    toolName: string,
+    changeText?: string,
+  ) => void | Promise<void>;
   onDismiss: (draftId: string) => void;
   /**
    * True when the parent has supplied real handlers. When false

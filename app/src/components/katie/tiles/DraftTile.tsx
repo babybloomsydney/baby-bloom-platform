@@ -80,6 +80,12 @@ export function DraftTile({ tile }: DraftTileProps) {
   >(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const adoptedRef = useRef(false);
+  // Captures the Amend button so focus can return there when the user
+  // exits amend mode (Cancel / Esc / Submit). Without this restoration
+  // we'd fail SC 2.4.3 Focus Order — focus would drop to <body> when
+  // the textarea unmounts and AT users would lose their place in the
+  // tile's action row.
+  const amendTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // First-render adopt: if the user attached an image via the Plus
   // menu before this draft arrived, take it (atomic read-and-clear)
@@ -152,6 +158,13 @@ export function DraftTile({ tile }: DraftTileProps) {
     setUploadError(null);
   }
 
+  // Amend mode: when true, the action row collapses and an inline
+  // textarea appears for the user to describe their change directly
+  // on the tile. Submit fires onAmend with the user's text; cancel
+  // returns to the action row without sending anything.
+  const [amending, setAmending] = useState(false);
+  const [amendText, setAmendText] = useState("");
+
   async function handleAccept() {
     if (submitting) return;
     setSubmitting("accept");
@@ -162,13 +175,34 @@ export function DraftTile({ tile }: DraftTileProps) {
     }
   }
 
-  async function handleAmend() {
+  function handleAmendStart() {
     if (submitting) return;
+    setAmending(true);
+  }
+
+  function handleAmendCancel() {
+    setAmending(false);
+    setAmendText("");
+    // Restore focus to the trigger so keyboard / AT users land back
+    // on the Amend button rather than <body>. Defer to next tick so
+    // the textarea unmount completes before we focus.
+    queueMicrotask(() => amendTriggerRef.current?.focus());
+  }
+
+  async function handleAmendSubmit() {
+    if (submitting) return;
+    const textToSend = amendText.trim();
     setSubmitting("amend");
     try {
-      await actions.onAmend(draftId, toolName);
+      await actions.onAmend(draftId, toolName, textToSend);
+      // Success: collapse amend mode and return focus to the Amend
+      // trigger. We only clear amendText here so a thrown error
+      // preserves the user's typing for retry without re-typing.
+      setAmending(false);
+      setAmendText("");
     } finally {
       setSubmitting(null);
+      queueMicrotask(() => amendTriggerRef.current?.focus());
     }
   }
 
@@ -201,12 +235,15 @@ export function DraftTile({ tile }: DraftTileProps) {
       className="rounded-xl border border-violet-200 bg-violet-50/40 p-3 shadow-sm"
     >
       {/* Visually-hidden live region for AT users — announces async
-          state transitions that visual users see as a spinner. */}
+          state transitions that visual users see as a spinner, plus
+          the amend-mode toggle which is a meaningful UI shift even
+          when nothing is "submitting". */}
       <span className="sr-only" aria-live="polite">
         {submitting === "accept" && "Accepting draft"}
         {submitting === "amend" && "Asking Katie for amendments"}
         {submitting === "dismiss" && "Dismissing draft"}
         {uploading && "Uploading image"}
+        {amending && !submitting && "Amend mode — describe your change"}
       </span>
 
       <p className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-violet-700">
@@ -237,77 +274,145 @@ export function DraftTile({ tile }: DraftTileProps) {
         </div>
       )}
 
-      <div className="mt-2 flex items-center gap-1.5 text-xs">
-        {imageUrl ? (
+      {/* Image affordance — suppressed on tile kinds where an image
+          isn't a meaningful part of the entry. Activity plans are
+          AI-generated reading material, not user-captured moments,
+          so an Add Image button on those drafts confuses the user.
+          Add other suppressions here if more kinds turn out the same.
+      */}
+      {preview.kind !== "activity" && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs">
+          {imageUrl ? (
+            <button
+              type="button"
+              onClick={handleRemoveImage}
+              disabled={!!submitting || uploading}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Trash2 className="h-3 w-3" aria-hidden="true" />
+              Remove image
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleAddImageClick}
+              disabled={!!submitting || uploading}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {uploading ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : (
+                <ImageIcon className="h-3 w-3" aria-hidden="true" />
+              )}
+              {uploading ? "Uploading…" : "Add image"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {amending ? (
+        <div className="mt-2 space-y-1.5">
+          <label
+            htmlFor={`amend-text-${draftId}`}
+            className="block text-[11px] font-medium text-violet-700"
+          >
+            What would you like to change?
+          </label>
+          <textarea
+            id={`amend-text-${draftId}`}
+            value={amendText}
+            onChange={(e) => setAmendText(e.target.value)}
+            placeholder="e.g. change the meal to lunch, add 'half a banana'…"
+            disabled={!!submitting}
+            rows={2}
+            className="w-full resize-none rounded-md border border-violet-200 bg-white px-2 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-50"
+            autoFocus
+            onKeyDown={(e) => {
+              // Cmd/Ctrl+Enter submits; Esc cancels. Plain Enter
+              // makes a newline so longer change requests don't
+              // submit prematurely.
+              if (
+                (e.metaKey || e.ctrlKey) &&
+                e.key === "Enter" &&
+                amendText.trim().length > 0
+              ) {
+                e.preventDefault();
+                void handleAmendSubmit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                handleAmendCancel();
+              }
+            }}
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleAmendSubmit}
+              disabled={!!submitting || amendText.trim().length === 0}
+              className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting === "amend" ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : (
+                <Check className="h-3 w-3" aria-hidden="true" />
+              )}
+              Submit change
+            </button>
+            <button
+              type="button"
+              onClick={handleAmendCancel}
+              disabled={!!submitting}
+              className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <span className="ml-1 text-[10px] italic text-slate-600">
+              Cmd/Ctrl+Enter to submit, Esc to cancel
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            onClick={handleRemoveImage}
+            onClick={actions.isWired ? handleAccept : undefined}
+            aria-disabled={!!submitting || uploading || !actions.isWired}
+            aria-describedby={!actions.isWired ? notWiredId : undefined}
             disabled={!!submitting || uploading}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
           >
-            <Trash2 className="h-3 w-3" aria-hidden="true" />
-            Remove image
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={handleAddImageClick}
-            disabled={!!submitting || uploading}
-            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 font-medium text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {uploading ? (
+            {submitting === "accept" ? (
               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
             ) : (
-              <ImageIcon className="h-3 w-3" aria-hidden="true" />
+              <Check className="h-3 w-3" aria-hidden="true" />
             )}
-            {uploading ? "Uploading…" : "Add image"}
+            Accept
           </button>
-        )}
-      </div>
-
-      <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        <button
-          type="button"
-          onClick={actions.isWired ? handleAccept : undefined}
-          aria-disabled={!!submitting || uploading || !actions.isWired}
-          aria-describedby={!actions.isWired ? notWiredId : undefined}
-          disabled={!!submitting || uploading}
-          className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        >
-          {submitting === "accept" ? (
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-          ) : (
-            <Check className="h-3 w-3" aria-hidden="true" />
-          )}
-          Accept
-        </button>
-        <button
-          type="button"
-          onClick={actions.isWired ? handleAmend : undefined}
-          aria-disabled={!!submitting || uploading || !actions.isWired}
-          aria-describedby={!actions.isWired ? notWiredId : undefined}
-          disabled={!!submitting || uploading}
-          className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        >
-          {submitting === "amend" ? (
-            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-          ) : (
+          <button
+            ref={amendTriggerRef}
+            type="button"
+            onClick={actions.isWired ? handleAmendStart : undefined}
+            aria-disabled={!!submitting || uploading || !actions.isWired}
+            aria-describedby={!actions.isWired ? notWiredId : undefined}
+            disabled={!!submitting || uploading}
+            className="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-white px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+          >
             <Pencil className="h-3 w-3" aria-hidden="true" />
-          )}
-          Amend
-        </button>
-        <button
-          type="button"
-          onClick={actions.isWired ? handleDismiss : undefined}
-          aria-disabled={!!submitting || uploading || !actions.isWired}
-          aria-describedby={!actions.isWired ? notWiredId : undefined}
-          disabled={!!submitting || uploading}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
-        >
-          <Plus className="h-3 w-3 rotate-45" aria-hidden="true" />
-          Dismiss
-        </button>
-      </div>
+            Amend
+          </button>
+          <button
+            type="button"
+            onClick={actions.isWired ? handleDismiss : undefined}
+            aria-disabled={!!submitting || uploading || !actions.isWired}
+            aria-describedby={!actions.isWired ? notWiredId : undefined}
+            disabled={!!submitting || uploading}
+            className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+          >
+            <Plus className="h-3 w-3 rotate-45" aria-hidden="true" />
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {!actions.isWired && (
         <p id={notWiredId} className="mt-2 text-[10px] italic text-slate-400">

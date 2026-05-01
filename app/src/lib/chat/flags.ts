@@ -53,10 +53,14 @@ export const KATIE_DAILY_LIMIT_USD = parseNumber(
 /**
  * Image-attach marker gate. When true, the chat client embeds
  * `[Image attached: <url>]` into user messages whenever the user
- * has uploaded an image via the action menu. Off by default until
- * the system prompt teaches Katie about the marker (WU 8.22e) — if
- * it ships before then, Katie may treat the bracketed string as
- * unfamiliar text and produce confusing replies.
+ * has uploaded an image via the action menu. Default: ON since
+ * WU 9.1 — the system prompt now teaches Katie how to handle the
+ * marker (logging_rules section, "Image attachments" subsection).
+ *
+ * The flag is preserved (not removed) as a kill-switch in case the
+ * marker creates surprising replies in production — flip the env
+ * var to false and the chat client suppresses the marker without
+ * a code change.
  *
  * Server-side: reads KATIE_IMAGE_MARKER_ENABLED.
  * Client-side: reads NEXT_PUBLIC_KATIE_IMAGE_MARKER_ENABLED.
@@ -64,7 +68,7 @@ export const KATIE_DAILY_LIMIT_USD = parseNumber(
 export const KATIE_IMAGE_MARKER_ENABLED = parseBool(
   process.env.KATIE_IMAGE_MARKER_ENABLED ??
     process.env.NEXT_PUBLIC_KATIE_IMAGE_MARKER_ENABLED,
-  false,
+  true,
 );
 
 /**

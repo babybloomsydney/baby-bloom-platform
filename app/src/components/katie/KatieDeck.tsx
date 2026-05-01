@@ -175,17 +175,17 @@ export function KatieDeck() {
   );
 
   const handleDraftAmend = useCallback(
-    async (draftId: string, toolName: string) => {
-      // The Amend button sends a synthetic user-side message. Katie's
-      // system prompt (logging_rules section) teaches her: when she
-      // sees this message, she asks "what would you like to change?"
-      // and on the user's reply re-issues the same propose tool with
-      // revised args. The new draft tile appears at the bottom; we
-      // dismiss the OLD same-tool drafts so the chat doesn't
-      // accumulate a wall of stale draft tiles across amend cycles.
+    async (draftId: string, toolName: string, changeText?: string) => {
+      // Amend ships a synthetic user-side message describing what
+      // the user wants changed. WU 9.6: the DraftTile now renders an
+      // inline textbox for the user's change description, so the
+      // synthetic message includes that text directly rather than
+      // forcing a chat round-trip ("Amend." → Katie asks → user
+      // types in main input → Katie re-proposes).
       //
-      // We only dismiss prior drafts of the SAME toolName — leaving
-      // unrelated drafts (e.g., a parallel diary draft) alone.
+      // Auto-dismiss prior SAME-tool drafts so the new draft replaces
+      // the old in place rather than stacking. Unrelated drafts
+      // (e.g., a parallel diary draft) stay.
       void draftId;
       setMessages((prev) =>
         prev.filter((m) => {
@@ -193,7 +193,17 @@ export function KatieDeck() {
           return m.tile.data.toolName !== toolName;
         }),
       );
-      const message = `Amend that ${toolName.replace(/_/g, " ")} draft.`;
+
+      const friendlyName = toolName.replace(/_/g, " ");
+      const trimmed = changeText?.trim() ?? "";
+      // Two message shapes: with-text (richer signal, Katie can
+      // act immediately) vs without-text (legacy "Amend." that
+      // makes Katie ask "what to change?"). Both are taught in
+      // the logging_rules system prompt.
+      const message =
+        trimmed.length > 0
+          ? `Amend the ${friendlyName} draft: ${trimmed}`
+          : `Amend that ${friendlyName} draft.`;
       await handleSend(message);
     },
     [handleSend, setMessages],

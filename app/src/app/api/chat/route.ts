@@ -67,24 +67,6 @@ function encodeSSE(payload: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
-function errorSSE(message: string, status = 500): Response {
-  const body = new ReadableStream({
-    start(controller) {
-      controller.enqueue(encodeSSE({ type: "error", message }));
-      controller.enqueue(encodeSSE({ type: "done" }));
-      controller.close();
-    },
-  });
-  return new Response(body, {
-    status,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      "X-Accel-Buffering": "no",
-    },
-  });
-}
-
 async function getAuthUser() {
   const cookieStore = cookies();
   const supabase = createServerClient(
@@ -107,18 +89,12 @@ async function getAuthUser() {
 // ── Route handler ──────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  // 0. Feature flag
+  // 0. Feature flag — synchronous, can return JSON 404 cleanly
   if (!KATIE_ENABLED) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // 1. Auth
-  const { user } = await getAuthUser();
-  if (!user) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  }
-
-  // 2. Parse body
+  // 1. Parse body — synchronous so the JSON 400 path stays clean
   let body: {
     message: string;
     currentSurface?: CurrentSurface | null;
@@ -136,174 +112,176 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 3. Resolve role + bot
-  const role = await getUserRole(user.id);
-  if (!role) {
-    return NextResponse.json({ error: "user has no role" }, { status: 403 });
-  }
-
-  let bot: BotRecord;
-  try {
-    bot = await getOrCreateBot(user.id, role);
-  } catch (err) {
-    console.error("[api/chat] getOrCreateBot", err);
-    return errorSSE("Could not set up your assistant. Try again shortly.");
-  }
-
-  // 4. Effective role (for Option C admin cross-role simulation)
-  const effectiveRole = resolveEffectiveRole(
-    bot.role,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (bot.settings as any)?.effective_role ?? null,
-  );
-  const model = selectGeminiModel(effectiveRole);
-
-  // 5. Cost cap
-  const limit = await checkDailyLimit(bot.id);
-  if (!limit.allowed) {
-    return errorSSE(
-      "I've hit my daily usage limit. I'll be back tomorrow — in the meantime the site is all still here.",
-    );
-  }
-
-  // 6. Children + module context
-  const children = await getUserChildren(user.id);
-  const admin = createAdminClient();
-
-  // 7. Save user message (capture surface). Surface insert errors loudly —
-  // if the user's turn isn't persisted, conversation history breaks
-  // silently for every subsequent turn. We'd rather the user see "try
-  // again" now than silently lose half a conversation.
-  const { data: savedUser, error: savedUserErr } = await admin
-    .from("chat_messages")
-    .insert({
-      bloombot_id: bot.id,
-      role: "user",
-      content: body.message,
-      trigger_source: "user",
-      is_read: true,
-      surface_route: body.currentSurface?.route ?? null,
-      surface_feature: body.currentSurface?.feature ?? null,
-    })
-    .select("id")
-    .single<{ id: string }>();
-  if (savedUserErr || !savedUser) {
-    console.error("[api/chat] failed to save user message", savedUserErr);
-    return errorSSE("Sorry — I couldn't save your message. Try again?");
-  }
-
-  // 8. Build memory section (pre-rendered for inclusion in system prompt)
-  const memoryTable = await buildMemoryTable({
-    botId: bot.id,
-    childIds: children.map((c) => c.id),
-    supabase: admin,
-  });
-
-  // 9. Load recent history (last 20 user+assistant messages).
-  // Done BEFORE buildSystemPrompt so we can pass the most-recent
-  // prior message timestamp to the prompt builder for the
-  // conversation-continuity / freshness-warning header.
-  // - Select `id` so we can exclude the just-saved user message by id
-  //   (content-based dedup silently drops repeated phrases like "yes").
-  // - Select `created_at` so we can prefix each turn with a relative
-  //   timestamp ("yesterday", "3 days ago"). Without that, Gemini has
-  //   no way to distinguish state from yesterday vs state from now,
-  //   and silently quotes stale info in the current reply.
-  const { data: history } = await admin
-    .from("chat_messages")
-    .select("id, role, content, metadata, created_at")
-    .eq("bloombot_id", bot.id)
-    .in("role", ["user", "assistant"])
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const justSavedId = savedUser.id;
-  const historyRows = (
-    (history ?? []) as Array<{
-      id: string;
-      role: string;
-      content: string;
-      metadata: unknown;
-      created_at: string;
-    }>
-  )
-    .filter((r) => r.id !== justSavedId)
-    .reverse();
-
-  // Most-recent prior message timestamp (post-reverse order = the
-  // chronologically last entry). Used for the gap-aware header in the
-  // system prompt.
-  const lastInteractionAt =
-    historyRows.length > 0
-      ? historyRows[historyRows.length - 1].created_at
-      : null;
-
-  // 10. Build system prompt
-  const systemPrompt = await buildSystemPrompt({
-    botId: bot.id,
-    userId: user.id,
-    role: bot.role,
-    effectiveRole,
-    userName:
-      (user.user_metadata as { first_name?: string })?.first_name ?? "there",
-    children,
-    currentSurface: body.currentSurface ?? null,
-    memoryTable,
-    lastInteractionAt,
-  });
-
-  // Prefix USER turns with `[N min ago] / [yesterday] / [3 days ago]`
-  // so Gemini can reason about how long ago the user said what they
-  // said. Assistant turns are NOT timestamped — Gemini reading its
-  // OWN prior output as timestamped truth could create false
-  // confidence ("I confirmed state X 3 days ago" vs "state X moved
-  // forward yesterday"). The user-turn timestamps + the gap-aware
-  // continuity header in the system prompt are the freshness signal;
-  // assistant turns stay clean so Gemini doesn't mistake them for
-  // confirmed facts at those timestamps.
-  const renderTime = new Date();
-  const conversationTurns: GeminiTurn[] = [
-    ...historyRows.map((r) => ({
-      role: r.role === "assistant" ? ("model" as const) : ("user" as const),
-      parts: [
-        {
-          text:
-            r.role === "user"
-              ? `[${formatRelativeTime(r.created_at, renderTime)}] ${r.content}`
-              : r.content,
-        },
-      ],
-    })),
-    { role: "user", parts: [{ text: `[just now] ${body.message}` }] },
-  ];
-
-  // 11. Tools
-  const toolDefs = collectTools(effectiveRole);
-  const tools: GeminiTool[] | undefined =
-    toolDefs.length > 0
-      ? [
-          {
-            functionDeclarations: toolDefs.map((t) => ({
-              name: t.name,
-              description: t.description,
-              parameters: t.parameters,
-            })),
-          },
-        ]
-      : undefined;
-
-  // 12. Stream response — agentic loop, streams the FINAL text response.
-  // 8 rounds rather than 5: exploratory chains where the user asks
-  // about an entity Katie isn't sure about (e.g. "tell me about Obie"
-  // when Obie isn't connected to the account) can take 6-7 calls to
-  // exhaust the relevant read tools before Gemini synthesises the
-  // "I don't see this entity" answer. 5 was hitting the cap silently.
+  // 2. Stream response — EVERYTHING else runs inside start(controller)
+  // so the SSE response headers reach the browser immediately. The
+  // browser then opens the channel and shows the TypingIndicator
+  // while we're still doing auth + DB work + system-prompt build,
+  // instead of staring at a blank screen for 5-30 seconds.
+  //
+  // Inside start(), errors that previously returned NextResponse.json
+  // become SSE error+done events. The HTTP status is locked at 200
+  // by that point but the client treats `{ type: "error" }` events
+  // as failures (see use-chat-stream.ts).
   const MAX_TOOL_ROUNDS = 8;
-  // Narrow non-null references once before the async closure.
-  const userId = user.id;
   const stream = new ReadableStream({
     async start(controller) {
       const startedAt = Date.now();
+
+      function emitError(message: string) {
+        controller.enqueue(encodeSSE({ type: "error", message }));
+        controller.enqueue(encodeSSE({ type: "done" }));
+        controller.close();
+      }
+
+      // ── Pre-flight (auth + DB + prompt build) ────────────────────────
+      const { user } = await getAuthUser();
+      if (!user) {
+        emitError("unauthorized");
+        return;
+      }
+      const userId = user.id;
+
+      const role = await getUserRole(userId);
+      if (!role) {
+        emitError("user has no role");
+        return;
+      }
+
+      let bot: BotRecord;
+      try {
+        bot = await getOrCreateBot(userId, role);
+      } catch (err) {
+        console.error("[api/chat] getOrCreateBot", err);
+        emitError("Could not set up your assistant. Try again shortly.");
+        return;
+      }
+
+      const effectiveRole = resolveEffectiveRole(
+        bot.role,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (bot.settings as any)?.effective_role ?? null,
+      );
+      const model = selectGeminiModel(effectiveRole);
+
+      const limit = await checkDailyLimit(bot.id);
+      if (!limit.allowed) {
+        emitError(
+          "I've hit my daily usage limit. I'll be back tomorrow — in the meantime the site is all still here.",
+        );
+        return;
+      }
+
+      const children = await getUserChildren(userId);
+      const admin = createAdminClient();
+
+      // Save user message. Surface insert errors loudly — if the user's
+      // turn isn't persisted, conversation history breaks silently for
+      // every subsequent turn.
+      const { data: savedUser, error: savedUserErr } = await admin
+        .from("chat_messages")
+        .insert({
+          bloombot_id: bot.id,
+          role: "user",
+          content: body.message,
+          trigger_source: "user",
+          is_read: true,
+          surface_route: body.currentSurface?.route ?? null,
+          surface_feature: body.currentSurface?.feature ?? null,
+        })
+        .select("id")
+        .single<{ id: string }>();
+      if (savedUserErr || !savedUser) {
+        console.error("[api/chat] failed to save user message", savedUserErr);
+        emitError("Sorry — I couldn't save your message. Try again?");
+        return;
+      }
+
+      const memoryTable = await buildMemoryTable({
+        botId: bot.id,
+        childIds: children.map((c) => c.id),
+        supabase: admin,
+      });
+
+      // Load last 20 messages BEFORE buildSystemPrompt so the
+      // gap-aware continuity header gets the most-recent timestamp.
+      // Select `id` to exclude the just-saved user message by id
+      // (content-based dedup silently drops repeated phrases like
+      // "yes"). Select `created_at` so each user turn can be prefixed
+      // with a relative timestamp.
+      const { data: history } = await admin
+        .from("chat_messages")
+        .select("id, role, content, metadata, created_at")
+        .eq("bloombot_id", bot.id)
+        .in("role", ["user", "assistant"])
+        .order("created_at", { ascending: false })
+        .limit(20);
+
+      const justSavedId = savedUser.id;
+      const historyRows = (
+        (history ?? []) as Array<{
+          id: string;
+          role: string;
+          content: string;
+          metadata: unknown;
+          created_at: string;
+        }>
+      )
+        .filter((r) => r.id !== justSavedId)
+        .reverse();
+
+      const lastInteractionAt =
+        historyRows.length > 0
+          ? historyRows[historyRows.length - 1].created_at
+          : null;
+
+      const systemPrompt = await buildSystemPrompt({
+        botId: bot.id,
+        userId,
+        role: bot.role,
+        effectiveRole,
+        userName:
+          (user.user_metadata as { first_name?: string })?.first_name ??
+          "there",
+        children,
+        currentSurface: body.currentSurface ?? null,
+        memoryTable,
+        lastInteractionAt,
+      });
+
+      // Prefix USER turns with `[N min ago] / [yesterday] / etc` so
+      // Gemini can reason about how long ago things were said. Assistant
+      // turns are NOT timestamped — see WU 8.20.
+      const renderTime = new Date();
+      const conversationTurns: GeminiTurn[] = [
+        ...historyRows.map((r) => ({
+          role: r.role === "assistant" ? ("model" as const) : ("user" as const),
+          parts: [
+            {
+              text:
+                r.role === "user"
+                  ? `[${formatRelativeTime(r.created_at, renderTime)}] ${r.content}`
+                  : r.content,
+            },
+          ],
+        })),
+        { role: "user", parts: [{ text: `[just now] ${body.message}` }] },
+      ];
+
+      const toolDefs = collectTools(effectiveRole);
+      const tools: GeminiTool[] | undefined =
+        toolDefs.length > 0
+          ? [
+              {
+                functionDeclarations: toolDefs.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  parameters: t.parameters,
+                })),
+              },
+            ]
+          : undefined;
+
+      // ── Agentic loop (streams to controller) ─────────────────────────
       const toolCalls: Array<{
         name: string;
         args: unknown;
@@ -582,6 +560,11 @@ export async function POST(req: NextRequest) {
               err instanceof Error ? err.message : "Something went wrong.",
           }),
         );
+        // Always emit a `done` event on the error path so the client's
+        // stream reader transitions out of `isStreaming = true`. Without
+        // this, an unexpected exception in the agentic loop leaves the
+        // input disabled forever even though the channel has closed.
+        controller.enqueue(encodeSSE({ type: "done" }));
       } finally {
         controller.close();
       }

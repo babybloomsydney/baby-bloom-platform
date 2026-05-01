@@ -1,9 +1,9 @@
 /**
  * `activities` module — generates activity plans tied to milestones.
  *
- * Two-turn (WU 8.22d):
+ * Two-turn (WU 8.22d, model swapped to Gemini Pro in WU 9.7):
  *   - propose_X (LLM-callable `plan_activity`): validates args,
- *     loads milestone context, runs OpenAI inline, returns a
+ *     loads milestone context, runs Gemini Pro inline, returns a
  *     `kind: "draft"` tile carrying the GENERATED plan in args.
  *     No DB writes. The user sees the actual plan in the draft
  *     preview before deciding to Accept.
@@ -23,7 +23,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ActivityChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
-import { openai } from "@/lib/ai/client";
+import { generate, GEMINI_MODELS } from "@/lib/ai/gemini-client";
 import {
   ACTIVITY_SYSTEM_PROMPT,
   buildActivityUserPrompt,
@@ -103,6 +103,19 @@ async function prepareActivity(
   };
 }
 
+/**
+ * Generate the actual ActivityPlan JSON via Gemini 3 Pro.
+ *
+ * Pro is intentional, not Flash: activity creativity is the dominant
+ * cost factor for tile quality. Pro gets us evocative themes + memorable
+ * names ("Bubble Catcher's Quest") instead of dry labels ("Name and use
+ * picture props"). The cost delta per activity is small relative to the
+ * UX impact.
+ *
+ * The model is a separate decision from Katie's chat model — Katie
+ * (Flash for non-admin) calls `propose_plan_activity` which calls THIS
+ * function; the result is what the user sees in the draft tile.
+ */
 async function generateActivityPlan(
   child: ChildSummary,
   promptContext: PromptContextEntry[],
@@ -113,18 +126,23 @@ async function generateActivityPlan(
       child.ageMonths,
       promptContext,
     );
-    const resp = await openai.chat.completions.create({
-      model: "gpt-5.4-nano",
-      messages: [
-        { role: "system", content: ACTIVITY_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      response_format: { type: "json_object" },
+    const resp = await generate({
+      model: GEMINI_MODELS.pro,
+      systemPrompt: ACTIVITY_SYSTEM_PROMPT,
+      contents: userPrompt,
     });
-    const content = resp.choices[0]?.message?.content;
-    if (!content) throw new Error("Empty response from OpenAI");
-    const plan = JSON.parse(content) as ActivityPlan;
+    const content = resp.text ?? "";
+    if (!content) throw new Error("Empty response from Gemini");
+    // Gemini doesn't have OpenAI's response_format=json_object knob,
+    // but the system prompt instructs "No markdown, no code fences,
+    // no extra text". Strip any stray fences defensively in case the
+    // model wraps the JSON anyway.
+    const cleaned = content
+      .trim()
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+    const plan = JSON.parse(cleaned) as ActivityPlan;
     return { ok: true, plan };
   } catch (err) {
     return {

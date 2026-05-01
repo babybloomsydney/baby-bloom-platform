@@ -2,26 +2,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { activitiesModule, applyPlanActivity } from "./activities";
 import type { ChildSummary, ModuleContext } from "./types";
 
-vi.mock("@/lib/ai/client", () => ({
-  openai: {
-    chat: {
-      completions: {
-        create: vi.fn().mockResolvedValue({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  creativeName: "Banana Breakfast Bonanza",
-                  description: "Build counting skills while eating breakfast.",
-                  steps: ["Offer banana", "Ask how many", "Reward"],
-                  milestone_domains: ["NUM"],
-                }),
-              },
-            },
-          ],
-        }),
-      },
-    },
+vi.mock("@/lib/ai/gemini-client", () => ({
+  generate: vi.fn().mockResolvedValue({
+    text: JSON.stringify({
+      creativeName: "Banana Breakfast Bonanza",
+      description: "Build counting skills while eating breakfast.",
+      steps: ["Offer banana", "Ask how many", "Reward"],
+      milestone_domains: ["NUM"],
+    }),
+  }),
+  GEMINI_MODELS: {
+    flash: "gemini-3-flash-preview",
+    pro: "gemini-3-pro-preview",
   },
 }));
 
@@ -30,7 +22,7 @@ vi.mock("@/lib/ai/prompts/bapp-activity-generation", () => ({
   buildActivityUserPrompt: () => "user-prompt",
 }));
 
-import { openai } from "@/lib/ai/client";
+import { generate } from "@/lib/ai/gemini-client";
 
 const oliver: ChildSummary = {
   id: "c1",
@@ -121,7 +113,7 @@ describe("activities module — plan_activity (propose)", () => {
       ctx,
     );
     expect(r.success).toBe(true);
-    expect(openai.chat.completions.create).toHaveBeenCalled();
+    expect(generate).toHaveBeenCalled();
     expect(mocks.insertMock).not.toHaveBeenCalled();
     expect(r.tile?.kind).toBe("draft");
     if (r.tile?.kind === "draft") {
@@ -203,7 +195,7 @@ describe("activities apply — plan_activity", () => {
     expect(mocks.insertMock).toHaveBeenCalled();
     // Apply must not pay for a fresh OpenAI call when args carry
     // the generated plan from propose.
-    expect(openai.chat.completions.create).not.toHaveBeenCalled();
+    expect(generate).not.toHaveBeenCalled();
     if (r.ok) {
       expect(r.tile.kind).toBe("activity");
       expect(r.data.title).toBe("Banana Breakfast Bonanza");
@@ -218,6 +210,6 @@ describe("activities apply — plan_activity", () => {
       { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
     );
     expect(r.ok).toBe(true);
-    expect(openai.chat.completions.create).toHaveBeenCalled();
+    expect(generate).toHaveBeenCalled();
   });
 });
