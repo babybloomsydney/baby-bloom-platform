@@ -1,16 +1,25 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
-import { getPosition, getParentId, PositionWithChildren } from "@/lib/actions/parent";
-import { getParentPlacement, getConfirmedConnections, getParentUpcomingIntros } from "@/lib/actions/position-funnel";
+import {
+  getPosition,
+  getParentId,
+  PositionWithChildren,
+} from "@/lib/actions/parent";
+import {
+  getParentPlacement,
+  getConfirmedConnections,
+  getParentUpcomingIntros,
+} from "@/lib/actions/position-funnel";
 import { getDfyStatus } from "@/lib/actions/matching";
 import { getParentBabysittingRequests } from "@/lib/actions/babysitting";
+import { getPendingInvitesForUser } from "@/lib/actions/bapp/child-invites";
 import { POSITION_STAGE } from "@/lib/position/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { ParentHubClient } from "./ParentHubClient";
 import type { ChildClient } from "@/types/bapp";
 
-const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 export default async function ParentHubPage({
   searchParams,
@@ -30,28 +39,47 @@ export default async function ParentHubPage({
   const parentId = await getParentId();
   const verificationPromise = parentId
     ? createAdminClient()
-        .from('parents')
-        .select('verification_level')
-        .eq('id', parentId)
+        .from("parents")
+        .select("verification_level")
+        .eq("id", parentId)
         .single()
         .then(({ data }) => (data?.verification_level ?? 0) >= 1)
     : Promise.resolve(false);
 
   // Get auth user for education children query
   const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const admin = createAdminClient();
 
-  const [placementResult, connectionsResult, introsResult, dfyStatusResult, bsrResult, parentVerified, educationChildrenRes] = await Promise.all([
+  const [
+    placementResult,
+    connectionsResult,
+    introsResult,
+    dfyStatusResult,
+    bsrResult,
+    parentVerified,
+    educationChildrenRes,
+    pendingInvitesResult,
+  ] = await Promise.all([
     getParentPlacement(),
-    position?.id ? getConfirmedConnections(position.id) : Promise.resolve({ data: [], error: null }),
+    position?.id
+      ? getConfirmedConnections(position.id)
+      : Promise.resolve({ data: [], error: null }),
     getParentUpcomingIntros(),
     getDfyStatus(),
     getParentBabysittingRequests(),
     verificationPromise,
     user
-      ? admin.from('child_client').select('*').eq('parent_user_id', user.id).eq('under_three', true).order('created_at', { ascending: true })
+      ? admin
+          .from("child_client")
+          .select("*")
+          .eq("parent_user_id", user.id)
+          .eq("under_three", true)
+          .order("created_at", { ascending: true })
       : Promise.resolve({ data: [] }),
+    user ? getPendingInvitesForUser() : Promise.resolve({ data: [] }),
   ]);
 
   const placement = placementResult.data;
@@ -61,8 +89,11 @@ export default async function ParentHubPage({
   const dfyExpiresAt = dfyStatusResult.expiresAt;
   const dfyActivated = dfyStatusResult.activated;
   const babysittingRequests = bsrResult.data ?? [];
-  const showFillButton = position && !placement &&
-    (position as PositionWithChildren & { stage?: number }).stage === POSITION_STAGE.CONNECTING &&
+  const showFillButton =
+    position &&
+    !placement &&
+    (position as PositionWithChildren & { stage?: number }).stage ===
+      POSITION_STAGE.CONNECTING &&
     confirmedNannies.length > 0;
 
   if (error) {
@@ -95,6 +126,7 @@ export default async function ParentHubPage({
         initialSub={searchParams.s}
         initialView={searchParams.v}
         educationChildren={(educationChildrenRes.data ?? []) as ChildClient[]}
+        pendingInvites={pendingInvitesResult.data ?? []}
       />
     </div>
   );

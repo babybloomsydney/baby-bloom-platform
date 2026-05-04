@@ -34,18 +34,19 @@ import {
   Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { NannyPositionsClient, type Placement } from "./positions/NannyPositionsClient";
+import {
+  NannyPositionsClient,
+  type Placement,
+} from "./positions/NannyPositionsClient";
 import { NannyJobsView, type OpenPosition } from "./jobs/NannyJobsView";
 import { NannyBabysittingClient } from "./babysitting/NannyBabysittingClient";
 import type { NannyBabysittingJob } from "@/lib/actions/babysitting";
 import type { UpcomingIntro } from "@/lib/actions/position-funnel";
 import type { DfyNotification } from "@/lib/actions/matching";
 import { ChildCardGrid } from "@/components/bapp/ChildCardGrid";
-import type { ChildClient } from "@/types/bapp";
-import {
-  Dialog,
-  DialogContent,
-} from "@/components/ui/dialog";
+import { PendingInvitesSection } from "@/components/bapp/PendingInvitesSection";
+import type { ChildClient, PendingInviteCard } from "@/types/bapp";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { VerificationData } from "@/lib/actions/verification";
 
@@ -54,7 +55,12 @@ import { GlanceItem } from "@/components/profile/GlanceItem";
 import { StatBox } from "@/components/profile/StatBox";
 import { AvailabilityGrid } from "@/components/profile/AvailabilityGrid";
 import { ProfilePhotoViewer } from "@/components/profile/ProfilePhotoViewer";
-import { computeAge, ageRangeToFriendly, childrenCountLabel, BADGE_ICONS } from "@/components/profile/profile-helpers";
+import {
+  computeAge,
+  ageRangeToFriendly,
+  childrenCountLabel,
+  BADGE_ICONS,
+} from "@/components/profile/profile-helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -82,7 +88,10 @@ export interface NannyProfileAccordionData {
   strengths_traits: string | null;
   skills_training: string | null;
   ai_content: Record<string, unknown> | null;
-  availability: { days_available: string[] | null; schedule: Record<string, string[]> | null } | null;
+  availability: {
+    days_available: string[] | null;
+    schedule: Record<string, string[]> | null;
+  } | null;
   highest_qualification: string | null;
   certificates: string[];
   motivation: string | null;
@@ -119,6 +128,7 @@ interface NannyHubClientProps {
   bsrBanUntil: string | null;
   shareUnlocked: boolean;
   educationChildren: ChildClient[];
+  pendingInvites?: PendingInviteCard[];
 }
 
 // ── Tab definitions ──────────────────────────────────────────────────────────
@@ -152,12 +162,17 @@ export function NannyHubClient({
   bsrBanUntil,
   shareUnlocked,
   educationChildren,
+  pendingInvites = [],
 }: NannyHubClientProps) {
   // ── Verification locking ──
   const isTabsLocked = verificationLevel < 3;
 
-  const [activeTab, setActiveTab] = useState<MainTabId>(isTabsLocked ? "verification" : "nannying");
-  const [nannySubTab, setNannySubTab] = useState<"jobs" | "connections">("jobs");
+  const [activeTab, setActiveTab] = useState<MainTabId>(
+    isTabsLocked ? "verification" : "nannying",
+  );
+  const [nannySubTab, setNannySubTab] = useState<"jobs" | "connections">(
+    "jobs",
+  );
   const [profileExpanded, setProfileExpanded] = useState(false);
   const [profileTab, setProfileTab] = useState<ProfileTabId>("about");
   const [showTabLockedModal, setShowTabLockedModal] = useState(false);
@@ -177,23 +192,27 @@ export function NannyHubClient({
 
     // No verifications row at all — hasn't started
     if (!verificationData)
-      return 'Verify your account to connect with families';
+      return "Verify your account to connect with families";
 
     const { identity_status, wwcc_status, contact_status } = verificationData;
 
     // Failed/rejected states — action required
-    if (['failed', 'rejected'].includes(identity_status))
-      return 'Your ID verification needs attention — review and resubmit';
-    if (['failed', 'rejected', 'ocg_not_found', 'expired', 'closed'].includes(wwcc_status))
-      return 'Your WWCC verification needs attention — review and resubmit';
+    if (["failed", "rejected"].includes(identity_status))
+      return "Your ID verification needs attention — review and resubmit";
+    if (
+      ["failed", "rejected", "ocg_not_found", "expired", "closed"].includes(
+        wwcc_status,
+      )
+    )
+      return "Your WWCC verification needs attention — review and resubmit";
 
     // Not started states — prompt to begin
-    if (contact_status !== 'saved' && contact_status !== 'verified')
-      return 'Verify your address to start connecting with families';
-    if (['not_started'].includes(identity_status))
-      return 'Upload your ID to get verified and connect with families';
-    if (['not_started'].includes(wwcc_status))
-      return 'Submit your WWCC to complete verification';
+    if (contact_status !== "saved" && contact_status !== "verified")
+      return "Verify your address to start connecting with families";
+    if (["not_started"].includes(identity_status))
+      return "Upload your ID to get verified and connect with families";
+    if (["not_started"].includes(wwcc_status))
+      return "Submit your WWCC to complete verification";
 
     // Processing/pending/review — no banner (waiting on us, not them)
     return null;
@@ -201,7 +220,9 @@ export function NannyHubClient({
 
   // ── AI content extraction (new V2 field paths) ──
   const bioSummary = ai?.bio_summary;
-  const bioObj = (typeof bioSummary === "object" && bioSummary !== null ? bioSummary : null) as Record<string, string> | null;
+  const bioObj = (
+    typeof bioSummary === "object" && bioSummary !== null ? bioSummary : null
+  ) as Record<string, string> | null;
   const headline = (ai?.headline as string) || null;
   const aiAbout = bioObj?.about || null;
   const aiPersonality = bioObj?.personality || null;
@@ -214,22 +235,43 @@ export function NannyHubClient({
   const traitBadges: { icon: string; label: string; primary?: boolean }[] = [];
   if (p) {
     if (p.total_experience_years && p.total_experience_years > 0)
-      traitBadges.push({ icon: "Clock", label: `${p.total_experience_years}${p.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
+      traitBadges.push({
+        icon: "Clock",
+        label: `${p.total_experience_years}${p.total_experience_years === 1 ? "yr" : "yrs"} experience`,
+        primary: true,
+      });
     if (p.under_3_experience_years && p.under_3_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `Toddlers, ${p.under_3_experience_years}${p.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
+      traitBadges.push({
+        icon: "Baby",
+        label: `Toddlers, ${p.under_3_experience_years}${p.under_3_experience_years === 1 ? "yr" : "yrs"}`,
+        primary: true,
+      });
     if (p.newborn_experience_years && p.newborn_experience_years > 0)
-      traitBadges.push({ icon: "Baby", label: `Babies, ${p.newborn_experience_years}${p.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
+      traitBadges.push({
+        icon: "Baby",
+        label: `Babies, ${p.newborn_experience_years}${p.newborn_experience_years === 1 ? "yr" : "yrs"}`,
+        primary: true,
+      });
   }
 
   // ── Stat boxes for experience tab ──
   const statBoxes: { value: number; label: string }[] = [];
   if (p) {
     if (p.total_experience_years && p.total_experience_years > 0)
-      statBoxes.push({ value: p.total_experience_years, label: "Years Childcare" });
+      statBoxes.push({
+        value: p.total_experience_years,
+        label: "Years Childcare",
+      });
     if (p.under_3_experience_years && p.under_3_experience_years > 0)
-      statBoxes.push({ value: p.under_3_experience_years, label: "Years Under 3s" });
+      statBoxes.push({
+        value: p.under_3_experience_years,
+        label: "Years Under 3s",
+      });
     if (p.newborn_experience_years && p.newborn_experience_years > 0)
-      statBoxes.push({ value: p.newborn_experience_years, label: "Years Newborns" });
+      statBoxes.push({
+        value: p.newborn_experience_years,
+        label: "Years Newborns",
+      });
   }
 
   return (
@@ -238,12 +280,19 @@ export function NannyHubClient({
           VERIFICATION BANNER
          ═══════════════════════════════════════════════════════════════════ */}
       {verificationBanner && (
-        <Link href="/nanny/verification" className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 group hover:bg-amber-100 transition-colors">
+        <Link
+          href="/nanny/verification"
+          className="flex items-center justify-between rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 group hover:bg-amber-100 transition-colors"
+        >
           <div className="flex items-center gap-3 min-w-0">
             <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0" />
-            <p className="text-sm text-amber-800 font-medium truncate">{verificationBanner}</p>
+            <p className="text-sm text-amber-800 font-medium truncate">
+              {verificationBanner}
+            </p>
           </div>
-          <span className="text-xs font-semibold text-amber-700 bg-amber-200/60 px-3 py-1 rounded-full shrink-0 ml-3 group-hover:bg-amber-200 transition-colors">Verify Now</span>
+          <span className="text-xs font-semibold text-amber-700 bg-amber-200/60 px-3 py-1 rounded-full shrink-0 ml-3 group-hover:bg-amber-200 transition-colors">
+            Verify Now
+          </span>
         </Link>
       )}
 
@@ -256,7 +305,10 @@ export function NannyHubClient({
             <ShieldCheck className="h-3.5 w-3.5" /> Verified
           </span>
         ) : (
-          <a href="/nanny/verification" className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors">
+          <a
+            href="/nanny/verification"
+            className="absolute top-3 right-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-200 transition-colors"
+          >
             <ShieldAlert className="h-3.5 w-3.5" /> Unverified
           </a>
         )}
@@ -273,7 +325,10 @@ export function NannyHubClient({
           <div className="flex items-end gap-4 -mt-10">
             <div className="relative shrink-0">
               {profilePictureUrl ? (
-                <ExpandablePhoto src={profilePictureUrl} alt={`${firstName}'s photo`}>
+                <ExpandablePhoto
+                  src={profilePictureUrl}
+                  alt={`${firstName}'s photo`}
+                >
                   <div className="relative h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
                     <img
                       src={profilePictureUrl}
@@ -298,7 +353,8 @@ export function NannyHubClient({
 
             <div className="flex-1 min-w-0 pb-1 pt-4">
               <h1 className="text-2xl font-bold text-slate-900">
-                {firstName}{age ? `, ${age}` : ""}
+                {firstName}
+                {age ? `, ${age}` : ""}
               </h1>
               {/* Details block with photo fan absolutely positioned to the right */}
               <div className="relative mt-0.5">
@@ -308,12 +364,19 @@ export function NannyHubClient({
                       <Globe className="h-3.5 w-3.5" /> {p.nationality}
                     </p>
                   )}
-                  {p?.languages && p.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").length > 0 && (
-                    <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
-                      <Languages className="h-3 w-3" />
-                      {p.languages.filter(l => l !== "Foreign Language" && l !== "Multiple").join(", ")}
-                    </p>
-                  )}
+                  {p?.languages &&
+                    p.languages.filter(
+                      (l) => l !== "Foreign Language" && l !== "Multiple",
+                    ).length > 0 && (
+                      <p className="flex items-center gap-1 text-xs text-slate-400 mt-0.5">
+                        <Languages className="h-3 w-3" />
+                        {p.languages
+                          .filter(
+                            (l) => l !== "Foreign Language" && l !== "Multiple",
+                          )
+                          .join(", ")}
+                      </p>
+                    )}
                   {p?.suburb && (
                     <p className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
                       <MapPin className="h-3.5 w-3.5" /> {p.suburb}
@@ -324,11 +387,18 @@ export function NannyHubClient({
                 {/* Additional photos — fanned stack */}
                 {p?.additional_photos && p.additional_photos.length > 0 && (
                   <button
-                    onClick={() => { setPhotoViewerIndex(0); setPhotoViewerOpen(true); }}
+                    onClick={() => {
+                      setPhotoViewerIndex(0);
+                      setPhotoViewerOpen(true);
+                    }}
                     className="absolute top-0 right-0 bottom-0 w-16 cursor-pointer group"
                   >
                     {p.additional_photos.slice(0, 3).map((url, i) => {
-                      const rotations = ["-rotate-[20deg]", "rotate-0", "rotate-[20deg]"];
+                      const rotations = [
+                        "-rotate-[20deg]",
+                        "rotate-0",
+                        "rotate-[20deg]",
+                      ];
                       const offsets = ["left-0", "left-3", "left-6"];
                       const zIndexes = ["z-[3]", "z-[2]", "z-[1]"];
                       return (
@@ -336,10 +406,16 @@ export function NannyHubClient({
                           key={i}
                           className={cn(
                             "absolute top-1/2 -translate-y-1/2 h-[85%] aspect-square overflow-hidden rounded-lg border-2 border-white shadow-md transition-transform group-hover:scale-105",
-                            rotations[i], offsets[i], zIndexes[i],
+                            rotations[i],
+                            offsets[i],
+                            zIndexes[i],
                           )}
                         >
-                          <img src={url} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                          <img
+                            src={url}
+                            alt={`Photo ${i + 1}`}
+                            className="h-full w-full object-cover"
+                          />
                         </div>
                       );
                     })}
@@ -347,7 +423,6 @@ export function NannyHubClient({
                 )}
               </div>
             </div>
-
           </div>
 
           {/* ai_content.headline */}
@@ -370,7 +445,7 @@ export function NannyHubClient({
                       "flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[10px] sm:text-xs font-medium whitespace-nowrap",
                       badge.primary
                         ? "bg-violet-100 text-violet-700"
-                        : "bg-slate-100 text-slate-600"
+                        : "bg-slate-100 text-slate-600",
                     )}
                   >
                     <Icon className="h-3 w-3 shrink-0" /> {badge.label}
@@ -416,7 +491,7 @@ export function NannyHubClient({
                     "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all",
                     isActive
                       ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-500 hover:text-slate-700"
+                      : "text-slate-500 hover:text-slate-700",
                   )}
                 >
                   {tab.label}
@@ -428,13 +503,14 @@ export function NannyHubClient({
           {/* ── About sub-tab ── */}
           {profileTab === "about" && (
             <div className="space-y-3">
-
               {/* 1. About {firstName} */}
               {(aiAbout || p.motivation) && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <Sparkles className="h-4 w-4 text-violet-400" />
-                    <h3 className="text-sm font-semibold text-slate-900">About {firstName}</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      About {firstName}
+                    </h3>
                   </div>
                   {aiAbout && (
                     <div
@@ -446,7 +522,8 @@ export function NannyHubClient({
                     <div className="mt-3 flex items-center gap-2 rounded-lg bg-violet-50/50 border border-violet-100 px-3 py-2">
                       <Heart className="h-3.5 w-3.5 text-violet-400 shrink-0" />
                       <p className="text-xs text-violet-600">
-                        <span className="font-medium">What drives me:</span> {p.motivation}
+                        <span className="font-medium">What drives me:</span>{" "}
+                        {p.motivation}
                       </p>
                     </div>
                   )}
@@ -454,11 +531,14 @@ export function NannyHubClient({
               )}
 
               {/* 2. Personality */}
-              {(aiPersonality || (p.personality_traits && p.personality_traits.length > 0)) && (
+              {(aiPersonality ||
+                (p.personality_traits && p.personality_traits.length > 0)) && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <Smile className="h-4 w-4 text-violet-500" />
-                    <h3 className="text-sm font-semibold text-slate-900">Personality</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Personality
+                    </h3>
                   </div>
                   {aiPersonality && (
                     <div
@@ -469,7 +549,9 @@ export function NannyHubClient({
                   {p.personality_traits && p.personality_traits.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
                       {p.personality_traits.map((trait) => (
-                        <Tag key={trait} variant="violet">{trait}</Tag>
+                        <Tag key={trait} variant="violet">
+                          {trait}
+                        </Tag>
                       ))}
                     </div>
                   )}
@@ -477,11 +559,15 @@ export function NannyHubClient({
               )}
 
               {/* 3. My Values */}
-              {(aiValues || (p.professional_values && p.professional_values.length > 0)) && (
+              {(aiValues ||
+                (p.professional_values &&
+                  p.professional_values.length > 0)) && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <HandHeart className="h-4 w-4 text-violet-400" />
-                    <h3 className="text-sm font-semibold text-slate-900">My Values</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      My Values
+                    </h3>
                   </div>
                   {aiValues && (
                     <div
@@ -489,22 +575,29 @@ export function NannyHubClient({
                       dangerouslySetInnerHTML={{ __html: aiValues }}
                     />
                   )}
-                  {p.professional_values && p.professional_values.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {p.professional_values.map((value) => (
-                        <Tag key={value} variant="violet">{value}</Tag>
-                      ))}
-                    </div>
-                  )}
+                  {p.professional_values &&
+                    p.professional_values.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.professional_values.map((value) => (
+                          <Tag key={value} variant="violet">
+                            {value}
+                          </Tag>
+                        ))}
+                      </div>
+                    )}
                 </div>
               )}
 
               {/* 4. What I Offer */}
-              {(aiWhatIOffer || (p.role_types_preferred && p.role_types_preferred.length > 0)) && (
+              {(aiWhatIOffer ||
+                (p.role_types_preferred &&
+                  p.role_types_preferred.length > 0)) && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <Briefcase className="h-4 w-4 text-violet-400" />
-                    <h3 className="text-sm font-semibold text-slate-900">What I Offer</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      What I Offer
+                    </h3>
                   </div>
                   {aiWhatIOffer && (
                     <div
@@ -514,22 +607,24 @@ export function NannyHubClient({
                   )}
                   <div className="flex flex-wrap gap-1.5">
                     {p.role_types_preferred?.map((tag) => (
-                      <Tag key={tag} variant="violet">{tag}</Tag>
+                      <Tag key={tag} variant="violet">
+                        {tag}
+                      </Tag>
                     ))}
                     {p.level_of_support_offered?.map((support) => (
-                      <Tag key={support} variant="violet">{support}</Tag>
+                      <Tag key={support} variant="violet">
+                        {support}
+                      </Tag>
                     ))}
                   </div>
                 </div>
               )}
-
             </div>
           )}
 
           {/* ── Experience sub-tab ── */}
           {profileTab === "experience" && (
             <div className="space-y-3">
-
               {/* 1. Experience */}
               <div className="relative rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <Link
@@ -541,7 +636,9 @@ export function NannyHubClient({
                 </Link>
                 <div className="flex items-center gap-2 mb-3">
                   <Briefcase className="h-4 w-4 text-violet-400" />
-                  <h3 className="text-sm font-semibold text-slate-900">Experience</h3>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Experience
+                  </h3>
                 </div>
                 {aiExperience && (
                   <div
@@ -549,19 +646,29 @@ export function NannyHubClient({
                     dangerouslySetInnerHTML={{ __html: aiExperience }}
                   />
                 )}
-                {!aiExperience && (p.total_experience_years || p.nanny_experience_years) && (
-                  <div className="space-y-1 text-sm text-slate-600 mb-4">
-                    {p.total_experience_years != null && <p>{p.total_experience_years} years total childcare experience</p>}
-                    {p.nanny_experience_years != null && <p>{p.nanny_experience_years} years as a nanny</p>}
-                  </div>
-                )}
+                {!aiExperience &&
+                  (p.total_experience_years || p.nanny_experience_years) && (
+                    <div className="space-y-1 text-sm text-slate-600 mb-4">
+                      {p.total_experience_years != null && (
+                        <p>
+                          {p.total_experience_years} years total childcare
+                          experience
+                        </p>
+                      )}
+                      {p.nanny_experience_years != null && (
+                        <p>{p.nanny_experience_years} years as a nanny</p>
+                      )}
+                    </div>
+                  )}
                 {statBoxes.length > 0 && (
-                  <div className={cn(
-                    "grid gap-2.5",
-                    statBoxes.length === 1 && "grid-cols-1 max-w-[200px]",
-                    statBoxes.length === 2 && "grid-cols-2",
-                    statBoxes.length === 3 && "grid-cols-3",
-                  )}>
+                  <div
+                    className={cn(
+                      "grid gap-2.5",
+                      statBoxes.length === 1 && "grid-cols-1 max-w-[200px]",
+                      statBoxes.length === 2 && "grid-cols-2",
+                      statBoxes.length === 3 && "grid-cols-3",
+                    )}
+                  >
                     {statBoxes.map((s) => (
                       <StatBox key={s.label} value={s.value} label={s.label} />
                     ))}
@@ -570,11 +677,15 @@ export function NannyHubClient({
               </div>
 
               {/* 2. Background */}
-              {(aiBackground || p.highest_qualification || (p.childcare_roles && p.childcare_roles.length > 0)) && (
+              {(aiBackground ||
+                p.highest_qualification ||
+                (p.childcare_roles && p.childcare_roles.length > 0)) && (
                 <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2 mb-3">
                     <CalendarCheck className="h-4 w-4 text-violet-400" />
-                    <h3 className="text-sm font-semibold text-slate-900">Background</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Background
+                    </h3>
                   </div>
                   {aiBackground && (
                     <div
@@ -585,15 +696,25 @@ export function NannyHubClient({
                   {p.highest_qualification && (
                     <div className="flex items-start gap-2.5 rounded-lg bg-violet-50 border border-violet-100 px-3 py-2.5 mb-3">
                       <GraduationCap className="h-4 w-4 text-violet-500 mt-0.5 shrink-0" />
-                      <span className="text-sm font-medium text-violet-700">{p.highest_qualification}</span>
+                      <span className="text-sm font-medium text-violet-700">
+                        {p.highest_qualification}
+                      </span>
                     </div>
                   )}
                   {p.childcare_roles && p.childcare_roles.length > 0 && (
                     <div className="space-y-2">
                       {p.childcare_roles.map((role) => (
-                        <div key={role.role} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-                          <span className="text-sm font-medium text-slate-700">{role.role}</span>
-                          <span className="text-xs text-slate-500">{role.duration} {role.duration === 1 ? "year" : "years"}</span>
+                        <div
+                          key={role.role}
+                          className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5"
+                        >
+                          <span className="text-sm font-medium text-slate-700">
+                            {role.role}
+                          </span>
+                          <span className="text-xs text-slate-500">
+                            {role.duration}{" "}
+                            {role.duration === 1 ? "year" : "years"}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -609,31 +730,64 @@ export function NannyHubClient({
                   "CPR",
                   "Child Protection",
                 ];
-                const orderedCerts = CERT_ORDER.filter((c) => p.certificates.includes(c));
-                const otherCerts = p.certificates.filter((c) => !CERT_ORDER.includes(c));
-                const hasItems = verificationLevel >= 3 || orderedCerts.length > 0 || otherCerts.length > 0 || p.vaccination_status || p.non_smoker;
+                const orderedCerts = CERT_ORDER.filter((c) =>
+                  p.certificates.includes(c),
+                );
+                const otherCerts = p.certificates.filter(
+                  (c) => !CERT_ORDER.includes(c),
+                );
+                const hasItems =
+                  verificationLevel >= 3 ||
+                  orderedCerts.length > 0 ||
+                  otherCerts.length > 0 ||
+                  p.vaccination_status ||
+                  p.non_smoker;
                 if (!hasItems) return null;
                 return (
                   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-center gap-2 mb-3">
                       <ShieldCheck className="h-4 w-4 text-violet-400" />
-                      <h3 className="text-sm font-semibold text-slate-900">Safety & Assurance</h3>
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        Safety & Assurance
+                      </h3>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       {verificationLevel >= 3 && (
-                        <GlanceItem icon={ShieldCheck} label="WWCC" variant="green" />
+                        <GlanceItem
+                          icon={ShieldCheck}
+                          label="WWCC"
+                          variant="green"
+                        />
                       )}
                       {orderedCerts.map((cert) => (
-                        <GlanceItem key={cert} icon={Award} label={cert} variant="green" />
+                        <GlanceItem
+                          key={cert}
+                          icon={Award}
+                          label={cert}
+                          variant="green"
+                        />
                       ))}
                       {otherCerts.map((cert) => (
-                        <GlanceItem key={cert} icon={Award} label={cert} variant="green" />
+                        <GlanceItem
+                          key={cert}
+                          icon={Award}
+                          label={cert}
+                          variant="green"
+                        />
                       ))}
                       {p.vaccination_status && (
-                        <GlanceItem icon={Stethoscope} label="Fully Vaccinated" variant="green" />
+                        <GlanceItem
+                          icon={Stethoscope}
+                          label="Fully Vaccinated"
+                          variant="green"
+                        />
                       )}
                       {p.non_smoker && (
-                        <GlanceItem icon={CigaretteOff} label="Non-Smoker" variant="green" />
+                        <GlanceItem
+                          icon={CigaretteOff}
+                          label="Non-Smoker"
+                          variant="green"
+                        />
                       )}
                     </div>
                   </div>
@@ -644,30 +798,52 @@ export function NannyHubClient({
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <ThumbsUp className="h-4 w-4 text-violet-400" />
-                  <h3 className="text-sm font-semibold text-slate-900">Good to Know</h3>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Good to Know
+                  </h3>
                 </div>
 
                 {/* Best with supporting */}
-                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Best with supporting</h4>
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                  Best with supporting
+                </h4>
                 <div className="grid grid-cols-2 gap-2 mb-4">
-                  {p.min_child_age_months != null && p.max_child_age_months != null && (
-                    <GlanceItem icon={Baby} label={ageRangeToFriendly(p.min_child_age_months, p.max_child_age_months)} />
-                  )}
+                  {p.min_child_age_months != null &&
+                    p.max_child_age_months != null && (
+                      <GlanceItem
+                        icon={Baby}
+                        label={ageRangeToFriendly(
+                          p.min_child_age_months,
+                          p.max_child_age_months,
+                        )}
+                      />
+                    )}
                   {p.max_children != null && (
-                    <GlanceItem icon={Users} label={childrenCountLabel(p.max_children)} />
+                    <GlanceItem
+                      icon={Users}
+                      label={childrenCountLabel(p.max_children)}
+                    />
                   )}
                 </div>
 
                 {/* Can support */}
                 {(p.additional_needs || p.comfortable_with_pets) && (
                   <>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Can support</h4>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                      Can support
+                    </h4>
                     <div className="grid grid-cols-2 gap-2 mb-4">
                       {p.additional_needs && (
-                        <GlanceItem icon={Accessibility} label="Children with additional needs" />
+                        <GlanceItem
+                          icon={Accessibility}
+                          label="Children with additional needs"
+                        />
                       )}
                       {p.comfortable_with_pets && (
-                        <GlanceItem icon={PawPrint} label="Families with pets" />
+                        <GlanceItem
+                          icon={PawPrint}
+                          label="Families with pets"
+                        />
                       )}
                     </div>
                   </>
@@ -676,15 +852,23 @@ export function NannyHubClient({
                 {/* Additionally */}
                 {(p.drivers_license || p.has_car) && (
                   <>
-                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Additionally</h4>
+                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                      Additionally
+                    </h4>
                     <div className="grid grid-cols-2 gap-2">
-                      {p.drivers_license && <GlanceItem icon={Car} label="I have my driver's license" />}
-                      {p.has_car && <GlanceItem icon={Car} label="I have my own car" />}
+                      {p.drivers_license && (
+                        <GlanceItem
+                          icon={Car}
+                          label="I have my driver's license"
+                        />
+                      )}
+                      {p.has_car && (
+                        <GlanceItem icon={Car} label="I have my own car" />
+                      )}
                     </div>
                   </>
                 )}
               </div>
-
             </div>
           )}
 
@@ -695,18 +879,27 @@ export function NannyHubClient({
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-violet-400" />
-                    <h3 className="text-sm font-semibold text-slate-900">Availability</h3>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Availability
+                    </h3>
                   </div>
                   {p.immediate_start && (
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-medium text-green-700">
-                      <CalendarCheck className="h-3 w-3" /> Can start immediately
+                      <CalendarCheck className="h-3 w-3" /> Can start
+                      immediately
                     </span>
                   )}
                 </div>
-                {p.availability?.schedule && Object.keys(p.availability.schedule).length > 0 ? (
-                  <AvailabilityGrid schedule={p.availability.schedule} firstName={firstName} />
+                {p.availability?.schedule &&
+                Object.keys(p.availability.schedule).length > 0 ? (
+                  <AvailabilityGrid
+                    schedule={p.availability.schedule}
+                    firstName={firstName}
+                  />
                 ) : (
-                  <p className="text-sm text-slate-400 italic">Availability not set yet.</p>
+                  <p className="text-sm text-slate-400 italic">
+                    Availability not set yet.
+                  </p>
                 )}
               </div>
             </div>
@@ -716,7 +909,9 @@ export function NannyHubClient({
 
       {profileExpanded && !p && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm text-center">
-          <p className="text-sm text-slate-500">Complete your profile to see it here.</p>
+          <p className="text-sm text-slate-500">
+            Complete your profile to see it here.
+          </p>
           <Link
             href="/nanny/profile"
             className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-violet-600 hover:text-violet-700"
@@ -733,28 +928,46 @@ export function NannyHubClient({
       <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
         {(isTabsLocked
           ? [
-              { id: "verification" as MainTabId, label: "Verification", locked: false },
+              {
+                id: "verification" as MainTabId,
+                label: "Verification",
+                locked: false,
+              },
               { id: "nannying" as MainTabId, label: "Nannying", locked: true },
-              { id: "babysitting" as MainTabId, label: "Babysitting", locked: true },
+              {
+                id: "babysitting" as MainTabId,
+                label: "Babysitting",
+                locked: true,
+              },
             ]
           : [
               { id: "nannying" as MainTabId, label: "Nannying", locked: false },
-              { id: "babysitting" as MainTabId, label: "Babysitting", locked: false },
-              { id: "education" as MainTabId, label: "Education", locked: false },
+              {
+                id: "babysitting" as MainTabId,
+                label: "Babysitting",
+                locked: false,
+              },
+              {
+                id: "education" as MainTabId,
+                label: "Education",
+                locked: false,
+              },
             ]
         ).map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
-              onClick={() => tab.locked ? setShowTabLockedModal(true) : setActiveTab(tab.id)}
+              onClick={() =>
+                tab.locked ? setShowTabLockedModal(true) : setActiveTab(tab.id)
+              }
               className={cn(
                 "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all",
                 tab.locked
                   ? "opacity-50 cursor-not-allowed text-slate-400"
                   : isActive
                     ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
+                    : "text-slate-500 hover:text-slate-700",
               )}
             >
               <span className="flex items-center justify-center gap-1.5">
@@ -775,10 +988,10 @@ export function NannyHubClient({
           {/* Sub-tab toggle */}
           <div className="px-4 pt-3 pb-0">
             <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
-              {([
+              {[
                 { id: "jobs" as const, label: "Jobs" },
                 { id: "connections" as const, label: "Connections" },
-              ]).map((tab) => {
+              ].map((tab) => {
                 const isActive = nannySubTab === tab.id;
                 return (
                   <button
@@ -788,7 +1001,7 @@ export function NannyHubClient({
                       "flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all",
                       isActive
                         ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
+                        : "text-slate-400 hover:text-slate-600",
                     )}
                   >
                     {tab.label}
@@ -803,23 +1016,40 @@ export function NannyHubClient({
             <div className="p-4">
               <NannyJobsView
                 positions={openPositions}
-                appliedPositionIds={new Set(nannyApplications.map(a => a.positionId))}
+                appliedPositionIds={
+                  new Set(nannyApplications.map((a) => a.positionId))
+                }
               />
             </div>
           )}
           {nannySubTab === "connections" && (
-            <NannyPositionsClient placements={placements} upcomingIntros={upcomingIntros} dfyNotificationsInitial={dfyNotifications} shareUnlocked={shareUnlocked} embedded />
+            <NannyPositionsClient
+              placements={placements}
+              upcomingIntros={upcomingIntros}
+              dfyNotificationsInitial={dfyNotifications}
+              shareUnlocked={shareUnlocked}
+              embedded
+            />
           )}
         </div>
       )}
       {activeTab === "babysitting" && (
-        <NannyBabysittingClient jobs={babysittingJobs} banned={bsrBanned} banUntil={bsrBanUntil} hideHeader shareUnlocked={shareUnlocked} />
+        <NannyBabysittingClient
+          jobs={babysittingJobs}
+          banned={bsrBanned}
+          banUntil={bsrBanUntil}
+          hideHeader
+          shareUnlocked={shareUnlocked}
+        />
       )}
       {activeTab === "education" && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}
-          <ChildCardGrid children={educationChildren} role="nanny" />
-        </div>
+        <>
+          <PendingInvitesSection initialInvites={pendingInvites} />
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}
+            <ChildCardGrid children={educationChildren} role="nanny" />
+          </div>
+        </>
       )}
 
       {/* Tab-locked modal */}
@@ -830,12 +1060,18 @@ export function NannyHubClient({
               <ShieldCheck className="h-6 w-6 text-green-600" />
             </div>
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Verify your account</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Verify your account
+              </h3>
               <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
-                Complete verification to access your nannying and babysitting dashboard.
+                Complete verification to access your nannying and babysitting
+                dashboard.
               </p>
             </div>
-            <Button asChild className="w-full bg-violet-600 hover:bg-violet-700 mt-1">
+            <Button
+              asChild
+              className="w-full bg-violet-600 hover:bg-violet-700 mt-1"
+            >
               <Link href="/nanny/verification">
                 <ShieldCheck className="h-4 w-4 mr-1.5" />
                 Verify Now
@@ -860,9 +1096,17 @@ export function NannyHubClient({
 
 // ── Verification Summary Tile (for hub verification tab) ──────────────────────
 
-type VerificationStepState = "completed" | "current" | "action_required" | "future";
+type VerificationStepState =
+  | "completed"
+  | "current"
+  | "action_required"
+  | "future";
 
-function VerificationSummaryTile({ verificationData }: { verificationData: VerificationData | null }) {
+function VerificationSummaryTile({
+  verificationData,
+}: {
+  verificationData: VerificationData | null;
+}) {
   const identityStatus = verificationData?.identity_status ?? "not_started";
   const wwccStatus = verificationData?.wwcc_status ?? "not_started";
   const contactStatus = verificationData?.contact_status ?? "not_started";
@@ -870,7 +1114,8 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   function deriveIdentityStep(): VerificationStepState {
     if (!verificationData?.address_line) return "future"; // residence not done yet
     if (identityStatus === "verified") return "completed";
-    if (identityStatus === "rejected" || identityStatus === "failed") return "action_required";
+    if (identityStatus === "rejected" || identityStatus === "failed")
+      return "action_required";
     if (identityStatus === "not_started") return "current";
     return "current"; // processing, pending, review
   }
@@ -878,8 +1123,14 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   function deriveWwccStep(): VerificationStepState {
     const vStatus = verificationData?.verification_status ?? 0;
     if (vStatus < 20) return "future"; // identity not yet verified — WWCC is invalid
-    if (wwccStatus === "verified" || wwccStatus === "doc_verified") return "completed";
-    if (wwccStatus === "rejected" || wwccStatus === "failed" || wwccStatus === "barred") return "action_required";
+    if (wwccStatus === "verified" || wwccStatus === "doc_verified")
+      return "completed";
+    if (
+      wwccStatus === "rejected" ||
+      wwccStatus === "failed" ||
+      wwccStatus === "barred"
+    )
+      return "action_required";
     if (wwccStatus === "not_started") return "current";
     return "current"; // processing, pending, review, etc.
   }
@@ -892,25 +1143,45 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
   const identityStep = deriveIdentityStep();
   const wwccStep = deriveWwccStep();
   const contactStep = deriveContactStep();
-  const allComplete = identityStep === "completed" && wwccStep === "completed" && contactStep === "completed";
+  const allComplete =
+    identityStep === "completed" &&
+    wwccStep === "completed" &&
+    contactStep === "completed";
   const goalStep: VerificationStepState = allComplete ? "completed" : "future";
 
-  function stepStatusText(step: VerificationStepState, statusCode: string): string | null {
+  function stepStatusText(
+    step: VerificationStepState,
+    statusCode: string,
+  ): string | null {
     if (step === "completed") return "Completed";
     if (step === "action_required") return "Action Required";
     if (step === "future") return null;
-    if (statusCode === "processing" || statusCode === "pending") return "Processing";
+    if (statusCode === "processing" || statusCode === "pending")
+      return "Processing";
     if (statusCode === "review") return "Pending Review";
     if (statusCode === "not_started") return "Not Started";
     return "In Progress";
   }
 
-  function stepColor(step: VerificationStepState): { circle: string; text: string } {
+  function stepColor(step: VerificationStepState): {
+    circle: string;
+    text: string;
+  } {
     switch (step) {
-      case "completed": return { circle: "border-green-500 bg-green-500", text: "text-green-600" };
-      case "current": return { circle: "border-violet-500 bg-violet-50", text: "text-violet-600" };
-      case "action_required": return { circle: "border-red-500 bg-red-50", text: "text-red-600" };
-      case "future": return { circle: "border-slate-200 bg-white", text: "text-slate-400" };
+      case "completed":
+        return {
+          circle: "border-green-500 bg-green-500",
+          text: "text-green-600",
+        };
+      case "current":
+        return {
+          circle: "border-violet-500 bg-violet-50",
+          text: "text-violet-600",
+        };
+      case "action_required":
+        return { circle: "border-red-500 bg-red-50", text: "text-red-600" };
+      case "future":
+        return { circle: "border-slate-200 bg-white", text: "text-slate-400" };
     }
   }
 
@@ -925,7 +1196,9 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
         <ShieldCheck className="h-5 w-5 text-violet-600" />
-        <p className="text-base font-semibold text-slate-800">Verification Progress</p>
+        <p className="text-base font-semibold text-slate-800">
+          Verification Progress
+        </p>
       </div>
 
       <div className="space-y-0">
@@ -935,20 +1208,41 @@ function VerificationSummaryTile({ verificationData }: { verificationData: Verif
           return (
             <div key={s.label} className="flex gap-3">
               <div className="flex flex-col items-center">
-                <div className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2",
-                  colors.circle
-                )}>
-                  {s.step === "completed" && <Check className="h-4 w-4 text-white" />}
-                  {s.step === "current" && <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />}
-                  {s.step === "action_required" && <div className="h-2.5 w-2.5 rounded-full bg-red-500" />}
+                <div
+                  className={cn(
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2",
+                    colors.circle,
+                  )}
+                >
+                  {s.step === "completed" && (
+                    <Check className="h-4 w-4 text-white" />
+                  )}
+                  {s.step === "current" && (
+                    <div className="h-2.5 w-2.5 rounded-full bg-violet-500" />
+                  )}
+                  {s.step === "action_required" && (
+                    <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  )}
                 </div>
                 {!isLast && (
-                  <div className={cn("w-0.5 h-6", s.step === "completed" && steps[i + 1]?.step === "completed" ? "bg-green-300" : "bg-slate-200")} />
+                  <div
+                    className={cn(
+                      "w-0.5 h-6",
+                      s.step === "completed" &&
+                        steps[i + 1]?.step === "completed"
+                        ? "bg-green-300"
+                        : "bg-slate-200",
+                    )}
+                  />
                 )}
               </div>
               <div className="pb-4 pt-1">
-                <p className={cn("text-sm font-medium", s.step === "future" ? "text-slate-400" : "text-slate-800")}>
+                <p
+                  className={cn(
+                    "text-sm font-medium",
+                    s.step === "future" ? "text-slate-400" : "text-slate-800",
+                  )}
+                >
                   {s.label}
                 </p>
                 {!isLast && stepStatusText(s.step, s.status) && (
