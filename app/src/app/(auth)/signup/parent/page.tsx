@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { createClient } from "@/lib/supabase/client";
 import { z } from "zod";
@@ -20,26 +21,40 @@ import { signUp } from "@/lib/auth/actions";
 import { recordConsent } from "@/lib/legal/record-consent";
 import { AGR01_CHECKPOINTS } from "@/lib/legal/checkpoints";
 import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
+import { INVITE_TOKEN_REGEX } from "@/lib/invite/redirect";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
-const parentSignupSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  confirmPassword: z.string(),
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
+const parentSignupSchema = z
+  .object({
+    email: z.string().email("Please enter a valid email address"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string(),
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type ParentSignupFormData = z.infer<typeof parentSignupSchema>;
 
-export default function ParentSignupPage() {
+function ParentSignupForm() {
+  const searchParams = useSearchParams();
+  const rawInviteToken = searchParams.get("invite");
+  // Only carry the token forward if it matches the canonical XXXX-XXXX
+  // shape — never echo arbitrary `?invite=` content into FormData or
+  // the Sign-in pivot href.
+  const inviteToken =
+    rawInviteToken && INVITE_TOKEN_REGEX.test(rawInviteToken)
+      ? rawInviteToken
+      : null;
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -58,7 +73,9 @@ export default function ParentSignupPage() {
     },
   });
 
-  const allConsentsChecked = AGR01_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+  const allConsentsChecked = AGR01_CHECKPOINTS.every(
+    (cp) => consentChecked[cp.id],
+  );
 
   async function onSubmit(data: ParentSignupFormData) {
     if (!allConsentsChecked) return;
@@ -68,10 +85,10 @@ export default function ParentSignupPage() {
     try {
       await recordConsent(
         AGR01_CHECKPOINTS.map((cp) => ({
-          agreementId: 'AGR-01',
+          agreementId: "AGR-01",
           checkpointId: cp.id,
           checkpointText: cp.text,
-        }))
+        })),
       );
     } catch {}
 
@@ -81,6 +98,7 @@ export default function ParentSignupPage() {
     formData.append("firstName", data.firstName);
     formData.append("lastName", data.lastName);
     formData.append("role", "parent");
+    if (inviteToken) formData.append("invite_token", inviteToken);
 
     const result = await signUp(formData);
 
@@ -112,7 +130,9 @@ export default function ParentSignupPage() {
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Parent Registration</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          Parent Registration
+        </h1>
         <p className="text-sm text-muted-foreground mt-2">
           Create your account to find the perfect nanny
         </p>
@@ -236,7 +256,11 @@ export default function ParentSignupPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading || !allConsentsChecked}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || !allConsentsChecked}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -251,10 +275,31 @@ export default function ParentSignupPage() {
 
       <div className="text-center text-sm">
         <span className="text-muted-foreground">Already have an account? </span>
-        <Link href="/login" className="text-primary font-medium hover:underline">
+        <Link
+          href={
+            // Token already validated above against INVITE_TOKEN_REGEX,
+            // so we know it's URL-safe — no need to encodeURIComponent.
+            inviteToken ? `/login?invite=${inviteToken}` : "/login"
+          }
+          className="text-primary font-medium hover:underline"
+        >
           Sign in
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function ParentSignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <ParentSignupForm />
+    </Suspense>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { createClient } from "@/lib/supabase/client";
 import { z } from "zod";
@@ -20,29 +21,41 @@ import { signUp } from "@/lib/auth/actions";
 import { recordConsent } from "@/lib/legal/record-consent";
 import { AGR02_CHECKPOINTS } from "@/lib/legal/checkpoints";
 import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
+import { INVITE_TOKEN_REGEX } from "@/lib/invite/redirect";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
-const nannySignupSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[0-9]/, "Password must include a number")
-    .regex(/[^A-Za-z0-9]/, "Password must include a special character"),
-  confirmPassword: z.string(),
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
-});
+const nannySignupSchema = z
+  .object({
+    email: z.string().email("Please enter a valid email address"),
+    password: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .regex(/[0-9]/, "Password must include a number")
+      .regex(/[^A-Za-z0-9]/, "Password must include a special character"),
+    confirmPassword: z.string(),
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
 
 type NannySignupFormData = z.infer<typeof nannySignupSchema>;
 
-export default function NannySignupPage() {
+function NannySignupForm() {
+  const searchParams = useSearchParams();
+  const rawInviteToken = searchParams.get("invite");
+  const inviteToken =
+    rawInviteToken && INVITE_TOKEN_REGEX.test(rawInviteToken)
+      ? rawInviteToken
+      : null;
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>(
+    {},
+  );
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -61,7 +74,9 @@ export default function NannySignupPage() {
     },
   });
 
-  const allConsentsChecked = AGR02_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+  const allConsentsChecked = AGR02_CHECKPOINTS.every(
+    (cp) => consentChecked[cp.id],
+  );
 
   async function onSubmit(data: NannySignupFormData) {
     if (!allConsentsChecked) return;
@@ -71,10 +86,10 @@ export default function NannySignupPage() {
     try {
       await recordConsent(
         AGR02_CHECKPOINTS.map((cp) => ({
-          agreementId: 'AGR-02',
+          agreementId: "AGR-02",
           checkpointId: cp.id,
           checkpointText: cp.text,
-        }))
+        })),
       );
     } catch {}
 
@@ -84,6 +99,7 @@ export default function NannySignupPage() {
     formData.append("firstName", data.firstName);
     formData.append("lastName", data.lastName);
     formData.append("role", "nanny");
+    if (inviteToken) formData.append("invite_token", inviteToken);
 
     const result = await signUp(formData);
 
@@ -115,7 +131,9 @@ export default function NannySignupPage() {
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back
         </Link>
-        <h1 className="text-2xl font-bold tracking-tight">Nanny Registration</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          Nanny Registration
+        </h1>
         <p className="text-sm text-muted-foreground mt-2">
           Create your account to start connecting with families
         </p>
@@ -239,7 +257,11 @@ export default function NannySignupPage() {
             />
           </div>
 
-          <Button type="submit" className="w-full" disabled={isLoading || !allConsentsChecked}>
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={isLoading || !allConsentsChecked}
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -254,10 +276,31 @@ export default function NannySignupPage() {
 
       <div className="text-center text-sm">
         <span className="text-muted-foreground">Already have an account? </span>
-        <Link href="/login" className="text-primary font-medium hover:underline">
+        <Link
+          href={
+            // Token already validated above against INVITE_TOKEN_REGEX,
+            // so we know it's URL-safe — no need to encodeURIComponent.
+            inviteToken ? `/login?invite=${inviteToken}` : "/login"
+          }
+          className="text-primary font-medium hover:underline"
+        >
           Sign in
         </Link>
       </div>
     </div>
+  );
+}
+
+export default function NannySignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <NannySignupForm />
+    </Suspense>
   );
 }
