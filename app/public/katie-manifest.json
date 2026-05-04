@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-04T05:37:35.524Z",
+  "generated_at": "2026-05-04T05:48:46.315Z",
   "summary": {
     "route_count": 52,
-    "page_count": 98,
+    "page_count": 99,
     "cron_count": 6,
     "migration_count": 12,
     "server_action_file_count": 32
@@ -463,6 +463,10 @@
       "file": "src/app/invite/[token]/page.tsx"
     },
     {
+      "path": "/invite/connect/[inviteId]",
+      "file": "src/app/invite/connect/[inviteId]/page.tsx"
+    },
+    {
       "path": "/nanny/babysitting",
       "file": "src/app/nanny/babysitting/page.tsx"
     },
@@ -817,6 +821,7 @@
         "signupViaInvite",
         "connectChildInvite",
         "declineChildInvite",
+        "declineChildInviteById",
         "getPendingInvitesForUser"
       ]
     },

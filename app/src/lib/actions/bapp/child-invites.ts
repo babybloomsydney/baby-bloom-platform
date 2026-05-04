@@ -545,6 +545,103 @@ export async function declineChildInvite(token: string): Promise<{
   }
 }
 
+// ── 9b. declineChildInviteById (token-free decline for dashboard) ──────
+//
+// Equivalent to declineChildInvite but keyed by the row UUID instead of
+// the token. The pending-invites dashboard cards never receive the raw
+// token (per 05-ui-surfaces.md §6 security note); they hold only
+// `invite.id`. This action lets a recipient decline by id without the
+// token ever crossing the client boundary.
+
+export async function declineChildInviteById(inviteId: string): Promise<{
+  success: boolean;
+  error: string | null;
+}> {
+  if (invitesDisabled()) {
+    return { success: false, error: "invites_disabled" };
+  }
+  // UUID-format pre-check — defence-in-depth before the DB call.
+  if (
+    typeof inviteId !== "string" ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      inviteId,
+    )
+  ) {
+    return { success: false, error: "invite_not_found" };
+  }
+
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: "not_authenticated" };
+    }
+
+    const admin = createAdminClient();
+    const { data: current } = await admin
+      .from("child_invites")
+      .select("child_client_id, recipient_user_id, status")
+      .eq("id", inviteId)
+      .maybeSingle();
+    if (!current) {
+      return { success: false, error: "invite_not_found" };
+    }
+    // Authorisation parity with the token-keyed variant: must be the
+    // stamped recipient AND the invite must still be claimable.
+    if (current.recipient_user_id !== user.id) {
+      return { success: false, error: "not_recipient" };
+    }
+    if (current.status !== "pending") {
+      return { success: false, error: "invite_not_found" };
+    }
+
+    // Authorisation re-asserted at write time — the SELECT-then-UPDATE
+    // window admits a race where another action could re-stamp
+    // recipient_user_id between the snapshot and our update. Including
+    // both `recipient_user_id` and `status` predicates makes the UPDATE
+    // a no-op if the row drifted underneath us, instead of clearing
+    // somebody else's stamp.
+    const { error: updateError, count } = await admin
+      .from("child_invites")
+      .update({ recipient_user_id: null }, { count: "exact" })
+      .eq("id", inviteId)
+      .eq("status", "pending")
+      .eq("recipient_user_id", user.id);
+
+    if (updateError) {
+      console.error("declineChildInviteById update error:", updateError);
+      // Stable opaque code — never leak raw driver messages to the client.
+      return { success: false, error: "update_failed" };
+    }
+    if ((count ?? 0) === 0) {
+      // Row drifted between SELECT and UPDATE. Treat as a benign race —
+      // the user gets the same UX as "already declined".
+      return { success: false, error: "invite_not_found" };
+    }
+
+    await admin.from("activity_logs").insert({
+      action_type: "invite_declined",
+      user_id: user.id,
+      action_details: {
+        child_id: current.child_client_id,
+        via: "dashboard",
+      },
+    });
+
+    revalidatePath("/parent");
+    revalidatePath("/nanny");
+    revalidateTag("pending-invites");
+
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("declineChildInviteById unexpected error:", err);
+    return { success: false, error: "Failed to decline invite" };
+  }
+}
+
 // ── 10. getPendingInvitesForUser ───────────────────────────────────────
 
 export async function getPendingInvitesForUser(): Promise<{
