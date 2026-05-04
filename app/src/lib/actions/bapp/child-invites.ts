@@ -78,9 +78,18 @@ function isValidTokenFormat(token: unknown): token is string {
 
 // ── 3. mintChildInvite (internal helper) ───────────────────────────────
 //
-// Not exported as a public action — called by createChild,
-// createChildAsParent, and regenerateChildInvite. Throws on failure
-// (the caller wraps and translates to error envelope).
+// Not exported as a public action — called by createChild and
+// createChildAsParent. Throws on failure (the caller wraps and
+// translates to error envelope).
+//
+// Token-stability policy (2026-05-04 decision): once minted, an invite
+// token does NOT rotate. The only ways it becomes invalid are
+//   (a) recipient claims it via connectChildInvite,
+//   (b) creator explicitly revokes via revokeChildInvite,
+//   (c) child row is deleted (cascade).
+// There is no regenerate flow. If a token leaks, the creator revokes
+// and creates a new child. This keeps the link a parent receives over
+// SMS / email genuinely stable until acted on.
 
 interface MintInviteParams {
   childId: string;
@@ -119,99 +128,15 @@ export async function mintChildInvite(
   return { token, url: buildInviteUrl(token) };
 }
 
-// ── 4. regenerateChildInvite ───────────────────────────────────────────
-
-export async function regenerateChildInvite(childId: string): Promise<{
-  success: boolean;
-  error: string | null;
-  data: { token: string; url: string } | null;
-}> {
-  if (invitesDisabled()) {
-    return { success: false, error: "invites_disabled", data: null };
-  }
-
-  try {
-    const supabase = createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return { success: false, error: "not_authenticated", data: null };
-    }
-
-    const admin = createAdminClient();
-
-    // 1. Capture the current pending invite (direction + recipient_user_id).
-    const { data: current, error: selectError } = await admin
-      .from("child_invites")
-      .select("direction, recipient_user_id, created_by_user_id")
-      .eq("child_client_id", childId)
-      .eq("status", "pending")
-      .maybeSingle();
-
-    if (selectError) {
-      console.error("regenerateChildInvite select error:", selectError);
-      return { success: false, error: selectError.message, data: null };
-    }
-    if (!current) {
-      return { success: false, error: "no_pending_invite", data: null };
-    }
-
-    // 2. Authorise: only the creator can regenerate.
-    if (current.created_by_user_id !== user.id) {
-      return { success: false, error: "not_creator", data: null };
-    }
-
-    // 3. Revoke the current invite.
-    const { error: revokeError } = await admin
-      .from("child_invites")
-      .update({
-        status: "revoked",
-        revoked_at: new Date().toISOString(),
-        revoked_reason: "regenerated",
-      })
-      .eq("child_client_id", childId)
-      .eq("status", "pending");
-
-    if (revokeError) {
-      console.error("regenerateChildInvite revoke error:", revokeError);
-      return { success: false, error: revokeError.message, data: null };
-    }
-
-    // 4. Mint the new invite, carrying over recipient_user_id so the
-    //    pending-card on the recipient's dashboard auto-shifts to the
-    //    new token (06 §1.7 race handling).
-    const { token, url } = await mintChildInvite({
-      childId,
-      direction: current.direction as ChildInviteDirection,
-      userId: user.id,
-      userEmail: user.email ?? "",
-      recipientUserId: current.recipient_user_id,
-    });
-
-    // 5. Audit log.
-    await admin.from("activity_logs").insert({
-      action_type: "invite_regenerated",
-      user_id: user.id,
-      action_details: {
-        child_id: childId,
-        had_recipient: current.recipient_user_id !== null,
-      },
-    });
-
-    revalidateTag("pending-invites");
-
-    return { success: true, error: null, data: { token, url } };
-  } catch (err) {
-    console.error("regenerateChildInvite unexpected error:", err);
-    return {
-      success: false,
-      error: "Failed to regenerate invite",
-      data: null,
-    };
-  }
-}
+// regenerateChildInvite — REMOVED 2026-05-04.
+// Per token-stability policy on mintChildInvite above: tokens never
+// rotate while pending. If a token leaks, the creator revokes (the
+// invite stays at status='revoked', recipient sees a "no longer
+// active" state) and creates a new child to mint a fresh token.
+//
+// The `invite_regenerated` value remains in the `activity_logs.action_type`
+// CHECK constraint as a no-op reserved value — left intact to avoid a
+// throwaway migration if the policy is ever revisited.
 
 // ── 5. revokeChildInvite ───────────────────────────────────────────────
 
