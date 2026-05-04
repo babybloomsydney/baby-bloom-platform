@@ -128,6 +128,69 @@ export async function mintChildInvite(
   return { token, url: buildInviteUrl(token) };
 }
 
+// ── 4b. getInviteForChild (creator-side banner read) ──────────────────
+//
+// Returns the pending invite for a child the caller created.
+// Used by InviteBanner to display the share URL on the creator's side.
+// The token IS exposed in the response — but only to the user who minted
+// it (`created_by_user_id === auth.uid()`), so this is consistent with
+// the same user already seeing it via the AddChild post-create surface.
+
+export async function getInviteForChild(childId: string): Promise<{
+  success: boolean;
+  error: string | null;
+  data: { token: string; url: string; direction: ChildInviteDirection } | null;
+}> {
+  if (invitesDisabled()) {
+    return { success: false, error: "invites_disabled", data: null };
+  }
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: "not_authenticated", data: null };
+    }
+
+    const admin = createAdminClient();
+    const { data: invite, error } = await admin
+      .from("child_invites")
+      .select("token, direction, created_by_user_id")
+      .eq("child_client_id", childId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (error) {
+      console.error("getInviteForChild select error:", error);
+      return { success: false, error: "lookup_failed", data: null };
+    }
+    if (!invite) {
+      return { success: true, error: null, data: null };
+    }
+    // Authorisation: only the creator can read the token. Recipients
+    // never see the token via this surface (dashboard cards use the
+    // separate `getPendingInvitesForUser` which strips the token).
+    if (invite.created_by_user_id !== user.id) {
+      return { success: false, error: "not_creator", data: null };
+    }
+
+    return {
+      success: true,
+      error: null,
+      data: {
+        token: invite.token,
+        url: buildInviteUrl(invite.token),
+        direction: invite.direction as ChildInviteDirection,
+      },
+    };
+  } catch (err) {
+    console.error("getInviteForChild unexpected error:", err);
+    return { success: false, error: "lookup_failed", data: null };
+  }
+}
+
 // regenerateChildInvite — REMOVED 2026-05-04.
 // Per token-stability policy on mintChildInvite above: tokens never
 // rotate while pending. If a token leaks, the creator revokes (the

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-04T06:37:13.467Z",
+  "generated_at": "2026-05-04T06:45:48.291Z",
   "summary": {
     "route_count": 52,
     "page_count": 99,
@@ -815,6 +815,7 @@
       "file": "src/lib/actions/bapp/child-invites.ts",
       "functions": [
         "mintChildInvite",
+        "getInviteForChild",
         "revokeChildInvite",
         "getInvitePreview",
         "signupViaInvite",
