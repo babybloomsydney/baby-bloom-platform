@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-05-01T02:39:16.342Z",
+  "generated_at": "2026-05-04T04:32:30.164Z",
   "summary": {
     "route_count": 52,
-    "page_count": 96,
+    "page_count": 97,
     "cron_count": 6,
     "migration_count": 12,
-    "server_action_file_count": 31
+    "server_action_file_count": 32
   },
   "routes": [
     {
@@ -403,6 +403,10 @@
       "file": "src/app/admin/katie-proposals/page.tsx"
     },
     {
+      "path": "/admin/katie-stats",
+      "file": "src/app/admin/katie-stats/page.tsx"
+    },
+    {
       "path": "/admin/pipeline",
       "file": "src/app/admin/pipeline/page.tsx"
     },
@@ -792,7 +796,24 @@
         "getChildrenForUser",
         "getChildDetail",
         "createChild",
-        "onboardChild"
+        "createChildAsParent",
+        "onboardChild",
+        "removeNannyFromChild",
+        "nannyLeaveChild",
+        "deleteChild"
+      ]
+    },
+    {
+      "file": "src/lib/actions/bapp/child-invites.ts",
+      "functions": [
+        "mintChildInvite",
+        "regenerateChildInvite",
+        "revokeChildInvite",
+        "getInvitePreview",
+        "signupViaInvite",
+        "connectChildInvite",
+        "declineChildInvite",
+        "getPendingInvitesForUser"
       ]
     },
     {

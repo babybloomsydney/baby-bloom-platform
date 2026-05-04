@@ -19,7 +19,12 @@ export type ChildClientStatus =
 export interface ChildClient {
   id: string;
   placement_id: string | null;
-  nanny_user_id: string;
+  /**
+   * Nullable as of the child-invite-linking migration (2026-05-04).
+   * NULL during parent-first creation OR after a nanny has removed
+   * herself from a child with no parent connected (orphan limbo).
+   */
+  nanny_user_id: string | null;
   parent_user_id: string | null;
   parent_lead_email: string | null;
   first_name: string | null;
@@ -29,8 +34,63 @@ export interface ChildClient {
   under_three: boolean;
   onboarded: boolean;
   status: ChildClientStatus;
+  /**
+   * Set when both nanny_user_id AND parent_user_id are NULL. Cleared
+   * if anyone re-connects. Cron deletes rows older than 365 days.
+   */
+  orphaned_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Child Invites (added 2026-05-04 — invite-link linking redesign)
+// ---------------------------------------------------------------------------
+
+export type ChildInviteDirection = "nanny_to_parent" | "parent_to_nanny";
+export type ChildInviteStatus = "pending" | "connected" | "revoked";
+export type ChildInviteRevokedReason =
+  | "regenerated"
+  | "manual"
+  | "child_deleted";
+
+export interface ChildInvite {
+  id: string;
+  child_client_id: string;
+  token: string;
+  created_by_user_id: string | null;
+  created_by_email_at_creation: string;
+  direction: ChildInviteDirection;
+  status: ChildInviteStatus;
+  recipient_user_id: string | null;
+  connected_at: string | null;
+  connected_by_user_id: string | null;
+  revoked_at: string | null;
+  revoked_reason: ChildInviteRevokedReason | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Public invite preview returned by the landing page RPC. */
+export interface ChildInvitePreview {
+  status: ChildInviteStatus;
+  direction: ChildInviteDirection;
+  childFirstName: string;
+  /**
+   * "Sarah" when caller is authenticated; "S." when anonymous (audit
+   * fix C6 — prevents token-scraping name harvesting).
+   */
+  inviterDisplay: string;
+}
+
+/** Pending-invite card shown on the recipient's education tab. */
+export interface PendingInviteCard {
+  inviteId: string;
+  childClientId: string;
+  direction: ChildInviteDirection;
+  childFirstName: string;
+  inviterFirstName: string;
+  createdAt: string;
 }
 
 export interface ChildClientEvents {

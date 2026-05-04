@@ -1,17 +1,18 @@
 export type AgreementId =
-  | 'AGR-01' // Client Registration
-  | 'AGR-02' // Professional Registration
-  | 'AGR-03' // Client Verification
-  | 'AGR-04' // Professional Verification
-  | 'AGR-05' // Client Job Posting
-  | 'AGR-06' // Client Matchmaking Connection
-  | 'AGR-07' // Client Babysitting Connection
-  | 'AGR-08' // Professional Matchmaking Connection
-  | 'AGR-09' // Professional Babysitting Connection
-  | 'AGR-10' // Client Hire Confirmation
-  | 'AGR-11' // Professional Hire Confirmation
-  | 'AGR-12' // Professional Facebook Sharing
-  | 'AGR-13'; // Website Visitor (Cookie)
+  | "AGR-01" // Client Registration
+  | "AGR-02" // Professional Registration
+  | "AGR-03" // Client Verification
+  | "AGR-04" // Professional Verification
+  | "AGR-05" // Client Job Posting
+  | "AGR-06" // Client Matchmaking Connection
+  | "AGR-07" // Client Babysitting Connection
+  | "AGR-08" // Professional Matchmaking Connection
+  | "AGR-09" // Professional Babysitting Connection
+  | "AGR-10" // Client Hire Confirmation
+  | "AGR-11" // Professional Hire Confirmation
+  | "AGR-12" // Professional Facebook Sharing
+  | "AGR-13" // Website Visitor (Cookie)
+  | "AGR-14"; // Nanny child-add — legal guardian permission (invite linking)
 
 export interface CheckpointConfig {
   id: string;
@@ -28,7 +29,7 @@ export interface ConsentCheckpoint {
 export interface ConsentRecord {
   id: string;
   user_id: string;
-  user_type: 'client' | 'professional';
+  user_type: "client" | "professional";
   agreement_id: AgreementId;
   checkpoint_id: string;
   checkpoint_text: string;
@@ -69,7 +70,7 @@ export interface BiometricConsentData {
 }
 
 export interface CookiePreferences {
-  consent_choice: 'accept_all' | 'reject_non_essential' | 'custom';
+  consent_choice: "accept_all" | "reject_non_essential" | "custom";
   analytics_enabled: boolean;
   marketing_enabled: boolean;
 }
