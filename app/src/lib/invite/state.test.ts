@@ -82,7 +82,8 @@ describe("deriveInviteState", () => {
       currentUserId: null,
       currentUserRole: null,
     });
-    expect(state.kind).toBe("anon_parent_target");
+    if (state.kind !== "anon_parent_target")
+      throw new Error("expected anon_parent_target");
     expect(state.preview).toBe(pendingNannyToParent);
   });
 
@@ -105,7 +106,8 @@ describe("deriveInviteState", () => {
       currentUserId: "user-parent-1",
       currentUserRole: "parent",
     });
-    expect(state.kind).toBe("ready_to_connect");
+    if (state.kind !== "ready_to_connect")
+      throw new Error("expected ready_to_connect");
     expect(state.expectedRole).toBe("parent");
   });
 
@@ -116,7 +118,8 @@ describe("deriveInviteState", () => {
       currentUserId: "user-nanny-1",
       currentUserRole: "nanny",
     });
-    expect(state.kind).toBe("ready_to_connect");
+    if (state.kind !== "ready_to_connect")
+      throw new Error("expected ready_to_connect");
     expect(state.expectedRole).toBe("nanny");
   });
 
@@ -129,7 +132,7 @@ describe("deriveInviteState", () => {
       currentUserId: "user-nanny-1",
       currentUserRole: "nanny",
     });
-    expect(state.kind).toBe("wrong_role");
+    if (state.kind !== "wrong_role") throw new Error("expected wrong_role");
     expect(state.expectedRole).toBe("parent");
     expect(state.currentRole).toBe("nanny");
   });
@@ -141,7 +144,7 @@ describe("deriveInviteState", () => {
       currentUserId: "user-parent-1",
       currentUserRole: "parent",
     });
-    expect(state.kind).toBe("wrong_role");
+    if (state.kind !== "wrong_role") throw new Error("expected wrong_role");
     expect(state.expectedRole).toBe("nanny");
     expect(state.currentRole).toBe("parent");
   });

@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-05-04T04:32:30.164Z",
+  "generated_at": "2026-05-04T05:37:35.524Z",
   "summary": {
     "route_count": 52,
-    "page_count": 97,
+    "page_count": 98,
     "cron_count": 6,
     "migration_count": 12,
     "server_action_file_count": 32
@@ -457,6 +457,10 @@
     {
       "path": "/brandkit1",
       "file": "src/app/brandkit1/page.tsx"
+    },
+    {
+      "path": "/invite/[token]",
+      "file": "src/app/invite/[token]/page.tsx"
     },
     {
       "path": "/nanny/babysitting",

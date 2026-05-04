@@ -31,6 +31,7 @@ import type {
   ChildInvitePreview,
   PendingInviteCard,
 } from "@/types/bapp";
+import { invitesDisabled } from "@/lib/invite/flags";
 
 // ── Internal helpers ────────────────────────────────────────────────────
 
@@ -63,15 +64,6 @@ function buildInviteUrl(token: string): string {
   const base =
     process.env.NEXT_PUBLIC_INVITE_BASE_URL ?? "https://babybloomsydney.com.au";
   return `${base}/invite/${token}`;
-}
-
-/**
- * Single source of truth for the kill switch read pattern. Exported so
- * sibling modules (child-clients.ts, auth/actions.ts) reuse the exact
- * same predicate — avoids drift if the env shape ever changes.
- */
-export function invitesDisabled(): boolean {
-  return process.env.INVITE_LINKS_ENABLED === "false";
 }
 
 /**

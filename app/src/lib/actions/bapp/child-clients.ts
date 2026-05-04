@@ -4,7 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath, revalidateTag } from "next/cache";
 import type { ChildClient, ChildClientEvents } from "@/types/bapp";
-import { mintChildInvite, invitesDisabled } from "./child-invites";
+import { mintChildInvite } from "./child-invites";
+import { invitesDisabled } from "@/lib/invite/flags";
 import { recordConsent } from "@/lib/legal/record-consent";
 
 export async function getChildrenForUser(): Promise<{
