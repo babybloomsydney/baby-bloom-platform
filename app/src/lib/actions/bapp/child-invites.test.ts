@@ -306,7 +306,7 @@ describe("connectChildInvite", () => {
       error: null,
     };
     const { connectChildInvite } = await import("./child-invites");
-    const token = "abcdefghij1234567890XY";
+    const token = "ABCD-2345";
     const result = await connectChildInvite(token);
     expect(result.success).toBe(true);
     expect(result.error).toBeNull();
@@ -325,7 +325,7 @@ describe("connectChildInvite", () => {
       error: { code: "P0005", message: "role mismatch" },
     };
     const { connectChildInvite } = await import("./child-invites");
-    const result = await connectChildInvite("abcdefghij1234567890XY");
+    const result = await connectChildInvite("ABCD-2345");
     expect(result.success).toBe(false);
     expect(result.error).toBe("role_mismatch");
     expect(result.data).toBeNull();

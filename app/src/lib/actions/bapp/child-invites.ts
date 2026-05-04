@@ -35,11 +35,27 @@ import type {
 // ── Internal helpers ────────────────────────────────────────────────────
 
 /**
- * Generates a 24-char URL-safe random token.
- * `randomBytes(18)` → 18 bytes → base64url is 24 chars (no padding).
+ * Crockford-like 32-char alphabet — uppercase A-Z minus I/L/O, plus 2-9.
+ * Avoids visually ambiguous glyphs (0/O, 1/I/L) so a parent can read a
+ * token off a screen and type it without errors. 32 chars × 8 positions
+ * = 32^8 ≈ 1.1 trillion tokens; collision risk on the unique index is
+ * negligible at realistic pending-invite volumes.
+ */
+const TOKEN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+/**
+ * Generates an 8-character invite token in `XXXX-XXXX` format (9 chars
+ * total with the hyphen). Stored verbatim with the hyphen so URL,
+ * display, and DB row all share the same string.
  */
 function generateToken(): string {
-  return crypto.randomBytes(18).toString("base64url");
+  const buf = crypto.randomBytes(8);
+  let out = "";
+  for (let i = 0; i < 8; i++) {
+    out += TOKEN_ALPHABET[buf[i] % TOKEN_ALPHABET.length];
+    if (i === 3) out += "-";
+  }
+  return out;
 }
 
 /** Builds the public invite URL. Default origin per audit fix C13. */
@@ -60,12 +76,12 @@ export function invitesDisabled(): boolean {
 
 /**
  * Validates token format BEFORE any DB call. Defence-in-depth rate
- * limiter: malformed tokens never reach Postgres. base64url alphabet
- * is `[A-Za-z0-9_-]`; we accept lengths 20–32 to allow for future
- * format experiments without blocking valid tokens.
+ * limiter: malformed tokens never reach Postgres. Tokens are exactly
+ * `XXXX-XXXX` from the Crockford-like alphabet (uppercase, no I/L/O/0/1).
  */
+const TOKEN_FORMAT_REGEX = /^[A-HJKMN-Z2-9]{4}-[A-HJKMN-Z2-9]{4}$/;
 function isValidTokenFormat(token: unknown): token is string {
-  return typeof token === "string" && /^[A-Za-z0-9_-]{20,32}$/.test(token);
+  return typeof token === "string" && TOKEN_FORMAT_REGEX.test(token);
 }
 
 // ── 3. mintChildInvite (internal helper) ───────────────────────────────

@@ -9,7 +9,7 @@ import { sendEmail } from "@/lib/email/resend";
 import { capitalizeName } from "@/lib/utils";
 import { signupViaInvite } from "@/lib/actions/bapp/child-invites";
 
-const INVITE_TOKEN_REGEX = /^[A-Za-z0-9_-]{20,32}$/;
+const INVITE_TOKEN_REGEX = /^[A-HJKMN-Z2-9]{4}-[A-HJKMN-Z2-9]{4}$/;
 
 type InviteDirection = "nanny_to_parent" | "parent_to_nanny";
 
