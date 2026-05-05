@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-05-05T03:01:42.479Z",
+  "generated_at": "2026-05-05T03:32:44.913Z",
   "summary": {
-    "route_count": 52,
+    "route_count": 53,
     "page_count": 99,
-    "cron_count": 6,
+    "cron_count": 7,
     "migration_count": 12,
     "server_action_file_count": 32
   },
@@ -132,6 +132,11 @@
       "path": "/api/check-share-screenshot",
       "methods": ["POST"],
       "file": "src/app/api/check-share-screenshot/route.ts"
+    },
+    {
+      "path": "/api/cron/cleanup-orphan-children",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/cleanup-orphan-children/route.ts"
     },
     {
       "path": "/api/cron/compact-daily",
@@ -682,6 +687,10 @@
     },
     {
       "path": "/api/cron/compact-daily",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-orphan-children",
       "schedule": "0 3 * * *"
     },
     {

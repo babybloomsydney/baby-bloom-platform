@@ -17,6 +17,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/cleanup-orphan-children",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/cron/dfy-waves",
       "schedule": "0 9 * * *"
     },
