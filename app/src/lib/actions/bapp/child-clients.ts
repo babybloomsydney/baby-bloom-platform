@@ -437,34 +437,31 @@ export async function onboardChild(
   }
 }
 
-// ── Helper: end placement conditionally on (parent, nanny) pair ──────
+// ── deleteChild placement-end helper (JS, intentional scope limit) ──
 //
-// When a nanny is severed from a child, the placement should end ONLY
-// if no other child links the same (parent, nanny) pair. This handles
-// the multi-children-per-placement case from 06 §2.
+// `removeNannyFromChild` and `nannyLeaveChild` were migrated to
+// SECURITY DEFINER PG functions in M1 because the spec forbids direct
+// UPDATEs to `child_client.nanny_user_id` from app code. `deleteChild`
+// is different: it issues a DELETE (not an UPDATE on link columns),
+// which is itself atomic. The placement-end + per-side current_*
+// fixup that follows the DELETE is acceptable in app code — it
+// touches `nanny_placements` and the role tables, not the forbidden
+// link columns. If a future review escalates this to forbidden, we
+// add a `delete_child_atomic` SECURITY DEFINER function and switch.
 
-async function endPlacementIfNoSharedChildren(
+async function endPlacementForDeletedChild(
   admin: ReturnType<typeof createAdminClient>,
   parentUserId: string,
   formerNannyUserId: string,
 ): Promise<{ ended: boolean; error: string | null }> {
-  // Count remaining child_client rows linking the pair.
   const { count, error: countError } = await admin
     .from("child_client")
     .select("id", { count: "exact", head: true })
     .eq("parent_user_id", parentUserId)
     .eq("nanny_user_id", formerNannyUserId);
+  if (countError) return { ended: false, error: countError.message };
+  if ((count ?? 0) > 0) return { ended: false, error: null };
 
-  if (countError) {
-    return { ended: false, error: countError.message };
-  }
-
-  // If shared children remain, leave the placement active.
-  if ((count ?? 0) > 0) {
-    return { ended: false, error: null };
-  }
-
-  // Resolve role-table ids and end the active placement.
   const [{ data: nannyRow }, { data: parentRow }] = await Promise.all([
     admin
       .from("nannies")
@@ -477,10 +474,7 @@ async function endPlacementIfNoSharedChildren(
       .eq("user_id", parentUserId)
       .maybeSingle(),
   ]);
-  if (!nannyRow || !parentRow) {
-    // Defensive: role rows missing means the placement is already broken.
-    return { ended: false, error: null };
-  }
+  if (!nannyRow || !parentRow) return { ended: false, error: null };
 
   const { error: endError } = await admin
     .from("nanny_placements")
@@ -488,19 +482,13 @@ async function endPlacementIfNoSharedChildren(
       status: "ended",
       ended_at: new Date().toISOString(),
       end_reason: "other",
-      end_notes: "Removed via BB-app child unlink",
+      end_notes: "Removed via BB-app child delete",
     })
     .eq("nanny_id", nannyRow.id)
     .eq("parent_id", parentRow.id)
     .eq("status", "active");
+  if (endError) return { ended: false, error: endError.message };
 
-  if (endError) {
-    return { ended: false, error: endError.message };
-  }
-
-  // Clear denormalised current_* pointers ONLY for the (nanny, parent) we
-  // just severed — and ONLY if no other active placement exists for them.
-  // Other parents'/nannies' current_* pointers must not be touched.
   const { count: nannyOtherActive } = await admin
     .from("nanny_placements")
     .select("id", { count: "exact", head: true })
@@ -528,7 +516,24 @@ async function endPlacementIfNoSharedChildren(
   return { ended: true, error: null };
 }
 
+// ── SQLSTATE → error envelope mapping for the unlink RPCs ───────────
+//
+// Mirrors CONNECT_ERROR_MAP in child-invites.ts. Codes are stable
+// (defined in migration/04-unlink-functions.sql).
+
+const UNLINK_ERROR_MAP: Record<string, string> = {
+  P0006: "child_not_found",
+  P0008: "not_parent",
+  P0009: "not_nanny",
+};
+
 // ── removeNannyFromChild (parent-initiated) ─────────────────────────
+//
+// Atomic via SECURITY DEFINER PG function `remove_nanny_from_child`.
+// Closes M19 (Phase 2 deferred HIGH): app code no longer issues a
+// direct UPDATE to `child_client.nanny_user_id`. The PG function
+// holds `FOR UPDATE` on the child row through the entire sever +
+// placement-end + per-side current_* fixup + activity-log INSERT.
 
 export async function removeNannyFromChild(childId: string): Promise<{
   success: boolean;
@@ -549,60 +554,19 @@ export async function removeNannyFromChild(childId: string): Promise<{
     }
 
     const admin = createAdminClient();
-
-    // 1. Load child + verify caller is the parent.
-    const { data: child, error: loadError } = await admin
-      .from("child_client")
-      .select("id, parent_user_id, nanny_user_id")
-      .eq("id", childId)
-      .maybeSingle();
-    if (loadError || !child) {
-      return { success: false, error: "child_not_found" };
-    }
-    if (child.parent_user_id !== user.id) {
-      return { success: false, error: "not_parent" };
-    }
-    if (!child.nanny_user_id) {
-      // Already no nanny — idempotent success.
-      return { success: true, error: null };
-    }
-    const formerNannyUserId = child.nanny_user_id;
-
-    // 2. Sever the nanny from this child.
-    const { error: updateError } = await admin
-      .from("child_client")
-      .update({ nanny_user_id: null })
-      .eq("id", childId);
-    if (updateError) {
-      console.error("removeNannyFromChild update error:", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    // 3. End placement conditionally — only if no other children link
-    //    the (parent, formerNanny) pair (06 §2 multi-children logic).
-    const placementResult = await endPlacementIfNoSharedChildren(
-      admin,
-      user.id,
-      formerNannyUserId,
-    );
-    if (placementResult.error) {
-      console.error(
-        "removeNannyFromChild placement-end error:",
-        placementResult.error,
-      );
-      // Non-fatal: child is unlinked. Surface the failure to ops, not the user.
-    }
-
-    // 4. Audit log.
-    await admin.from("activity_logs").insert({
-      action_type: "nanny_removed_by_parent",
-      user_id: user.id,
-      action_details: {
-        child_id: childId,
-        nanny_user_id: formerNannyUserId,
-        placement_ended: placementResult.ended,
-      },
+    const { error } = await admin.rpc("remove_nanny_from_child", {
+      p_child_id: childId,
+      p_caller_user: user.id,
     });
+
+    if (error) {
+      const envelope = UNLINK_ERROR_MAP[error.code] ?? "transaction_failed";
+      console.error("removeNannyFromChild rpc error:", {
+        code: error.code,
+        envelope,
+      });
+      return { success: false, error: envelope };
+    }
 
     revalidatePath("/parent");
     return { success: true, error: null };
@@ -613,6 +577,10 @@ export async function removeNannyFromChild(childId: string): Promise<{
 }
 
 // ── nannyLeaveChild (nanny-initiated self-removal) ──────────────────
+//
+// Atomic via `nanny_leave_child` PG function. Sets `orphaned_at` when
+// no parent linked (orphan limbo); pending invite is NOT revoked per
+// spec 06 §3.4 — token stays alive so a future parent can still claim.
 
 export async function nannyLeaveChild(childId: string): Promise<{
   success: boolean;
@@ -633,64 +601,19 @@ export async function nannyLeaveChild(childId: string): Promise<{
     }
 
     const admin = createAdminClient();
-
-    const { data: child, error: loadError } = await admin
-      .from("child_client")
-      .select("id, parent_user_id, nanny_user_id")
-      .eq("id", childId)
-      .maybeSingle();
-    if (loadError || !child) {
-      return { success: false, error: "child_not_found" };
-    }
-    if (child.nanny_user_id !== user.id) {
-      return { success: false, error: "not_nanny" };
-    }
-
-    const wasParentLinked = child.parent_user_id !== null;
-    const updates: { nanny_user_id: null; orphaned_at?: string } = {
-      nanny_user_id: null,
-    };
-    // If no parent was ever linked, the child enters orphan limbo.
-    if (!wasParentLinked) {
-      updates.orphaned_at = new Date().toISOString();
-    }
-
-    const { error: updateError } = await admin
-      .from("child_client")
-      .update(updates)
-      .eq("id", childId);
-    if (updateError) {
-      console.error("nannyLeaveChild update error:", updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    // If the parent was linked, end placement conditionally.
-    if (wasParentLinked && child.parent_user_id) {
-      const placementResult = await endPlacementIfNoSharedChildren(
-        admin,
-        child.parent_user_id,
-        user.id,
-      );
-      if (placementResult.error) {
-        console.error(
-          "nannyLeaveChild placement-end error:",
-          placementResult.error,
-        );
-      }
-    }
-
-    // Note: we do NOT revoke the pending invite. Per 06 §3.4, the token
-    // stays alive during orphan limbo so a parent who clicks it later
-    // can still claim — preserving chain of custody.
-
-    await admin.from("activity_logs").insert({
-      action_type: "nanny_left_child",
-      user_id: user.id,
-      action_details: {
-        child_id: childId,
-        was_orphaned: !wasParentLinked,
-      },
+    const { error } = await admin.rpc("nanny_leave_child", {
+      p_child_id: childId,
+      p_caller_user: user.id,
     });
+
+    if (error) {
+      const envelope = UNLINK_ERROR_MAP[error.code] ?? "transaction_failed";
+      console.error("nannyLeaveChild rpc error:", {
+        code: error.code,
+        envelope,
+      });
+      return { success: false, error: envelope };
+    }
 
     revalidatePath("/nanny");
     return { success: true, error: null };
@@ -750,7 +673,7 @@ export async function deleteChild(childId: string): Promise<{
 
     // 3. End placement conditionally if a nanny was attached.
     if (nannyUserIdAtDelete) {
-      const placementResult = await endPlacementIfNoSharedChildren(
+      const placementResult = await endPlacementForDeletedChild(
         admin,
         user.id,
         nannyUserIdAtDelete,

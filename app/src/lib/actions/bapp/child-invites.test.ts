@@ -332,36 +332,61 @@ describe("connectChildInvite", () => {
   });
 });
 
-describe("removeNannyFromChild — multi-children placement", () => {
-  it("does NOT end the placement when the same (parent, nanny) pair shares another child", async () => {
+describe("removeNannyFromChild — RPC envelope", () => {
+  // Post-M1: the multi-children logic, child UPDATE, placement-end, and
+  // activity log all live inside the SECURITY DEFINER PG function
+  // `remove_nanny_from_child`. The action is now a thin wrapper around
+  // an RPC call; correctness of the multi-children behaviour is covered
+  // by the migration's `04-unlink-functions.sql` body + the live
+  // `04b-post-migration-verify.sql` checks. Here we only assert the
+  // envelope mapping.
+  it("returns success when the RPC succeeds", async () => {
     state.authUser = { id: "user-parent-1", email: "parent@example.com" };
-    state.childById = {
-      id: "child-1",
-      parent_user_id: "user-parent-1",
-      nanny_user_id: "user-nanny-1",
-    };
-    // Pair (parent, nanny) still has 1 other child after this removal.
-    state.childCountForPair = 1;
+    state.rpcResponse = { data: null, error: null };
 
     const { removeNannyFromChild } = await import("./child-clients");
     const result = await removeNannyFromChild("child-1");
 
-    expect(result.success).toBe(true);
-    expect(result.error).toBeNull();
-    expect(state.childUpdates).toEqual([
-      { id: "child-1", nanny_user_id: null },
+    expect(result).toEqual({ success: true, error: null });
+    expect(state.rpcCalls).toEqual([
+      {
+        name: "remove_nanny_from_child",
+        args: { p_child_id: "child-1", p_caller_user: "user-parent-1" },
+      },
     ]);
-    // Critical assertion: NO placement_update must occur — the placement
-    // stays active because another child still links the pair.
-    expect(state.placementUpdates).toHaveLength(0);
-    // Audit log records placement_ended=false so observability stays correct.
-    expect(state.activityLogs).toEqual([
-      expect.objectContaining({
-        action_type: "nanny_removed_by_parent",
-        action_details: expect.objectContaining({
-          placement_ended: false,
-        }),
-      }),
+  });
+
+  it("translates SQLSTATE P0008 to not_parent envelope", async () => {
+    state.authUser = { id: "user-parent-1", email: "parent@example.com" };
+    state.rpcResponse = {
+      data: null,
+      error: { code: "P0008", message: "not_parent" },
+    };
+
+    const { removeNannyFromChild } = await import("./child-clients");
+    const result = await removeNannyFromChild("child-1");
+
+    expect(result).toEqual({ success: false, error: "not_parent" });
+  });
+});
+
+describe("nannyLeaveChild — RPC envelope", () => {
+  it("translates SQLSTATE P0009 to not_nanny envelope", async () => {
+    state.authUser = { id: "user-nanny-1", email: "nanny@example.com" };
+    state.rpcResponse = {
+      data: null,
+      error: { code: "P0009", message: "not_nanny" },
+    };
+
+    const { nannyLeaveChild } = await import("./child-clients");
+    const result = await nannyLeaveChild("child-1");
+
+    expect(result).toEqual({ success: false, error: "not_nanny" });
+    expect(state.rpcCalls).toEqual([
+      {
+        name: "nanny_leave_child",
+        args: { p_child_id: "child-1", p_caller_user: "user-nanny-1" },
+      },
     ]);
   });
 });
