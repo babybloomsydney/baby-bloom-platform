@@ -3,6 +3,13 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
+  // `?invite={token}` is intentionally carried through login + signup
+  // URLs so the recipient lands back at /invite/{token} after auth.
+  // Without no-referrer set here, an outbound click from these pages
+  // (e.g. "Forgot password?") would put the token-bearing URL in the
+  // Referer header. Mirror the policy the public landing page sets.
+  // (security-reviewer M2, 2026-05-05.)
+  referrer: "no-referrer",
 };
 
 export default function AuthLayout({

@@ -15,6 +15,7 @@
  *     http://localhost:3000/api/cron/cleanup-orphan-children
  */
 
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { invitesDisabled } from "@/lib/invite/flags";
@@ -24,12 +25,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  // Fail closed if CRON_SECRET is missing — orphan cleanup is a bulk
+  // destructive operation, refusing to run when unauthenticated is the
+  // safe default. (security-reviewer H1, 2026-05-05.)
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const authHeader = request.headers.get("authorization");
+  const expected = `Bearer ${cronSecret}`;
+  // Constant-time comparison — prevents timing-oracle leakage of the
+  // secret. Pad to identical length first so timingSafeEqual doesn't
+  // throw on length mismatch.
+  const headerBuf = Buffer.from(authHeader ?? "", "utf8");
+  const expectedBuf = Buffer.from(expected, "utf8");
+  if (
+    headerBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(headerBuf, expectedBuf)
+  ) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   if (invitesDisabled()) {

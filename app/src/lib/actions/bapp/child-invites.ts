@@ -35,30 +35,6 @@ import { invitesDisabled } from "@/lib/invite/flags";
 
 // ── Internal helpers ────────────────────────────────────────────────────
 
-/**
- * Crockford-like 32-char alphabet — uppercase A-Z minus I/L/O, plus 2-9.
- * Avoids visually ambiguous glyphs (0/O, 1/I/L) so a parent can read a
- * token off a screen and type it without errors. 32 chars × 8 positions
- * = 32^8 ≈ 1.1 trillion tokens; collision risk on the unique index is
- * negligible at realistic pending-invite volumes.
- */
-const TOKEN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-
-/**
- * Generates an 8-character invite token in `XXXX-XXXX` format (9 chars
- * total with the hyphen). Stored verbatim with the hyphen so URL,
- * display, and DB row all share the same string.
- */
-function generateToken(): string {
-  const buf = crypto.randomBytes(8);
-  let out = "";
-  for (let i = 0; i < 8; i++) {
-    out += TOKEN_ALPHABET[buf[i] % TOKEN_ALPHABET.length];
-    if (i === 3) out += "-";
-  }
-  return out;
-}
-
 /** Builds the public invite URL. Default origin per audit fix C13. */
 function buildInviteUrl(token: string): string {
   const base =
@@ -76,57 +52,10 @@ function isValidTokenFormat(token: unknown): token is string {
   return typeof token === "string" && TOKEN_FORMAT_REGEX.test(token);
 }
 
-// ── 3. mintChildInvite (internal helper) ───────────────────────────────
-//
-// Not exported as a public action — called by createChild and
-// createChildAsParent. Throws on failure (the caller wraps and
-// translates to error envelope).
-//
-// Token-stability policy (2026-05-04 decision): once minted, an invite
-// token does NOT rotate. The only ways it becomes invalid are
-//   (a) recipient claims it via connectChildInvite,
-//   (b) creator explicitly revokes via revokeChildInvite,
-//   (c) child row is deleted (cascade).
-// There is no regenerate flow. If a token leaks, the creator revokes
-// and creates a new child. This keeps the link a parent receives over
-// SMS / email genuinely stable until acted on.
-
-interface MintInviteParams {
-  childId: string;
-  direction: ChildInviteDirection;
-  userId: string;
-  userEmail: string;
-  /** Optional: carry over recipient_user_id from a revoked invite (regenerate flow). */
-  recipientUserId?: string | null;
-}
-
-export async function mintChildInvite(
-  params: MintInviteParams,
-): Promise<{ token: string; url: string }> {
-  const admin = createAdminClient();
-  const token = generateToken();
-
-  const { error } = await admin.from("child_invites").insert({
-    child_client_id: params.childId,
-    token,
-    created_by_user_id: params.userId,
-    created_by_email_at_creation: params.userEmail,
-    direction: params.direction,
-    status: "pending",
-    recipient_user_id: params.recipientUserId ?? null,
-  });
-
-  if (error) {
-    console.error("mintChildInvite insert error:", error);
-    // The unique-pending-per-child-direction index would fire if a
-    // pending invite already exists. That's a caller bug — they
-    // should revoke first. We surface as a thrown error for the
-    // caller's catch block.
-    throw new Error(`mint_failed: ${error.message}`);
-  }
-
-  return { token, url: buildInviteUrl(token) };
-}
+// mintChildInvite was moved to `@/lib/invite/mint.ts` so Next.js doesn't
+// register it as a callable Server Action (every async export from a
+// "use server" file is auto-exposed). Callers import from there.
+// (security-reviewer H4, 2026-05-05.)
 
 // ── 4b. getInviteForChild (creator-side banner read) ──────────────────
 //
@@ -141,9 +70,10 @@ export async function getInviteForChild(childId: string): Promise<{
   error: string | null;
   data: { token: string; url: string; direction: ChildInviteDirection } | null;
 }> {
-  if (invitesDisabled()) {
-    return { success: false, error: "invites_disabled", data: null };
-  }
+  // Read operation — NOT gated by invitesDisabled(). When the kill
+  // switch is on we still let the banner load the existing share URL
+  // so the creator can copy a link they minted earlier; only NEW mints
+  // are blocked. (security-reviewer M3, 2026-05-05.)
   try {
     const supabase = createClient();
     const {
@@ -354,7 +284,9 @@ export async function revokeChildInvite(childId: string): Promise<{
 
     if (revokeError) {
       console.error("revokeChildInvite error:", revokeError);
-      return { success: false, error: revokeError.message };
+      // Opaque code — never echo the raw driver message to the client.
+      // (security-reviewer H3, 2026-05-05.)
+      return { success: false, error: "revoke_failed" };
     }
 
     await admin.from("activity_logs").insert({
@@ -464,7 +396,7 @@ export async function signupViaInvite(params: {
 
     if (error) {
       console.error("signupViaInvite update error:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: "stamp_failed" };
     }
 
     // Audit log — token is hashed for cross-reference without leaking.
@@ -615,15 +547,22 @@ export async function declineChildInvite(token: string): Promise<{
       return { success: false, error: "not_recipient" };
     }
 
+    // Re-assert recipient_user_id at write time — TOCTOU guard parity
+    // with declineChildInviteById (security-reviewer M1, 2026-05-05).
+    // The SELECT above proved the row was stamped to this user, but
+    // a concurrent signupViaInvite could re-stamp between the snapshot
+    // and the UPDATE; without this predicate we'd clear someone else's
+    // stamp.
     const { error: updateError } = await admin
       .from("child_invites")
       .update({ recipient_user_id: null })
       .eq("token", token)
-      .eq("status", "pending");
+      .eq("status", "pending")
+      .eq("recipient_user_id", user.id);
 
     if (updateError) {
       console.error("declineChildInvite update error:", updateError);
-      return { success: false, error: updateError.message };
+      return { success: false, error: "decline_failed" };
     }
 
     await admin.from("activity_logs").insert({
@@ -767,7 +706,7 @@ export async function getPendingInvitesForUser(): Promise<{
 
     if (error) {
       console.error("getPendingInvitesForUser rpc error:", error);
-      return { success: false, error: error.message, data: [] };
+      return { success: false, error: "lookup_failed", data: [] };
     }
 
     const cards: PendingInviteCard[] = (data ?? []).map(

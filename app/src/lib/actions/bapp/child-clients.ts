@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath, revalidateTag } from "next/cache";
 import type { ChildClient, ChildClientEvents } from "@/types/bapp";
-import { mintChildInvite } from "./child-invites";
+import { mintChildInvite } from "@/lib/invite/mint";
 import { invitesDisabled } from "@/lib/invite/flags";
 import { recordConsent } from "@/lib/legal/record-consent";
 
@@ -33,7 +33,7 @@ export async function getChildrenForUser(): Promise<{
 
     if (error) {
       console.error("getChildrenForUser error:", error);
-      return { success: false, error: error.message, data: [] };
+      return { success: false, error: "lookup_failed", data: [] };
     }
 
     return { success: true, error: null, data: (data as ChildClient[]) ?? [] };
@@ -159,6 +159,26 @@ export async function createChild(data: {
     if (!data.first_name?.trim() || !data.date_of_birth?.trim()) {
       return { success: false, error: "missing_required_fields", data: null };
     }
+    // Bound first_name length to prevent oversized writes hitting the
+    // DB and producing leaked truncation errors. (M5)
+    if (data.first_name.trim().length > 100) {
+      return { success: false, error: "first_name_too_long", data: null };
+    }
+    // Validate date_of_birth is parseable + not in the future. Without
+    // this an invalid date string slips through to Postgres and we
+    // surface a raw constraint error; future dates would also bypass
+    // the under_three flag logic. (M4)
+    const dobAtCreate = new Date(data.date_of_birth);
+    if (Number.isNaN(dobAtCreate.getTime())) {
+      return { success: false, error: "invalid_date_of_birth", data: null };
+    }
+    if (dobAtCreate > new Date()) {
+      return {
+        success: false,
+        error: "date_of_birth_in_future",
+        data: null,
+      };
+    }
 
     // 3. Insert child_client. parent_lead_email left NULL — invite flow
     //    handles the contact path now.
@@ -180,7 +200,7 @@ export async function createChild(data: {
 
     if (insertError) {
       console.error("createChild insert error:", insertError);
-      return { success: false, error: insertError.message, data: null };
+      return { success: false, error: "insert_failed", data: null };
     }
 
     // 4. Insert child_client_events.
@@ -296,6 +316,20 @@ export async function createChildAsParent(data: {
     if (!data.first_name?.trim() || !data.date_of_birth?.trim()) {
       return { success: false, error: "missing_required_fields", data: null };
     }
+    if (data.first_name.trim().length > 100) {
+      return { success: false, error: "first_name_too_long", data: null };
+    }
+    const dobAtCreate = new Date(data.date_of_birth);
+    if (Number.isNaN(dobAtCreate.getTime())) {
+      return { success: false, error: "invalid_date_of_birth", data: null };
+    }
+    if (dobAtCreate > new Date()) {
+      return {
+        success: false,
+        error: "date_of_birth_in_future",
+        data: null,
+      };
+    }
 
     const { data: child, error: insertError } = await admin
       .from("child_client")
@@ -314,7 +348,7 @@ export async function createChildAsParent(data: {
 
     if (insertError) {
       console.error("createChildAsParent insert error:", insertError);
-      return { success: false, error: insertError.message, data: null };
+      return { success: false, error: "insert_failed", data: null };
     }
 
     await admin.from("child_client_events").insert({
@@ -421,7 +455,7 @@ export async function onboardChild(
 
     if (updateError) {
       console.error("onboardChild update error:", updateError);
-      return { success: false, error: updateError.message };
+      return { success: false, error: "update_failed" };
     }
 
     await admin
@@ -539,10 +573,10 @@ export async function removeNannyFromChild(childId: string): Promise<{
   success: boolean;
   error: string | null;
 }> {
-  if (invitesDisabled()) {
-    return { success: false, error: "invites_disabled" };
-  }
-
+  // Note: NOT gated by invitesDisabled(). This action ends an existing
+  // placement; it doesn't create or modify invite rows. Blocking unlinks
+  // when the kill switch is on would strand parents who need to remove
+  // a nanny during the soak period. (security-reviewer H2, 2026-05-05.)
   try {
     const supabase = createClient();
     const {
@@ -586,10 +620,8 @@ export async function nannyLeaveChild(childId: string): Promise<{
   success: boolean;
   error: string | null;
 }> {
-  if (invitesDisabled()) {
-    return { success: false, error: "invites_disabled" };
-  }
-
+  // Not gated by invitesDisabled() — same reasoning as removeNannyFromChild
+  // (security-reviewer H2, 2026-05-05).
   try {
     const supabase = createClient();
     const {
@@ -668,7 +700,7 @@ export async function deleteChild(childId: string): Promise<{
       .eq("id", childId);
     if (deleteError) {
       console.error("deleteChild delete error:", deleteError);
-      return { success: false, error: deleteError.message };
+      return { success: false, error: "delete_failed" };
     }
 
     // 3. End placement conditionally if a nanny was attached.
