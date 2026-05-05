@@ -311,9 +311,13 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
           stampResult.error,
         );
       }
+      // `?auto=1` tells InviteLandingClient to auto-fire `connect` once the
+      // page mounts so the freshly-signed-up parent doesn't have to tap a
+      // second "Connect" button. Switch-ack and other gates still apply
+      // client-side; auto-mode skips itself when those are present.
       return {
         success: true,
-        redirectTo: `/invite/${inviteContext.token}`,
+        redirectTo: `/invite/${inviteContext.token}?auto=1`,
       };
     }
 

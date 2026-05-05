@@ -68,25 +68,7 @@ export function MyChildcareTab({
             Create your position to kickstart our childcare journey
           </p>
         </div>
-      ) : !hasFormData && hasActivePlacement ? (
-        // Invite-link path — the position was auto-created by
-        // `ensure_placement` to anchor the placement, but the parent
-        // never went through the typeform. Showing them "recreate
-        // position" is wrong; they have a nanny, the marketplace
-        // listing is intentionally empty.
-        <div className="text-center py-8 space-y-2">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
-            <Check className="h-6 w-6 text-emerald-500" />
-          </div>
-          <p className="text-sm font-medium text-slate-700">
-            You&apos;re linked with your nanny
-          </p>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            You connected via an invite link, so there&apos;s no marketplace
-            position to manage here.
-          </p>
-        </div>
-      ) : !hasFormData ? (
+      ) : !hasFormData && !hasActivePlacement ? (
         <div className="text-center py-8 space-y-3">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
             <ClipboardList className="h-6 w-6 text-violet-400" />
@@ -105,6 +87,12 @@ export function MyChildcareTab({
           </Button>
         </div>
       ) : (
+        // Renders for both: (a) parents with full form_data, and (b)
+        // invite-link parents whose auto-position has no form_data yet.
+        // saveTypeformPosition picks up the existing 'filled' position
+        // via .in("status", ["active", "filled"]), so saving from the
+        // empty editable view updates that row in place — never creates
+        // a new public listing.
         <PositionDetailView
           initialData={formData}
           editingExternal={positionEditing}

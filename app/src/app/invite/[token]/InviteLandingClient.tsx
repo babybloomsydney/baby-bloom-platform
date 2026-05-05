@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import {
@@ -31,6 +31,12 @@ interface InviteLandingClientProps {
 
 export function InviteLandingClient(props: InviteLandingClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // `?auto=1` set by the post-signup / post-login redirect — the user
+  // already consented by signing up via the invite, so we skip the
+  // second "Connect" tap. Switch-ack still gates the auto-fire so the
+  // single-nanny-per-parent invariant warning is never bypassed.
+  const autoMode = searchParams.get("auto") === "1";
   // The connect server action can return role_mismatch /
   // invite_already_connected after the page loaded — we override the
   // derived state when that happens so the user sees the right surface
@@ -40,6 +46,7 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
   const [error, setError] = useState<string | null>(null);
   const [switchAcked, setSwitchAcked] = useState(false);
   const requiresSwitchAck = props.switchContext?.isSwitching === true;
+  const autoFiredRef = useRef(false);
 
   const baseState = deriveInviteState({
     preview: props.preview,
@@ -101,6 +108,41 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
     }
     setBusy(null);
     router.push(`/${state.expectedRole}`);
+  }
+
+  // Auto-fire `connect` once on mount when the user arrived via
+  // `?auto=1` and the state is otherwise actionable. Guarded by the
+  // ref so React strict-mode / re-renders don't double-call. We don't
+  // include `handleConnect` in deps — it's stable per render and the
+  // ref makes idempotency explicit.
+  useEffect(() => {
+    if (!autoMode) return;
+    if (autoFiredRef.current) return;
+    if (state.kind !== "ready_to_connect") return;
+    if (requiresSwitchAck) return;
+    if (busy !== null) return;
+    autoFiredRef.current = true;
+    void handleConnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoMode, state.kind, requiresSwitchAck, busy]);
+
+  // While the auto-flow is connecting, swap the page chrome for a
+  // small "Connecting…" surface so the user sees forward motion
+  // instead of the redundant "Connect / Decline" prompt flashing.
+  if (autoMode && state.kind === "ready_to_connect" && !requiresSwitchAck) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-6">
+        <Loader2 className="h-6 w-6 animate-spin text-violet-600" />
+        <p className="text-sm text-slate-600">
+          Connecting you to {state.preview.childFirstName}…
+        </p>
+        {error && (
+          <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+      </div>
+    );
   }
 
   return (

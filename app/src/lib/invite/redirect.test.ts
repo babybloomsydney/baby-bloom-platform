@@ -9,9 +9,9 @@ import { describe, it, expect } from "vitest";
 import { resolveInviteRedirect, isSafeInternalPath } from "./redirect";
 
 describe("resolveInviteRedirect", () => {
-  it("returns the invite landing path when the token is well-formed", () => {
+  it("returns the invite landing path with auto=1 when the token is well-formed", () => {
     expect(resolveInviteRedirect("ABCD-2345", "/parent")).toBe(
-      "/invite/ABCD-2345",
+      "/invite/ABCD-2345?auto=1",
     );
   });
 

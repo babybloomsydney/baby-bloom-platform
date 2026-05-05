@@ -18,7 +18,12 @@ export function resolveInviteRedirect(
   if (typeof rawToken !== "string" || !INVITE_TOKEN_REGEX.test(rawToken)) {
     return defaultRedirect;
   }
-  return `/invite/${rawToken}`;
+  // `?auto=1` tells the invite landing client to fire `connect`
+  // automatically once mounted — sign-in/sign-up via an invite link is
+  // implicit consent to claim it, so the second "Connect" tap was just
+  // friction. Switch-ack and other gates still hold the auto path back
+  // when present.
+  return `/invite/${rawToken}?auto=1`;
 }
 
 /**

@@ -41,6 +41,9 @@ vi.mock("next/navigation", () => ({
       state.pushCalls.push(url);
     },
   }),
+  // Tests don't drive `?auto=1`; default to an empty query so the
+  // auto-fire branch never triggers and existing assertions still hold.
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("@/lib/actions/bapp/child-invites", () => ({
