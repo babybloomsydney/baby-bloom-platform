@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-05T02:11:47.836Z",
+  "generated_at": "2026-05-05T03:01:42.479Z",
   "summary": {
     "route_count": 52,
     "page_count": 99,
@@ -816,6 +816,7 @@
       "functions": [
         "mintChildInvite",
         "getInviteForChild",
+        "getSwitchContextForInvite",
         "revokeChildInvite",
         "getInvitePreview",
         "signupViaInvite",

@@ -19,6 +19,14 @@ interface InviteLandingClientProps {
   previewError: string | null;
   currentUserId: string | null;
   currentUserRole: UserRole | null;
+  /**
+   * Set when the signed-in parent already has an active placement with
+   * a DIFFERENT nanny than the inviter — see
+   * `CORRECTION-UNIQUE-PLACEMENT-CONSTRAINT.md`. When `isSwitching`
+   * is true, the Connect button stays disabled until the parent ticks
+   * the switch-confirmation checkbox.
+   */
+  switchContext?: { isSwitching: boolean; fromNannyName: string | null };
 }
 
 export function InviteLandingClient(props: InviteLandingClientProps) {
@@ -30,6 +38,8 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
   const [override, setOverride] = useState<InviteState | null>(null);
   const [busy, setBusy] = useState<"connect" | "decline" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [switchAcked, setSwitchAcked] = useState(false);
+  const requiresSwitchAck = props.switchContext?.isSwitching === true;
 
   const baseState = deriveInviteState({
     preview: props.preview,
@@ -102,38 +112,50 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
         </p>
       )}
       {state.kind === "ready_to_connect" && (
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button
-            type="button"
-            onClick={handleConnect}
-            disabled={busy !== null}
-            className="flex-1"
-          >
-            {busy === "connect" ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              "Connect"
-            )}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleDecline}
-            disabled={busy !== null}
-            className="flex-1"
-          >
-            {busy === "decline" ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Declining...
-              </>
-            ) : (
-              "Decline"
-            )}
-          </Button>
+        <div className="space-y-4">
+          {requiresSwitchAck && (
+            <SwitchWarning
+              fromNannyName={props.switchContext?.fromNannyName ?? null}
+              toNannyName={state.preview.inviterDisplay}
+              acknowledged={switchAcked}
+              onAcknowledgeChange={setSwitchAcked}
+            />
+          )}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button
+              type="button"
+              onClick={handleConnect}
+              disabled={busy !== null || (requiresSwitchAck && !switchAcked)}
+              className="flex-1"
+            >
+              {busy === "connect" ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : requiresSwitchAck ? (
+                `Switch to ${state.preview.inviterDisplay}`
+              ) : (
+                "Connect"
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDecline}
+              disabled={busy !== null}
+              className="flex-1"
+            >
+              {busy === "decline" ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Declining...
+                </>
+              ) : (
+                "Decline"
+              )}
+            </Button>
+          </div>
         </div>
       )}
       {state.kind === "anon_parent_target" && (
@@ -229,6 +251,51 @@ function Hero({ title, body }: { title: string; body: string }) {
         {title}
       </h1>
       <p className="text-sm text-slate-600">{body}</p>
+    </div>
+  );
+}
+
+function SwitchWarning({
+  fromNannyName,
+  toNannyName,
+  acknowledged,
+  onAcknowledgeChange,
+}: {
+  fromNannyName: string | null;
+  toNannyName: string;
+  acknowledged: boolean;
+  onAcknowledgeChange: (next: boolean) => void;
+}) {
+  // Single-nanny-per-parent invariant — see
+  // CORRECTION-UNIQUE-PLACEMENT-CONSTRAINT.md. When the parent has an
+  // existing active placement with a different nanny, we surface this
+  // warning + checkbox so the auto-end-on-switch behaviour in
+  // `ensure_placement` is never a surprise.
+  const fromLabel = fromNannyName ?? "your current nanny";
+  return (
+    <div
+      className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3"
+      role="region"
+      aria-label="You are switching nannies"
+    >
+      <p className="text-sm font-semibold text-amber-900">
+        You&apos;re switching nannies
+      </p>
+      <p className="mt-1 text-xs text-amber-800">
+        You&apos;re currently linked with <strong>{fromLabel}</strong> on Baby
+        Bloom. Connecting with <strong>{toNannyName}</strong> will end your
+        existing relationship — including any subscription, feed access, and
+        ongoing engagement. {toNannyName} will become your new nanny.
+      </p>
+      <label className="mt-3 flex items-start gap-2 text-xs text-amber-900">
+        <input
+          type="checkbox"
+          checked={acknowledged}
+          onChange={(e) => onAcknowledgeChange(e.target.checked)}
+          className="mt-0.5 h-4 w-4 rounded border-amber-400 text-amber-700 focus:ring-amber-500"
+        />
+        <span>I understand I&apos;m switching nannies</span>
+      </label>
     </div>
   );
 }

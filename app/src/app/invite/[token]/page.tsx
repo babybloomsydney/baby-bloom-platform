@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getInvitePreview } from "@/lib/actions/bapp/child-invites";
+import {
+  getInvitePreview,
+  getSwitchContextForInvite,
+} from "@/lib/actions/bapp/child-invites";
 import { invitesDisabled } from "@/lib/invite/flags";
 import { getUserRole } from "@/lib/auth/actions";
 import { InviteLandingClient } from "./InviteLandingClient";
@@ -43,7 +46,15 @@ export default async function InvitePage({
   // hitting Postgres. Errors are surfaced as discriminated states by the
   // client; we don't 404 the route because the not-found branch wants
   // its own copy + sign-up CTA.
-  const preview = await getInvitePreview(params.token);
+  //
+  // getSwitchContextForInvite default-denies (returns isSwitching=false)
+  // for every case where the gate is unnecessary — anon, non-parent,
+  // no existing placement, same-nanny invite, malformed token. Safe to
+  // run unconditionally.
+  const [preview, switchContextResult] = await Promise.all([
+    getInvitePreview(params.token),
+    getSwitchContextForInvite(params.token),
+  ]);
 
   return (
     <Shell>
@@ -53,6 +64,7 @@ export default async function InvitePage({
         previewError={preview.error}
         currentUserId={user?.id ?? null}
         currentUserRole={userRole}
+        switchContext={switchContextResult.data}
       />
     </Shell>
   );

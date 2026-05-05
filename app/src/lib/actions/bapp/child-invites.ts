@@ -191,6 +191,111 @@ export async function getInviteForChild(childId: string): Promise<{
   }
 }
 
+// ── 4c. getSwitchContextForInvite (landing-page switch-detection) ─────
+//
+// Implements the switch-confirmation surface from
+// `CORRECTION-UNIQUE-PLACEMENT-CONSTRAINT.md`. When an authenticated
+// parent opens a nanny→parent invite landing page, we need to know:
+// "do they currently have an active placement with a DIFFERENT nanny
+// than the inviter?" If yes, the UI gates the Connect button behind a
+// confirmation checkbox so the auto-end-on-switch in `ensure_placement`
+// is never a surprise.
+//
+// Returns `{ isSwitching: false, fromNannyName: null }` for every
+// case where the gate is unnecessary — anon, non-parent, no existing
+// placement, same-nanny invite, parent_to_nanny direction, malformed
+// token. The default-deny shape means the UI always gets a usable
+// answer; an error in lookup is preferred to be silent (no false
+// positives) since the auto-end-on-switch is itself safe.
+
+export async function getSwitchContextForInvite(token: string): Promise<{
+  success: boolean;
+  error: string | null;
+  data: { isSwitching: boolean; fromNannyName: string | null };
+}> {
+  const noSwitch = {
+    success: true as const,
+    error: null,
+    data: { isSwitching: false, fromNannyName: null },
+  };
+
+  if (!isValidTokenFormat(token)) return noSwitch;
+
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) return noSwitch;
+
+    const admin = createAdminClient();
+
+    // 1. Resolve the invite's intended nanny. Direction filter cuts the
+    //    parent_to_nanny case immediately — switching is only meaningful
+    //    when a nanny is inviting a parent.
+    const { data: invite } = await admin
+      .from("child_invites")
+      .select("created_by_user_id, direction, status")
+      .eq("token", token)
+      .maybeSingle();
+    if (
+      !invite ||
+      invite.status !== "pending" ||
+      invite.direction !== "nanny_to_parent"
+    ) {
+      return noSwitch;
+    }
+    const invitingNannyUserId = invite.created_by_user_id as string;
+
+    // 2. Resolve the caller's parent_id.
+    const { data: parent } = await admin
+      .from("parents")
+      .select("id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!parent) return noSwitch;
+
+    // 3. Existing active placement?
+    const { data: placement } = await admin
+      .from("nanny_placements")
+      .select("nanny_id")
+      .eq("parent_id", parent.id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!placement) return noSwitch;
+
+    // 4. Resolve the placed nanny's user_id and compare.
+    const { data: nanny } = await admin
+      .from("nannies")
+      .select("user_id")
+      .eq("id", placement.nanny_id)
+      .maybeSingle();
+    if (!nanny || nanny.user_id === invitingNannyUserId) return noSwitch;
+
+    // 5. Look up the previous nanny's first_name for UI display.
+    const { data: profile } = await admin
+      .from("user_profiles")
+      .select("first_name")
+      .eq("user_id", nanny.user_id)
+      .maybeSingle();
+
+    return {
+      success: true,
+      error: null,
+      data: {
+        isSwitching: true,
+        fromNannyName: profile?.first_name ?? null,
+      },
+    };
+  } catch (err) {
+    console.error("getSwitchContextForInvite unexpected error:", err);
+    // Default-deny on lookup failure — caller still sees Connect, the
+    // PG-function side enforces single-nanny via the unique index.
+    return noSwitch;
+  }
+}
+
 // regenerateChildInvite — REMOVED 2026-05-04.
 // Per token-stability policy on mintChildInvite above: tokens never
 // rotate while pending. If a token leaks, the creator revokes (the
@@ -406,6 +511,11 @@ const CONNECT_ERROR_MAP: Record<string, string> = {
   P0005: "role_mismatch",
   P0006: "child_not_found",
   P0007: "role_table_missing",
+  // P0010 = concurrent_switch_conflict — two parents tried to switch to
+  // different nannies in the same instant; the unique-per-parent index
+  // caught the loser. Maps to transaction_failed so the UI offers a
+  // generic retry rather than a confusing race-specific message.
+  P0010: "transaction_failed",
 };
 
 export async function connectChildInvite(token: string): Promise<{

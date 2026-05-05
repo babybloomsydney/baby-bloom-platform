@@ -329,6 +329,88 @@ describe("InviteLandingClient — ready to connect", () => {
   });
 });
 
+// ── Switch-confirmation gate (correction 2026-05-05) ─────────────────
+
+describe("InviteLandingClient — switch-confirmation gate", () => {
+  it("does not render the warning when switchContext.isSwitching is false", () => {
+    render(
+      <InviteLandingClient
+        token={TOKEN}
+        preview={pendingNannyToParent}
+        previewError={null}
+        currentUserId="user-parent-1"
+        currentUserRole="parent"
+        switchContext={{ isSwitching: false, fromNannyName: null }}
+      />,
+    );
+    expect(
+      screen.queryByText(/you're switching nannies/i),
+    ).not.toBeInTheDocument();
+    // Connect button is enabled by default.
+    expect(
+      screen.getByRole("button", { name: /^connect$/i }),
+    ).not.toBeDisabled();
+  });
+
+  it("renders the warning + disables Connect until the checkbox is ticked", () => {
+    render(
+      <InviteLandingClient
+        token={TOKEN}
+        preview={pendingNannyToParent}
+        previewError={null}
+        currentUserId="user-parent-1"
+        currentUserRole="parent"
+        switchContext={{ isSwitching: true, fromNannyName: "Anna" }}
+      />,
+    );
+    expect(screen.getByText(/you're switching nannies/i)).toBeInTheDocument();
+    expect(screen.getByText(/Anna/)).toBeInTheDocument();
+    // Connect button now reads "Switch to Sarah" (the inviter) and is disabled.
+    const switchButton = screen.getByRole("button", {
+      name: /switch to sarah/i,
+    });
+    expect(switchButton).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(switchButton).not.toBeDisabled();
+  });
+
+  it("falls back to a generic 'your current nanny' label when fromNannyName is null", () => {
+    render(
+      <InviteLandingClient
+        token={TOKEN}
+        preview={pendingNannyToParent}
+        previewError={null}
+        currentUserId="user-parent-1"
+        currentUserRole="parent"
+        switchContext={{ isSwitching: true, fromNannyName: null }}
+      />,
+    );
+    expect(screen.getByText(/your current nanny/i)).toBeInTheDocument();
+  });
+
+  it("does NOT call connectChildInvite while the checkbox is unticked", async () => {
+    render(
+      <InviteLandingClient
+        token={TOKEN}
+        preview={pendingNannyToParent}
+        previewError={null}
+        currentUserId="user-parent-1"
+        currentUserRole="parent"
+        switchContext={{ isSwitching: true, fromNannyName: "Anna" }}
+      />,
+    );
+    const switchButton = screen.getByRole("button", {
+      name: /switch to sarah/i,
+    });
+    fireEvent.click(switchButton);
+    // Disabled — click is a no-op. No navigation, no router push.
+    await waitFor(() => {
+      expect(state.pushCalls).toEqual([]);
+    });
+  });
+});
+
 // ── Anon — direction-aware signup link (Medium fix) ──────────────────
 
 describe("InviteLandingClient — anon signup routing", () => {
