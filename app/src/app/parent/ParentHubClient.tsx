@@ -1785,7 +1785,10 @@ export function ParentHubClient({
 
           {/* Sub-tab: My childcare */}
           {nannySubTab === "childcare" && (
-            <MyChildcareTab position={position} />
+            <MyChildcareTab
+              position={position}
+              hasActivePlacement={!!placement}
+            />
           )}
         </div>
       </div>

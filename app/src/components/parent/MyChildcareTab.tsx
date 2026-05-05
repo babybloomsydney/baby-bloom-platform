@@ -18,16 +18,30 @@ import type { TypeformFormData } from "@/app/parent/request/questions";
 
 interface MyChildcareTabProps {
   position: PositionWithChildren | null;
+  /**
+   * True when the parent has an active placement. Set by the page-
+   * level fetch via `getParentPlacement`. When true, the
+   * "recreate position" prompt is suppressed in favour of a
+   * placement-aware summary — the parent went through the invite
+   * link path, not the matchmaking form, so prompting them to
+   * recreate the position is wrong.
+   */
+  hasActivePlacement?: boolean;
 }
 
-export function MyChildcareTab({ position }: MyChildcareTabProps) {
+export function MyChildcareTab({
+  position,
+  hasActivePlacement = false,
+}: MyChildcareTabProps) {
   const router = useRouter();
   const [positionEditing, setPositionEditing] = useState(false);
   const [showPositionMenu, setShowPositionMenu] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [closing, setClosing] = useState(false);
 
-  const details = position ? (position.details as Record<string, unknown> | null) : null;
+  const details = position
+    ? (position.details as Record<string, unknown> | null)
+    : null;
   const formData = (details?.form_data ?? {}) as Partial<TypeformFormData>;
   const hasPosition = !!position;
   const hasFormData = !!details?.form_data;
@@ -54,15 +68,36 @@ export function MyChildcareTab({ position }: MyChildcareTabProps) {
             Create your position to kickstart our childcare journey
           </p>
         </div>
+      ) : !hasFormData && hasActivePlacement ? (
+        // Invite-link path — the position was auto-created by
+        // `ensure_placement` to anchor the placement, but the parent
+        // never went through the typeform. Showing them "recreate
+        // position" is wrong; they have a nanny, the marketplace
+        // listing is intentionally empty.
+        <div className="text-center py-8 space-y-2">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50">
+            <Check className="h-6 w-6 text-emerald-500" />
+          </div>
+          <p className="text-sm font-medium text-slate-700">
+            You&apos;re linked with your nanny
+          </p>
+          <p className="text-xs text-slate-400 max-w-sm mx-auto">
+            You connected via an invite link, so there&apos;s no marketplace
+            position to manage here.
+          </p>
+        </div>
       ) : !hasFormData ? (
         <div className="text-center py-8 space-y-3">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-50">
             <ClipboardList className="h-6 w-6 text-violet-400" />
           </div>
           <div>
-            <p className="text-sm font-medium text-slate-700">Position needs updating</p>
+            <p className="text-sm font-medium text-slate-700">
+              Position needs updating
+            </p>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              Please recreate your childcare position using the new form to enable editing.
+              Please recreate your childcare position using the new form to
+              enable editing.
             </p>
           </div>
           <Button asChild className="bg-violet-600 hover:bg-violet-700">
@@ -133,7 +168,8 @@ export function MyChildcareTab({ position }: MyChildcareTabProps) {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-slate-600">
-                Are you sure you want to close this childcare position? This will:
+                Are you sure you want to close this childcare position? This
+                will:
               </p>
               <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
                 <li>Remove your position from matching</li>
