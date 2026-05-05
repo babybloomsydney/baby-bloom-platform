@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:invites": "PLAYWRIGHT_TEST_INVITES_ENABLED=true playwright test tests/e2e/invite-flow-path-a.spec.ts tests/e2e/invite-flow-path-b.spec.ts tests/e2e/invite-flow-path-c.spec.ts tests/e2e/invite-flow-path-d.spec.ts tests/e2e/invite-landing.spec.ts --workers=1"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
