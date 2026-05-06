@@ -1,25 +1,20 @@
 "use client";
 
 /**
- * ParentAvatarEditor — A-05.
+ * ChildAvatarEditor — A-06.
  *
- * Click-to-edit wrapper around the parent's hero avatar. Tapping the
- * avatar opens a small dialog with the only action(s) appropriate for
- * the current state:
- *   - "Add image"      — when the parent has no avatar set
- *   - "Replace image"  — when an avatar exists
- *   - "Remove image"   — only when an avatar exists
+ * Click-to-edit wrapper around the child's hero avatar in BAppLayout.
+ * Mirrors `ParentAvatarEditor` (A-05) — same dialog shape, same
+ * upload mechanism, same orphan-cleanup pattern. Differences vs the
+ * parent editor:
  *
- * Each upload action triggers a hidden `<input type="file">`, validates
- * type + size client-side, calls the existing `uploadFile` helper to
- * push the file into the `profile-pictures` Supabase Storage bucket,
- * and then persists the resulting public URL via
- * `updateParentProfilePictureUrl` (lib/actions/parent.ts).
- *
- * The editor mirrors the nanny photo-upload constraints from
- * `app/nanny/profile/NannyMyProfile.tsx` (5MB cap, image/* MIME):
- * the parent flow differs only in entry point (avatar tap vs. dedicated
- * profile page) — the upload mechanism is reused.
+ *   - Either the linked parent OR the linked nanny can edit. The
+ *     server action (`updateChildProfilePictureUrl`) verifies the
+ *     caller is one of those two users.
+ *   - Sized for the smaller hero avatar (h-20 w-20, emerald palette
+ *     to match the BB-app feed's existing visual language).
+ *   - Persists `child_client.profile_picture_url` instead of
+ *     `user_profiles.profile_picture_url`.
  */
 
 import { useRef, useState, useTransition } from "react";
@@ -27,7 +22,7 @@ import { useRouter } from "next/navigation";
 import { Camera, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadFile } from "@/lib/supabase/storage";
-import { updateParentProfilePictureUrl } from "@/lib/actions/parent";
+import { updateChildProfilePictureUrl } from "@/lib/actions/bapp/child-clients";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,13 +33,10 @@ import {
 
 const ACCEPTED_MIME = "image/jpeg,image/png,image/webp";
 const ACCEPTED_MIME_LIST = ["image/jpeg", "image/png", "image/webp"];
-const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5MB — matches the nanny pattern
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const STORAGE_BUCKET = "profile-pictures";
 const PUBLIC_PATH_PREFIX = `/storage/v1/object/public/${STORAGE_BUCKET}/`;
 
-/** Pulls the in-bucket path out of a public Supabase Storage URL.
- *  Returns null when the URL doesn't belong to our bucket — the caller
- *  treats null as "no old object to remove". */
 function extractStoragePath(url: string | null): string | null {
   if (!url) return null;
   try {
@@ -56,19 +48,20 @@ function extractStoragePath(url: string | null): string | null {
   }
 }
 
-export type ParentAvatarEditorProps = {
-  /** Current avatar URL (`user_profiles.profile_picture_url`). Null for
-   *  parents who haven't uploaded one yet — falls back to the initial
-   *  letter circle. */
+export type ChildAvatarEditorProps = {
+  childId: string;
+  /** Current avatar URL (`child_client.profile_picture_url`). */
   currentUrl: string | null;
-  /** First name (used for the initial-letter fallback + alt text). */
-  firstName: string;
+  /** Child's first name — used for the initial-letter fallback + alt
+   *  text + personalised aria-label. */
+  childFirstName: string | null;
 };
 
-export function ParentAvatarEditor({
+export function ChildAvatarEditor({
+  childId,
   currentUrl,
-  firstName,
-}: ParentAvatarEditorProps) {
+  childFirstName,
+}: ChildAvatarEditorProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +70,14 @@ export function ParentAvatarEditor({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasAvatar = !!currentUrl;
-  const initial = (firstName?.[0] ?? "?").toUpperCase();
+  const displayName = childFirstName ?? "Child";
+  const initial = (childFirstName?.[0] ?? "?").toUpperCase();
+  // Disambiguator for the aria-label when childFirstName is null and
+  // multiple children might render side-by-side (a11y-architect MED:
+  // SC 2.4.6 — accessible names should be unique). Using the last 4
+  // chars of the child id keeps the announcement short while still
+  // distinguishing siblings without exposing the full uuid.
+  const ariaSuffix = childFirstName === null ? ` (${childId.slice(-4)})` : "";
 
   function pickFile() {
     setError(null);
@@ -86,16 +86,9 @@ export function ParentAvatarEditor({
 
   async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    // Reset the input so re-selecting the same file fires onChange.
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file) return;
 
-    // Client-side validation. The server action also validates the
-    // resulting URL prefix; storage RLS gates the upload itself. The
-    // explicit MIME allowlist (rather than `image/*` prefix) excludes
-    // `image/svg+xml` — SVG is technically an image MIME but executes
-    // script when loaded as a document, so we don't accept it here
-    // even though the storage layer might let it through.
     if (!ACCEPTED_MIME_LIST.includes(file.type)) {
       setError("Please choose a JPEG, PNG, or WEBP image.");
       return;
@@ -125,27 +118,28 @@ export function ParentAvatarEditor({
       }
       newPath = extractStoragePath(result.url);
 
-      const persist = await updateParentProfilePictureUrl(result.url);
+      const persist = await updateChildProfilePictureUrl(childId, result.url);
       if (!persist.success) {
-        // DB-pointer write failed — the freshly-uploaded file is now
-        // an orphan in storage. Best-effort delete so we don't leak
-        // unreferenced blobs (security-reviewer HIGH).
         if (newPath) {
           await supabase.storage
             .from(STORAGE_BUCKET)
             .remove([newPath])
             .catch(() => undefined);
         }
-        setError(persist.error ?? "Couldn't save your new photo.");
+        setError(persist.error ?? "Couldn't save the new photo.");
         return;
       }
 
-      // Replace flow: the old object is no longer referenced. Delete
-      // it best-effort so the bucket doesn't accumulate stale blobs
-      // every time a parent updates their picture (security-reviewer
-      // HIGH on unbounded growth).
+      // Replace flow — only delete the old object if it was uploaded by
+      // THIS user (i.e. it lives in the caller's own folder). The other
+      // role's earlier upload may still live in their folder; storage
+      // RLS would reject the cross-user remove anyway.
       const oldPath = extractStoragePath(currentUrl);
-      if (oldPath && oldPath !== newPath) {
+      if (
+        oldPath &&
+        oldPath !== newPath &&
+        oldPath.startsWith(`${authUser.id}/`)
+      ) {
         await supabase.storage
           .from(STORAGE_BUCKET)
           .remove([oldPath])
@@ -153,21 +147,15 @@ export function ParentAvatarEditor({
       }
 
       setIsOpen(false);
-      // Re-fetch the server-rendered surface so the new avatar appears
-      // wherever `user_profiles.profile_picture_url` is read.
       startTransition(() => router.refresh());
     } catch (err) {
-      // Reach here only if a Promise threw outside the {success,error}
-      // envelopes (e.g. SDK exception, network teardown). Best-effort
-      // clean up any uploaded object so the failure is silent in
-      // storage too.
       if (newPath) {
         await supabase.storage
           .from(STORAGE_BUCKET)
           .remove([newPath])
           .catch(() => undefined);
       }
-      console.error("[ParentAvatarEditor] upload error:", err);
+      console.error("[ChildAvatarEditor] upload error:", err);
       setError("Upload failed — please try again.");
     } finally {
       setUploading(false);
@@ -178,34 +166,45 @@ export function ParentAvatarEditor({
     setError(null);
     setUploading(true);
     try {
-      const result = await updateParentProfilePictureUrl(null);
+      const result = await updateChildProfilePictureUrl(childId, null);
       if (!result.success) {
-        setError(result.error ?? "Couldn't remove your photo.");
+        setError(result.error ?? "Couldn't remove the photo.");
         return;
       }
-      // DB pointer cleared — close + refresh before attempting blob
-      // cleanup so a transient cleanup failure can't paint a
-      // misleading error over a successful remove (code-reviewer HIGH).
+
+      // DB pointer is cleared — the logical operation is done. Close
+      // the dialog + refresh the page BEFORE attempting blob cleanup
+      // so a transient cleanup failure can't paint a misleading error
+      // over what the user just successfully did (code-reviewer HIGH).
       setIsOpen(false);
       startTransition(() => router.refresh());
 
+      // Best-effort delete the prior blob, fire-and-forget. RLS would
+      // reject a cross-user remove, so we only attempt when the path
+      // is in the caller's own folder.
       const oldPathSnapshot = extractStoragePath(currentUrl);
       if (oldPathSnapshot) {
         void (async () => {
           try {
             const supabase = createClient();
-            await supabase.storage
-              .from(STORAGE_BUCKET)
-              .remove([oldPathSnapshot])
-              .catch(() => undefined);
+            const {
+              data: { user: authUser },
+            } = await supabase.auth.getUser();
+            if (authUser && oldPathSnapshot.startsWith(`${authUser.id}/`)) {
+              await supabase.storage
+                .from(STORAGE_BUCKET)
+                .remove([oldPathSnapshot])
+                .catch(() => undefined);
+            }
           } catch {
-            // best-effort
+            // Cleanup is best-effort; storage lifecycle / future cron
+            // can reap orphans. Don't surface to the user.
           }
         })();
       }
     } catch (err) {
-      console.error("[ParentAvatarEditor] remove error:", err);
-      setError("Couldn't remove your photo. Please try again.");
+      console.error("[ChildAvatarEditor] remove error:", err);
+      setError("Couldn't remove the photo. Please try again.");
     } finally {
       setUploading(false);
     }
@@ -215,48 +214,36 @@ export function ParentAvatarEditor({
 
   return (
     <>
-      {/* Avatar surface — clickable. Renders the same visual the parent
-          hub used before A-05 (h-24 w-24, white border, violet bg) so the
-          hero layout doesn't shift. The button wrapper carries the
-          accessible name + focus ring; the inner div is presentational. */}
       <button
         type="button"
         onClick={() => setIsOpen(true)}
         aria-label={
           hasAvatar
-            ? `Edit ${firstName}'s profile picture`
-            : `Add a profile picture for ${firstName}`
+            ? `Edit ${displayName}'s profile picture${ariaSuffix}`
+            : `Add a profile picture for ${displayName}${ariaSuffix}`
         }
-        className="group relative h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2"
+        className="group relative h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-emerald-50 shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2"
       >
         {currentUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={currentUrl}
-            alt={`${firstName}'s profile picture`}
-            width={96}
-            height={96}
+            alt={`${displayName}'s profile picture`}
+            width={80}
+            height={80}
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-violet-300">
+          <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-emerald-500">
             {initial}
           </div>
         )}
 
-        {/* Hover/focus camera overlay — communicates the click affordance
-            visually (WCAG 1.4.1 — the click target shouldn't rely on a
-            tooltip alone). a11y-architect HIGH: bumped scrim from /40
-            to /60 so the white camera icon clears WCAG 1.4.11 (3:1
-            graphical-contrast) regardless of the underlying photo
-            colour. Focus state uses /70 for a stronger differentiator
-            from hover so keyboard users can tell which input mode
-            triggered the overlay. */}
         <span
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 flex items-center justify-center bg-slate-900/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:bg-slate-900/70 group-focus-visible:opacity-100"
         >
-          <Camera className="h-6 w-6 text-white" />
+          <Camera className="h-5 w-5 text-white" />
         </span>
       </button>
 
@@ -264,15 +251,13 @@ export function ParentAvatarEditor({
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {hasAvatar ? "Profile picture" : "Add profile picture"}
+              {hasAvatar
+                ? `${displayName}'s profile picture`
+                : `Add ${displayName}'s profile picture`}
             </DialogTitle>
           </DialogHeader>
 
           {error && (
-            // `key={error}` forces a remount when the message text changes
-            // so screen readers re-announce the new text even when only
-            // the content changed (a11y-architect MED — `role="alert"`
-            // on an in-place text swap can be missed by some AT engines).
             <div
               key={error}
               role="alert"
@@ -287,7 +272,7 @@ export function ParentAvatarEditor({
               type="button"
               onClick={pickFile}
               disabled={uploading}
-              className="w-full bg-violet-600 hover:bg-violet-700"
+              className="w-full bg-emerald-600 hover:bg-emerald-700"
             >
               {uploading ? (
                 <>
@@ -311,7 +296,6 @@ export function ParentAvatarEditor({
             )}
           </div>
 
-          {/* Hidden file picker — driven by the buttons above. */}
           <input
             ref={fileInputRef}
             type="file"

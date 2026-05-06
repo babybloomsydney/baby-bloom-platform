@@ -41,6 +41,13 @@ export interface ChildClient {
    * if anyone re-connects. Cron deletes rows older than 365 days.
    */
   orphaned_at: string | null;
+  /**
+   * Public Supabase Storage URL for the child's avatar (A-06).
+   * Either the linked parent or the linked nanny may update this via
+   * `updateChildProfilePictureUrl`. Null falls back to the first-letter
+   * initial circle in the BB-app feed UI.
+   */
+  profile_picture_url: string | null;
   created_at: string;
   updated_at: string;
 }

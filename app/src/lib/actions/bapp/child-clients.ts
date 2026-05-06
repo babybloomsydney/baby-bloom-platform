@@ -734,3 +734,141 @@ export async function deleteChild(childId: string): Promise<{
     return { success: false, error: "Failed to delete child" };
   }
 }
+
+// ── A-06: child profile picture ──────────────────────────────────────────
+
+/**
+ * Validates that a candidate URL is a public Supabase Storage URL pointing
+ * at the `profile-pictures` bucket, in the caller's own user-id folder.
+ *
+ * Mirrors the validator in `lib/actions/parent.ts` (parent avatar flow).
+ * The "own folder" tie keeps the persisted pointer constrained to bytes
+ * the caller actually uploaded — so a parent or nanny can only set a URL
+ * they themselves wrote into storage. Storage RLS already gates the
+ * upload itself; this check applies the same constraint to the DB
+ * pointer, defence-in-depth.
+ *
+ * Accepts `null` to clear the avatar (Remove Image flow).
+ */
+const MAX_CHILD_PICTURE_URL_LENGTH = 2048;
+const UUID_REGEX_CHILD =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidChildPictureUrl(
+  url: string | null,
+  callerUserId: string,
+): boolean {
+  if (url === null) return true;
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (url.length > MAX_CHILD_PICTURE_URL_LENGTH) return false;
+  const supabaseUrlRaw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrlRaw) return false;
+
+  let parsed: URL;
+  let expectedOrigin: string;
+  try {
+    parsed = new URL(url);
+    expectedOrigin = new URL(supabaseUrlRaw).origin;
+  } catch {
+    return false;
+  }
+
+  if (parsed.origin !== expectedOrigin) return false;
+  const expectedPathPrefix = "/storage/v1/object/public/profile-pictures/";
+  if (!parsed.pathname.startsWith(expectedPathPrefix)) return false;
+
+  const remainder = parsed.pathname.slice(expectedPathPrefix.length);
+  const firstSegment = remainder.split("/")[0] ?? "";
+  if (!UUID_REGEX_CHILD.test(firstSegment)) return false;
+  if (firstSegment.toLowerCase() !== callerUserId.toLowerCase()) return false;
+
+  return true;
+}
+
+/**
+ * Updates `child_client.profile_picture_url` for a single child. The
+ * caller MUST be either the parent or the nanny linked to that child;
+ * any other user is rejected even if they hold a valid auth token.
+ *
+ * Either role can edit the avatar — A-06 is symmetric. If the parent
+ * uploads, the nanny sees the new picture in the feed; if the nanny
+ * uploads, the parent sees it. There is one shared
+ * `profile_picture_url` per child; last-write wins.
+ *
+ * The bytes are written via `uploadFile("profile-pictures", ...)` on
+ * the client (storage RLS gates writes to the caller's own folder).
+ * This action only updates the DB pointer.
+ */
+export async function updateChildProfilePictureUrl(
+  childClientId: string,
+  newUrl: string | null,
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    if (!isValidChildPictureUrl(newUrl, user.id)) {
+      return { success: false, error: "Invalid profile picture URL" };
+    }
+
+    // Reject malformed child ids before they reach Postgres so we
+    // don't log a noisy "invalid input syntax for type uuid" error
+    // for what is really a client bug or scan attempt.
+    if (!UUID_REGEX_CHILD.test(childClientId)) {
+      return { success: false, error: "Child not found" };
+    }
+
+    // Authorisation: caller must be parent OR nanny on this child. We
+    // use the admin client here because the standard `child_client` RLS
+    // policy already gates SELECT to the linked parties, but mixing
+    // RLS with the explicit ownership check below is harder to reason
+    // about than letting the action itself enforce the gate. The admin
+    // read is followed by an explicit comparison; no data leaves the
+    // server unless the caller is one of the linked users.
+    const admin = createAdminClient();
+    const { data: child, error: childErr } = await admin
+      .from("child_client")
+      .select("id, parent_user_id, nanny_user_id")
+      .eq("id", childClientId)
+      .maybeSingle();
+    if (childErr || !child) {
+      return { success: false, error: "Child not found" };
+    }
+    const isParent = child.parent_user_id === user.id;
+    const isNanny = child.nanny_user_id === user.id;
+    if (!isParent && !isNanny) {
+      return { success: false, error: "Not authorised for this child" };
+    }
+
+    // SECURITY: this admin .update() bypasses RLS. The ownership
+    // gate above (`isParent || isNanny`) is the ONLY enforcement
+    // layer. Any future code path mutating
+    // `child_client.profile_picture_url` MUST replicate the same
+    // ownership check or route through this action.
+    const { error: updateError } = await admin
+      .from("child_client")
+      .update({ profile_picture_url: newUrl })
+      .eq("id", childClientId);
+    if (updateError) {
+      console.error(
+        "[updateChildProfilePictureUrl] update error:",
+        updateError,
+      );
+      return { success: false, error: "Failed to update profile picture" };
+    }
+
+    // Both parties see the new picture — invalidate both feeds.
+    revalidatePath(`/parent/development/${childClientId}`);
+    revalidatePath(`/nanny/development/${childClientId}`);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("updateChildProfilePictureUrl unexpected error:", err);
+    return { success: false, error: "Failed to update profile picture" };
+  }
+}

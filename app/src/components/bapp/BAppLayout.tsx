@@ -19,6 +19,7 @@ import type { ChildClient } from "@/types/bapp";
 import { ObservationSheet } from "./sheets/ObservationSheet";
 import { DiarySheet } from "./sheets/DiarySheet";
 import { PlanSheet } from "./sheets/PlanSheet";
+import { ChildAvatarEditor } from "./ChildAvatarEditor";
 
 interface BAppLayoutProps {
   child: ChildClient;
@@ -48,8 +49,6 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
   const basePath = `/${role}/development/${child.id}`;
   const hubPath = `/${role}?t=children`;
 
-  const initial = child.first_name?.[0]?.toUpperCase() ?? "?";
-
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Scrollable content area */}
@@ -62,14 +61,17 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
           <div className="h-12 bg-gradient-to-br from-emerald-50 to-emerald-100/50" />
 
           <div className="px-5 pb-4">
-            {/* Avatar + Name — overlaps the header strip */}
+            {/* Avatar + Name — overlaps the header strip. The avatar is
+                click-to-edit per amendment A-06: either the linked
+                parent or nanny can add/replace/remove the child's
+                picture (server action enforces the role check). */}
             <div className="flex items-end gap-4 -mt-8">
               <div className="relative shrink-0">
-                <div className="relative h-20 w-20 overflow-hidden rounded-full border-4 border-white bg-emerald-50 shadow-md">
-                  <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-emerald-500">
-                    {initial}
-                  </div>
-                </div>
+                <ChildAvatarEditor
+                  childId={child.id}
+                  currentUrl={child.profile_picture_url}
+                  childFirstName={child.first_name}
+                />
               </div>
 
               <div className="flex-1 min-w-0 pb-1 pt-4">
