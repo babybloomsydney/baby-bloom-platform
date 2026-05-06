@@ -17,6 +17,13 @@
 import { type ReactNode } from "react";
 import { KatieProvider, useKatie } from "@/contexts/KatieContext";
 import { KatieDeck } from "./KatieDeck";
+import {
+  KatieTabs,
+  KATIE_PANEL_ID,
+  KATIE_TAB_ID,
+  MAIN_PANEL_ID,
+  MAIN_TAB_ID,
+} from "./KatieTabs";
 import { useAuth } from "@/contexts/AuthContext";
 import { useKatieRealtime } from "./use-katie-realtime";
 import {
@@ -88,37 +95,79 @@ function ShellInner({ children }: { children: ReactNode }) {
   //     would silently break any future `position: sticky` descendant.
   //     The `h-dvh` + `min-h-dvh` pair already prevents document-level
   //     scroll-past; overflow-hidden was belt-and-braces we don't need.
+  // A-07 height contract:
+  //   • Outer container: `h-dvh` on narrow viewports — drives the
+  //     overall height budget so the inner row can deduct the tab
+  //     strip's height naturally via flex-col distribution. Desktop
+  //     (xl+) keeps `min-h-dvh` so the page can grow when content
+  //     does (no carousel + no tab strip on desktop).
+  //   • Inner row: `flex-1 min-h-0` so it consumes the leftover budget
+  //     after the tabs and shrinks correctly when content overflows.
+  //   • Aside: `h-full` on narrow (drives off the inner row height),
+  //     `xl:h-dvh` on desktop (sticky to viewport since there's no
+  //     tab strip eating into the budget).
+  // Without this contract, `h-dvh` on the aside extended past the
+  // shorter parent row (the row was viewport-minus-tabs-tall) by the
+  // tab-strip height, clipping the input + footer below the fold on
+  // iOS Safari (code-reviewer MED 2026-05-06).
   return (
     <div
-      className="flex min-h-dvh w-full"
+      className="flex h-dvh w-full flex-col xl:h-auto xl:min-h-dvh xl:flex-row"
       style={{ ["--katie-bp" as string]: CAROUSEL_BP }}
     >
-      {/* Katie column — visible side-by-side on wide; full-screen carousel panel on narrow */}
-      <aside
-        className={[
-          "sticky top-0 flex h-dvh min-w-0 overscroll-contain border-r border-slate-200 bg-white",
-          // Wide: ⅓ of the main width (approximated via max-w-xs) pinned left
-          "xl:w-[336px] xl:flex-shrink-0",
-          // Narrow: full-width carousel panel, shown/hidden via class
-          "w-full xl:sticky",
-          visibleDeck === "katie" ? "xl:relative" : "hidden xl:flex",
-        ].join(" ")}
-        aria-label="Katie"
-      >
-        <div className="w-full min-w-0">
-          <KatieDeck />
-        </div>
-      </aside>
+      {/* A-07: Chrome-style tab strip at the very top of the carousel
+          viewport. Hidden on desktop (xl+) where the side-by-side
+          layout makes the swap control unnecessary. The tabs replace
+          the previous KatieSwapButton + KatieHeader hamburger swap
+          UI. The deck-internal KatieHeader still renders below for
+          consistency with the desktop view (per spec note §110). */}
+      <KatieTabs />
 
-      {/* Main deck — hidden when carousel is showing Katie; always visible on wide */}
-      <main
-        className={[
-          "min-w-0 flex-1",
-          visibleDeck === "main" ? "block" : "hidden xl:block",
-        ].join(" ")}
-      >
-        {children}
-      </main>
+      <div className="flex w-full min-h-0 flex-1 xl:flex-row">
+        {/* Katie column — visible side-by-side on wide; full-screen carousel panel on narrow.
+            A-07: aside body adopts the scrapbook-beige bg so the active Katie tab head
+            merges seamlessly with the body below it (Chrome-tab visual). Applied on
+            both mobile + desktop per Bailey's confirmation that desktop should match.
+            ARIA: this aside IS the tabpanel for the Katie tab — `role="tabpanel"`
+            + `aria-labelledby` linkage replaces the prior `aria-label="Katie"`. */}
+        <aside
+          id={KATIE_PANEL_ID}
+          role="tabpanel"
+          aria-labelledby={KATIE_TAB_ID}
+          className={[
+            "sticky top-0 flex h-full min-w-0 overscroll-contain border-r border-slate-200 bg-[hsl(var(--color-katie-bg-beige))] xl:h-dvh",
+            // Wide: ⅓ of the main width (approximated via max-w-xs) pinned left
+            "xl:w-[336px] xl:flex-shrink-0",
+            // Narrow: full-width carousel panel, shown/hidden via class
+            "w-full xl:sticky",
+            visibleDeck === "katie" ? "xl:relative" : "hidden xl:flex",
+          ].join(" ")}
+        >
+          <div className="w-full min-w-0">
+            <KatieDeck />
+          </div>
+        </aside>
+
+        {/* Main deck — hidden when carousel is showing Katie; always visible on wide.
+            We wrap children in a tabpanel div rather than putting the role on
+            the <main> element itself so the existing main-landmark semantics
+            stay intact (a11y-architect HIGH on tabpanel linkage). */}
+        <main
+          className={[
+            "min-w-0 flex-1",
+            visibleDeck === "main" ? "block" : "hidden xl:block",
+          ].join(" ")}
+        >
+          <div
+            id={MAIN_PANEL_ID}
+            role="tabpanel"
+            aria-labelledby={MAIN_TAB_ID}
+            tabIndex={0}
+          >
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

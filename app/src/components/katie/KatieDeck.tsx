@@ -242,7 +242,7 @@ export function KatieDeck() {
           onDismiss: handleDraftDismiss,
         }}
       >
-        <div className="flex h-full flex-col bg-white">
+        <div className="flex h-full flex-col bg-[hsl(var(--color-katie-bg-beige))]">
           <KatieHeader />
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">

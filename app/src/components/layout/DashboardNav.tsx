@@ -5,7 +5,6 @@ import { Baby, Bell, Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { KatieSwapButton } from "@/components/katie/KatieSwapButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,9 +44,11 @@ export function DashboardNav({ role }: DashboardNavProps) {
         </span>
       </Link>
 
-      {/* Right: Katie swap (narrow viewport only) + Bell + Avatar dropdown */}
+      {/* Right: Bell + Avatar dropdown.
+          A-07: KatieSwapButton was removed. The new top-tab strip
+          (rendered by KatieShell above the carousel viewport in
+          narrow widths) is now the swap control. */}
       <div className="flex items-center gap-2">
-        <KatieSwapButton />
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative" asChild>
           <Link

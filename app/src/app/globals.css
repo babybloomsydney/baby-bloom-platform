@@ -8,8 +8,6 @@
   }
 }
 
-
-
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -37,6 +35,14 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+
+    /* A-07 — Katie scrapbook-beige theme. Per spec (oklch ~96% 0.02 80)
+       converted to shadcn HSL for consistency with the rest of this
+       file's tokens. Pale, warm, very low chroma — the "scrapbook
+       paper" feel. Used as the Katie tab + body background to give
+       the deck its own visual identity vs the slate-50 main deck. */
+    --color-katie-bg-beige: 38 40% 96%;
+    --color-katie-bg-beige-muted: 38 25% 92%;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -66,8 +72,6 @@
   }
 }
 
-
-
 @layer base {
   * {
     @apply border-border;
@@ -78,6 +82,11 @@
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
 }
