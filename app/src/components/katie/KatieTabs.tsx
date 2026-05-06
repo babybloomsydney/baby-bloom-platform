@@ -191,7 +191,7 @@ export function KatieTabs() {
       role="tablist"
       aria-label="Switch deck"
       aria-orientation="horizontal"
-      className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-1 pt-1 pb-[2px] xl:hidden"
+      className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-1 pt-1 xl:hidden"
     >
       {/* Full-width violet horizontal divider, painted at the strip's
           bottom edge. z-0 so the active tab (z-10) covers the divider
