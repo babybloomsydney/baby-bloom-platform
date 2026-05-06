@@ -105,6 +105,71 @@ function StartDateLine({ startDate }: { startDate: string | null }) {
   );
 }
 
+// ── Default-variant (A-03 hero card) helpers ──────────────────────────
+//
+// The default variant renders a vertical "stat" grid below the avatar +
+// name. Each cell is a small column with a label and a value. These
+// helpers keep the per-cell value markup colocated with the card so a
+// future copy or token tweak doesn't require chasing across files.
+
+function Stat({
+  icon,
+  label,
+  valueNode,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  valueNode: React.ReactNode;
+}) {
+  // text-slate-500 (#64748b on slate-50 = 4.84:1) clears WCAG AA for
+  // 11px text. The original `text-slate-400` (#94a3b8 = 2.85:1) failed
+  // (a11y-architect HIGH 2026-05-06).
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-0.5 rounded-lg bg-slate-50 px-2 py-2.5">
+      <div className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-slate-500">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="text-sm font-medium text-slate-700">{valueNode}</div>
+    </div>
+  );
+}
+
+function defaultStatValueRate(placement: PlacementData) {
+  const value = placement.hourlyRate
+    ? `$${placement.hourlyRate}/hr`
+    : placement.nannyHourlyRate
+      ? `$${placement.nannyHourlyRate}/hr`
+      : "Not set";
+  return <span>{value}</span>;
+}
+
+function defaultStatValueHours(placement: PlacementData) {
+  return (
+    <span>
+      {placement.weeklyHours ? `${placement.weeklyHours}/wk` : "Not set"}
+    </span>
+  );
+}
+
+function StartDateValue({ startDate }: { startDate: string | null }) {
+  if (!startDate) return <span className="text-slate-400">Not set</span>;
+  if (startDate === "tbc") return <span className="text-amber-600">TBC</span>;
+  const startMon = new Date(`${startDate}T00:00:00`);
+  if (Number.isNaN(startMon.getTime())) {
+    return <span className="text-slate-400">Not set</span>;
+  }
+  return (
+    <span>
+      {startMon.toLocaleDateString("en-AU", { day: "numeric", month: "short" })}
+    </span>
+  );
+}
+
+// ── Compact-variant helpers ────────────────────────────────────────────
+// These remain unchanged from the pre-A-03 implementation. The compact
+// body branch above still consumes them.
+
 function defaultRateNode(placement: PlacementData) {
   const value = placement.hourlyRate
     ? `$${placement.hourlyRate}/hr`
@@ -162,47 +227,40 @@ export function PlacementCard({
     );
   }
 
-  const avatarSize = compact ? "w-14 h-14" : "w-20 h-20";
-  const avatarInitialClass = compact ? "text-lg" : "text-2xl";
-  const nameClass = compact ? "font-semibold text-base" : "font-bold text-xl";
-  const cardPadding = compact ? "px-4 py-3" : "px-5 py-4";
+  const firstName = placement.nannyName.split(" ")[0];
+  const lastInitial = (placement.nannyName.split(" ")[1] ?? "")
+    .charAt(0)
+    .toUpperCase();
 
-  const body = (
-    <CardContent className={cardPadding}>
+  // ───────────────────────────────────────────────────────────────────────
+  // Compact body — UNCHANGED from prior implementation. Used by Katie's
+  // chat tile and any other surface that consumes
+  // <PlacementCard compact />. Editing this branch breaks those consumers.
+  // ───────────────────────────────────────────────────────────────────────
+  const compactBody = (
+    <CardContent className="px-4 py-3">
       <div className="flex items-start gap-4 relative">
-        {/* Photo */}
         <div className="shrink-0">
           {placement.nannyPhoto ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={placement.nannyPhoto}
               alt=""
-              className={cn(avatarSize, "rounded-full object-cover")}
+              className="w-14 h-14 rounded-full object-cover"
             />
           ) : (
-            <div
-              className={cn(
-                avatarSize,
-                "rounded-full bg-violet-100 flex items-center justify-center",
-              )}
-            >
-              <span
-                className={cn(
-                  avatarInitialClass,
-                  "font-semibold text-violet-500",
-                )}
-              >
+            <div className="w-14 h-14 rounded-full bg-violet-100 flex items-center justify-center">
+              <span className="text-lg font-semibold text-violet-500">
                 {placement.nannyName.charAt(0)}
               </span>
             </div>
           )}
         </div>
 
-        {/* Info — left */}
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2">
-            <h3 className={cn(nameClass, "text-slate-900 truncate")}>
-              {placement.nannyName.split(" ")[0]}
+            <h3 className="font-semibold text-base text-slate-900 truncate">
+              {firstName}
             </h3>
             {age != null && (
               <span className="text-base text-slate-400 shrink-0">{age}</span>
@@ -224,14 +282,12 @@ export function PlacementCard({
           )}
         </div>
 
-        {/* Right column — rate / hours / start date */}
         <div className="shrink-0 text-right space-y-1.5 mr-14">
           {rateNode ?? defaultRateNode(placement)}
           {hoursNode ?? defaultHoursNode(placement)}
           <StartDateLine startDate={placement.startDate} />
         </div>
 
-        {/* Top-right slot — menu / save tick (main page only) */}
         {menuSlot && (
           <div className="absolute top-0 right-0 flex items-center gap-0.5">
             {menuSlot}
@@ -239,7 +295,6 @@ export function PlacementCard({
         )}
       </div>
 
-      {/* View Profile — main page only; chat tile uses whole-card click */}
       {!hideViewProfile && (
         <div className="mt-4">
           <Button asChild variant="outline" className="w-full">
@@ -252,6 +307,121 @@ export function PlacementCard({
       )}
     </CardContent>
   );
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Default body — A-03 redesign. Mobile-first vertical hero card:
+  //   - Large centred avatar (w-28 mobile → w-32 sm)
+  //   - Full first name (no truncate; wraps)
+  //   - Suburb + Verified badge centred under name
+  //   - Stats grid: Rate · Hours · Start (3 columns on sm, 1 column stack on smaller)
+  //   - Optional menu slot top-right (absolute, doesn't reflow)
+  //   - View Profile button bottom (full-width)
+  // Tokens: existing violet/slate/green per Baby Bloom design system.
+  // ───────────────────────────────────────────────────────────────────────
+  const defaultBody = (
+    <CardContent className="px-5 py-6 sm:py-8">
+      <div className="relative flex flex-col items-center gap-5 text-center">
+        {/* Menu slot — absolute so it doesn't reflow the hero */}
+        {menuSlot && (
+          <div className="absolute top-0 right-0 flex items-center gap-0.5">
+            {menuSlot}
+          </div>
+        )}
+
+        {/* Avatar */}
+        <div className="shrink-0">
+          {placement.nannyPhoto ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={placement.nannyPhoto}
+              alt=""
+              className="h-28 w-28 sm:h-32 sm:w-32 rounded-full object-cover ring-4 ring-violet-50"
+            />
+          ) : (
+            <div className="h-28 w-28 sm:h-32 sm:w-32 rounded-full bg-violet-100 flex items-center justify-center ring-4 ring-violet-50">
+              <span className="text-4xl sm:text-5xl font-semibold text-violet-500">
+                {firstName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Name + age. `break-words` allows long first names to wrap rather
+            than truncate (real-soak: "Christopher", "Maximilian"). */}
+        <div className="w-full">
+          {/* slate-500 (≈4.84:1 on white) clears AA for normal text;
+              text-slate-400 (≈2.85:1) failed per a11y-architect HIGH. */}
+          <h3 className="font-bold text-2xl sm:text-3xl text-slate-900 break-words">
+            {firstName}
+            {lastInitial ? (
+              <span className="text-slate-500 font-medium">
+                {" "}
+                {lastInitial}.
+              </span>
+            ) : null}
+            {age != null && (
+              <span className="ml-2 text-lg sm:text-xl text-slate-500 font-medium">
+                {age}
+              </span>
+            )}
+          </h3>
+        </div>
+
+        {/* Suburb + Verified row */}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 -mt-2">
+          {placement.nannySuburb && (
+            <div className="flex items-center gap-1 text-sm text-slate-500">
+              <MapPin className="w-4 h-4 shrink-0" aria-hidden="true" />
+              {placement.nannySuburb}
+            </div>
+          )}
+          {placement.wwccVerified && (
+            <div className="flex items-center gap-1 text-sm font-medium text-green-600">
+              <ShieldCheck className="w-4 h-4" aria-hidden="true" />
+              Verified
+            </div>
+          )}
+        </div>
+
+        {/* Stats grid. `grid-cols-1 sm:grid-cols-3` stacks the three cells
+            vertically on the smallest viewports (a11y-architect MED:
+            cells were cramped at 320px when the main page injects an
+            <input> for inline rate/hours editing — the stack gives each
+            input its full row). Icons use slate-500 to clear the 3:1
+            graphical-contrast threshold on the slate-50 cell background. */}
+        <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+          <Stat
+            icon={<DollarSign className="h-4 w-4 text-slate-500" />}
+            label="Rate"
+            valueNode={rateNode ?? defaultStatValueRate(placement)}
+          />
+          <Stat
+            icon={<Clock className="h-4 w-4 text-slate-500" />}
+            label="Hours"
+            valueNode={hoursNode ?? defaultStatValueHours(placement)}
+          />
+          <Stat
+            icon={<Calendar className="h-4 w-4 text-slate-500" />}
+            label="Start"
+            valueNode={<StartDateValue startDate={placement.startDate} />}
+          />
+        </div>
+      </div>
+
+      {!hideViewProfile && (
+        <div className="mt-6">
+          <Button asChild variant="outline" className="w-full">
+            <Link href={`/nannies/${placement.nannyId}`}>
+              View Profile
+              <ArrowRight className="ml-1.5 w-4 h-4" aria-hidden="true" />
+            </Link>
+          </Button>
+        </div>
+      )}
+    </CardContent>
+  );
+
+  const body = compact ? compactBody : defaultBody;
 
   if (interactive) {
     return (
