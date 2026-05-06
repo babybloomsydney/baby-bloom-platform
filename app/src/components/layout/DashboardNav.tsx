@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Baby, Bell, Settings, LogOut } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,7 +29,8 @@ export function DashboardNav({ role }: DashboardNavProps) {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
-      {/* Left: Logo → hub */}
+      {/* Left: Logo → hub. A-07 fix: Baby lucide icon dropped per
+          user feedback — wordmark alone carries the brand. */}
       <Link
         href={`/${role}`}
         className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -37,19 +38,21 @@ export function DashboardNav({ role }: DashboardNavProps) {
           trackEvent({ event_name: "logo_clicked", user_role: role })
         }
       >
-        <Baby className="h-7 w-7 text-violet-500" />
         <span className="text-xl font-bold">
           <span className="text-slate-900">Baby</span>
           <span className="text-violet-500">Bloom</span>
         </span>
       </Link>
 
-      {/* Right: Bell + Avatar dropdown.
-          A-07: KatieSwapButton was removed. The new top-tab strip
-          (rendered by KatieShell above the carousel viewport in
-          narrow widths) is now the swap control. */}
+      {/* Right: Avatar dropdown.
+          A-07: the KatieSwapButton was removed when the new top-tab
+          strip (KatieShell → KatieTabs) became the swap control.
+          A-07 fix: the Bell notifications button is commented out
+          per user feedback — the inbox surface is no longer the
+          primary notification channel. Restored as easily as
+          re-uncommenting if/when notifications come back. */}
       <div className="flex items-center gap-2">
-        {/* Notifications */}
+        {/*
         <Button variant="ghost" size="icon" className="relative" asChild>
           <Link
             href={`/${role}/inbox`}
@@ -64,6 +67,7 @@ export function DashboardNav({ role }: DashboardNavProps) {
             <span className="sr-only">Notifications</span>
           </Link>
         </Button>
+        */}
 
         {/* User dropdown */}
         <DropdownMenu>

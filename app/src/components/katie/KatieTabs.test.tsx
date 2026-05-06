@@ -49,7 +49,7 @@ describe("KatieTabs — ARIA", () => {
     currentDeck = "katie";
     render(<KatieTabs />);
     const katieTab = screen.getByRole("tab", { name: /Katie/ });
-    const mainTab = screen.getByRole("tab", { name: /BabyBloom/ });
+    const mainTab = screen.getByRole("tab", { name: /Bloom/ });
     expect(katieTab).toHaveAttribute("aria-selected", "true");
     expect(mainTab).toHaveAttribute("aria-selected", "false");
   });
@@ -58,7 +58,7 @@ describe("KatieTabs — ARIA", () => {
     currentDeck = "main";
     render(<KatieTabs />);
     const katieTab = screen.getByRole("tab", { name: /Katie/ });
-    const mainTab = screen.getByRole("tab", { name: /BabyBloom/ });
+    const mainTab = screen.getByRole("tab", { name: /Bloom/ });
     expect(katieTab).toHaveAttribute("tabindex", "-1");
     expect(mainTab).toHaveAttribute("tabindex", "0");
   });
@@ -77,7 +77,7 @@ describe("KatieTabs — ARIA", () => {
       "tabindex",
       "0",
     );
-    expect(screen.getByRole("tab", { name: /BabyBloom/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveAttribute(
       "tabindex",
       "-1",
     );
@@ -89,7 +89,7 @@ describe("KatieTabs — ARIA", () => {
       "aria-controls",
       "panel-katie",
     );
-    expect(screen.getByRole("tab", { name: /BabyBloom/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveAttribute(
       "aria-controls",
       "panel-main",
     );
@@ -115,13 +115,13 @@ describe("KatieTabs — interactions", () => {
     // Focus assertion — required by the WAI-ARIA tabs pattern. Without
     // this, AT users would land on the wrong tab after Arrow nav even
     // though `aria-selected` reflects the new state.
-    expect(screen.getByRole("tab", { name: /BabyBloom/ })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveFocus();
   });
 
-  it("ArrowLeft on the BabyBloom tab swaps to Katie", () => {
+  it("ArrowLeft on the Bloom tab swaps to Katie", () => {
     currentDeck = "main";
     render(<KatieTabs />);
-    fireEvent.keyDown(screen.getByRole("tab", { name: /BabyBloom/ }), {
+    fireEvent.keyDown(screen.getByRole("tab", { name: /Bloom/ }), {
       key: "ArrowLeft",
     });
     expect(showKatieMock).toHaveBeenCalledTimes(1);
@@ -130,13 +130,13 @@ describe("KatieTabs — interactions", () => {
   it("Home key jumps to the Katie (start) tab", () => {
     currentDeck = "main";
     render(<KatieTabs />);
-    fireEvent.keyDown(screen.getByRole("tab", { name: /BabyBloom/ }), {
+    fireEvent.keyDown(screen.getByRole("tab", { name: /Bloom/ }), {
       key: "Home",
     });
     expect(showKatieMock).toHaveBeenCalledTimes(1);
   });
 
-  it("End key jumps to the BabyBloom (end) tab", () => {
+  it("End key jumps to the Bloom (end) tab", () => {
     currentDeck = "katie";
     cleanup(); // ensure prior render is unmounted to avoid duplicate roles
     render(<KatieTabs />);
