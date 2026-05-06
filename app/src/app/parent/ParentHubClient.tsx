@@ -87,6 +87,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { BrowseNanniesTab } from "@/components/parent/BrowseNanniesTab";
 import { MyChildcareTab } from "@/components/parent/MyChildcareTab";
+import { ParentAvatarEditor } from "@/components/parent/ParentAvatarEditor";
 import { ChildCardGrid } from "@/components/bapp/ChildCardGrid";
 import { PendingInvitesSection } from "@/components/bapp/PendingInvitesSection";
 import type { PendingInviteCard } from "@/types/bapp";
@@ -849,22 +850,16 @@ export function ParentHubClient({
         <div className="h-16 bg-gradient-to-br from-violet-50 to-violet-100/50" />
 
         <div className="px-5 pb-5">
-          {/* Photo + Name — overlaps the header strip */}
+          {/* Photo + Name — overlaps the header strip. Avatar is now
+              click-to-edit per amendment A-05. The component preserves
+              the prior visual (h-24 w-24, white border, violet bg) so
+              the hero layout doesn't shift. */}
           <div className="flex items-end gap-4 -mt-10">
             <div className="relative shrink-0">
-              <div className="relative h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-violet-50 shadow-md">
-                {profilePic ? (
-                  <img
-                    src={profilePic}
-                    alt={`${firstName}'s photo`}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-violet-300">
-                    {firstName[0]}
-                  </div>
-                )}
-              </div>
+              <ParentAvatarEditor
+                currentUrl={profilePic ?? null}
+                firstName={firstName}
+              />
             </div>
 
             <div className="flex-1 min-w-0 pb-1">

@@ -692,3 +692,108 @@ export async function deactivateParentAccount(): Promise<{
   await supabase.auth.signOut();
   return { success: true, error: null };
 }
+
+// ── A-05: parent profile picture ─────────────────────────────────────────
+
+/**
+ * Validates that a candidate URL is a public Supabase Storage URL pointing
+ * at the `profile-pictures` bucket, in this caller's own subdirectory —
+ * i.e. a URL the storage layer just minted for them. Defence against a
+ * parent persisting an arbitrary external URL on
+ * `user_profiles.profile_picture_url`. While `<img src>` can't run JS,
+ * an unconstrained URL could leak referrer to an attacker domain, host
+ * phishing imagery, or look hostile in the parent's hub. Constraining
+ * the column to our own bucket + this user's own folder eliminates the
+ * surface entirely.
+ *
+ * Accepts `null` to clear the avatar (Remove Image flow).
+ *
+ * Layered defences (security-reviewer 2026-05-06):
+ *   1. Length cap — reject anything > 2048 chars before parsing.
+ *   2. `new URL()` parse — collapses `..` traversal and `%xx` escapes
+ *      so the prefix check operates on the normalised pathname, not
+ *      the raw string.
+ *   3. Pathname must be `/storage/v1/object/public/profile-pictures/{userId}/...`
+ *      where `{userId}` is the caller's own auth user id. Without the
+ *      userId tie, a different parent's signed-URL share could pass.
+ */
+const MAX_PROFILE_PICTURE_URL_LENGTH = 2048;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidProfilePictureUrl(
+  url: string | null,
+  callerUserId: string,
+): boolean {
+  if (url === null) return true;
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (url.length > MAX_PROFILE_PICTURE_URL_LENGTH) return false;
+  const supabaseUrlRaw = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrlRaw) return false;
+
+  let parsed: URL;
+  let expectedOrigin: string;
+  try {
+    parsed = new URL(url);
+    expectedOrigin = new URL(supabaseUrlRaw).origin;
+  } catch {
+    return false;
+  }
+
+  if (parsed.origin !== expectedOrigin) return false;
+  // Path-traversal-resistant check: `URL` already collapsed `..` segments,
+  // so this prefix match operates on the normalised path.
+  const expectedPathPrefix = "/storage/v1/object/public/profile-pictures/";
+  if (!parsed.pathname.startsWith(expectedPathPrefix)) return false;
+
+  // Bind the URL to the caller's own subdirectory. Storage RLS already
+  // enforces this on writes; the validator enforces it on the persisted
+  // pointer too, so an attacker who somehow gained another parent's
+  // signed URL still couldn't pin it onto their own row.
+  const remainder = parsed.pathname.slice(expectedPathPrefix.length);
+  const firstSegment = remainder.split("/")[0] ?? "";
+  if (!UUID_REGEX.test(firstSegment)) return false;
+  if (firstSegment.toLowerCase() !== callerUserId.toLowerCase()) return false;
+
+  return true;
+}
+
+export async function updateParentProfilePictureUrl(
+  newUrl: string | null,
+): Promise<{ success: boolean; error: string | null }> {
+  const supabase = createClient();
+
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return { success: false, error: "Not authenticated" };
+  }
+
+  if (!isValidProfilePictureUrl(newUrl, user.id)) {
+    return {
+      success: false,
+      error: "Invalid profile picture URL",
+    };
+  }
+
+  // RLS on `user_profiles` already constrains writes to the caller's own
+  // row, but the explicit `eq("user_id", user.id)` is defence-in-depth in
+  // case the policy is ever loosened. The `profile-pictures` bucket
+  // itself enforces per-user write paths via storage RLS — this server
+  // action only updates the DB pointer, the file is already uploaded
+  // client-side via supabase/storage.ts.
+  const { error: updateError } = await supabase
+    .from("user_profiles")
+    .update({ profile_picture_url: newUrl })
+    .eq("user_id", user.id);
+
+  if (updateError) {
+    console.error("[updateParentProfilePictureUrl] update error:", updateError);
+    return { success: false, error: "Failed to update profile picture" };
+  }
+
+  revalidatePath("/parent");
+  return { success: true, error: null };
+}
