@@ -5,33 +5,45 @@
  *
  * Two-tab strip rendered under the global header (DashboardNav) in
  * carousel mode (mobile, < 1280px). Replaces the previous icon-based
- * swap controls with a Chrome-browser-tab visual:
+ * swap controls.
  *
- *   - Active tab head colour matches the deck body below it. With no
- *     border between the tab strip and the deck body, the tab and
- *     body visually merge into one continuous shape.
- *   - Inactive tab head: subtly recessed (slate-100) — clearly a
- *     button you can press, but lower in the visual hierarchy.
- *   - Active tab is wider than inactive (≈60/40 split).
- *   - Tap inactive tab → swap via the existing `KatieContext.showKatie` /
- *     `showMain`. The 300ms carousel slide animation continues to fire
- *     unchanged.
+ * ─── Visual model: Chrome browser tabs ────────────────────────────────
  *
- * Per-tab brand identity (web/design-quality.md "designed states"):
- *   - Katie:  violet accent bar + SparkleIcon + violet-700 text on active.
- *   - Bloom:  emerald accent bar + Baby icon  + emerald-700 text on active.
- * The two themes live in BRAND_THEMES below so a future add-tab is a
- * one-entry change.
+ * The tab strip + header read as one continuous chrome zone (both
+ * white, no border between them). At the bottom of the strip, a
+ * violet 2px horizontal divider stretches the full viewport width —
+ * this is the line separating the chrome from the deck body below.
  *
- * No new motion work besides the unread badge pulse (motion-safe gated).
+ * The active tab "sits on" that divider, with a matching violet
+ * outline on its top, left and right edges, and NO outline on its
+ * bottom. The active tab's bottom edge is pulled down 2px (`-mb-[2px]`)
+ * so it overlaps the divider, and the tab is z-elevated above it.
+ * The result: the divider is "broken" at the active tab's x-range,
+ * because the active tab's body bg (matching the deck below) covers
+ * that 2px of divider — and the violet outline continues seamlessly
+ * across the top of the tab and across the strip's divider on either
+ * side. One unified violet shape framing the active tab and the
+ * chrome boundary.
  *
- * ARIA: `role="tablist"` on the container, `role="tab"` per button,
+ * Inactive tabs have NO outline. Just text + hover state, sitting
+ * directly on the white strip. The violet divider runs underneath
+ * them uninterrupted. Visually they blend with the chrome zone.
+ *
+ * Active tab is wider than inactive (≈60/40 split). Both tabs use
+ * the same violet brand colour for the active highlight — per user
+ * feedback, the per-tab brand-colour split (violet for Katie,
+ * emerald for Bloom) was reverted in favour of a unified violet
+ * treatment with per-tab icons (sparkle / baby) carrying the
+ * identity.
+ *
+ * ─── ARIA ─────────────────────────────────────────────────────────────
+ *
+ * `role="tablist"` on the container, `role="tab"` per button,
  * `aria-selected` reflects active state. Each tab carries an `id` and
  * `aria-controls` pointing at the matching tabpanel rendered by
- * `KatieShell` (`panel-katie` on the Katie aside, `panel-main` inside
- * the BB-app `<main>`). Arrow-key nav (Left/Right + Home/End) moves
- * focus between tabs AND swaps decks immediately — Automatic
- * Activation per the WAI-ARIA Authoring Practices "Tabs" pattern.
+ * `KatieShell` (`panel-katie` / `panel-main`). Roving tabindex.
+ * Arrow / Home / End keys move focus AND swap decks (Automatic
+ * Activation per WAI-ARIA APG).
  */
 
 export const KATIE_TAB_ID = "tab-katie";
@@ -44,46 +56,16 @@ import { Baby } from "lucide-react";
 import { useKatie } from "@/contexts/KatieContext";
 import { SparkleIcon } from "./messages/SparkleIcon";
 
-// ── Per-tab visual themes ───────────────────────────────────────────────
-//
-// Each tab's identity is encoded as a small theme bag — bg colour to
-// match the deck body, accent-bar colour for the brand top stripe, and
-// text colour for the active label. Keeping these in one place makes
-// the difference between Katie and Bloom legible at a glance and keeps
-// future-tab additions to a single registry entry.
-
-interface TabTheme {
-  /** Active tab head bg — must match the deck body colour exactly so
-   *  the tab and body merge without a seam. */
-  activeBg: string;
-  /** Brand-coloured accent bar across the top of the active tab. */
-  accentBar: string;
-  /** Active label colour. */
-  activeText: string;
-}
-
-const KATIE_THEME: TabTheme = {
-  activeBg: "bg-[hsl(var(--color-katie-bg-beige))]",
-  accentBar: "bg-violet-600",
-  activeText: "text-violet-700",
-};
-
-const BLOOM_THEME: TabTheme = {
-  // BB-app feed already uses emerald (avatar bg-emerald-50 etc.) per
-  // BAppLayout — the Bloom tab adopts that same family for a coherent
-  // identity. Bg matches main deck slate-50 surface.
-  activeBg: "bg-slate-50",
-  accentBar: "bg-emerald-500",
-  activeText: "text-emerald-700",
-};
-
 // ── TabButton ───────────────────────────────────────────────────────────
 
 interface TabButtonProps {
   id: string;
   controls: string;
   active: boolean;
-  theme: TabTheme;
+  /** Tailwind utility for the active tab head bg. Matches the deck
+   *  body underneath so the tab and body merge seamlessly through
+   *  the broken divider line. */
+  activeBodyBg: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   children: ReactNode;
@@ -91,7 +73,7 @@ interface TabButtonProps {
 
 const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
   function TabButton(
-    { id, controls, active, theme, onClick, onKeyDown, children },
+    { id, controls, active, activeBodyBg, onClick, onKeyDown, children },
     ref,
   ) {
     return (
@@ -108,31 +90,29 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
         onClick={onClick}
         onKeyDown={onKeyDown}
         className={[
-          // Geometry: rounded top corners, square bottom. `relative`
-          // anchors the absolutely-positioned accent bar. `pt-3` leaves
-          // room for the accent bar without shifting the label.
-          "relative rounded-t-lg pb-2.5 pt-3 px-3 text-sm font-semibold transition-colors",
-          // Width: active wider than inactive (≈60/40 split). Active is
-          // basis-0 grow-[3]; inactive is basis-0 grow-[2].
+          // Base geometry. `relative` for stacking. Rounded top
+          // corners; bottom corners stay square because the active
+          // tab's bottom is supposed to flow into the deck body.
+          "relative rounded-t-lg px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
+          // Width: active wider (~60/40 split). `flex-[3] basis-0`
+          // active vs `flex-[2] basis-0` inactive.
           active ? "flex-[3] basis-0" : "flex-[2] basis-0",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2",
           active
-            ? // Active: deck-body bg + brand text + shadow lift.
-              `${theme.activeBg} ${theme.activeText} shadow-sm`
-            : // Inactive: visibly recessed against the white strip;
-              // clearly a button you can press without competing with
-              // the active tab for attention.
-              "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700",
+            ? // Active: violet outline on top + sides; NO bottom border.
+              // `-mb-[2px]` pulls the tab's bottom edge down 2px so
+              // the body bg covers (and "breaks") the strip's
+              // bottom divider line at the active tab's x-range.
+              // `z-10` keeps the tab above the divider so its bg
+              // wins the paint at the overlap. `border-b-0` on the
+              // last side completes the open-bottom outline.
+              `${activeBodyBg} text-violet-700 border-2 border-violet-600 border-b-0 -mb-[2px] z-10 shadow-[0_-1px_2px_rgba(124,58,237,0.05)]`
+            : // Inactive: NO outline. Pure text on the white strip,
+              // blending with the chrome zone. Hover gives a subtle
+              // bg + colour shift so it still reads as pressable.
+              "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
-        {/* Brand accent bar — only on the active tab. 3px tall,
-            rounded, inset slightly from the tab edges. */}
-        {active && (
-          <span
-            aria-hidden="true"
-            className={`pointer-events-none absolute inset-x-2 top-0 h-[3px] rounded-full ${theme.accentBar}`}
-          />
-        )}
         {children}
       </button>
     );
@@ -201,29 +181,26 @@ export function KatieTabs() {
   }
 
   return (
-    // Strip bg matches the DashboardNav above (white) so the header +
-    // tab strip read as one continuous chrome zone — there's no seam
-    // between them. NO bottom border on the strip: the active tab's
-    // bottom edge meets its deck body directly, sharing the same colour
-    // and visually merging into the body underneath (Chrome-tab
-    // behaviour). Inactive tabs are slate-100 buttons that stand
-    // alone against the white strip.
+    // Strip wrapper: white bg (matches DashboardNav above — one chrome
+    // zone). `border-b-2 border-violet-600` is the full-width horizontal
+    // divider that the active tab "sits on". `gap-1 px-1 pt-1` gives a
+    // small breathing border between the tabs and the strip edges.
     <div
       role="tablist"
       aria-label="Switch deck"
       aria-orientation="horizontal"
-      className="flex w-full gap-1 bg-white px-1 pt-1 xl:hidden"
+      className="flex w-full gap-1 border-b-2 border-violet-600 bg-white px-1 pt-1 xl:hidden"
     >
       <TabButton
         ref={katieTabRef}
         id={KATIE_TAB_ID}
         controls={KATIE_PANEL_ID}
         active={isKatieActive}
-        theme={KATIE_THEME}
+        activeBodyBg="bg-[hsl(var(--color-katie-bg-beige))]"
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
       >
-        <span className="relative inline-flex items-center gap-1.5">
+        <span className="relative inline-flex items-center justify-center gap-1.5">
           <SparkleIcon
             aria-hidden="true"
             className={
@@ -248,16 +225,16 @@ export function KatieTabs() {
         id={MAIN_TAB_ID}
         controls={MAIN_PANEL_ID}
         active={!isKatieActive}
-        theme={BLOOM_THEME}
+        activeBodyBg="bg-slate-50"
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
       >
-        <span className="inline-flex items-center gap-1.5">
+        <span className="inline-flex items-center justify-center gap-1.5">
           <Baby
             aria-hidden="true"
             className={
               "h-4 w-4 shrink-0 " +
-              (!isKatieActive ? "text-emerald-500" : "text-slate-400")
+              (!isKatieActive ? "text-violet-600" : "text-slate-400")
             }
           />
           Bloom

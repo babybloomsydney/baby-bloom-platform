@@ -27,8 +27,12 @@ export function DashboardNav({ role }: DashboardNavProps) {
     : "";
   const firstName = profile?.first_name || "User";
 
+  // No border-b on <header> below: the violet horizontal divider on
+  // the tab strip (KatieShell → KatieTabs) is the only line between
+  // the chrome zone and the deck body. Header + tab strip read as
+  // one continuous chrome zone.
   return (
-    <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white px-4 lg:px-6">
+    <header className="sticky top-0 z-40 flex h-16 items-center justify-between bg-white px-4 lg:px-6">
       {/* Left: Logo → hub. A-07 fix: Baby lucide icon dropped per
           user feedback — wordmark alone carries the brand. */}
       <Link
