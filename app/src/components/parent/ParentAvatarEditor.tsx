@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -254,12 +253,9 @@ export function ParentAvatarEditor({
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Profile picture</DialogTitle>
-            <DialogDescription>
-              {hasAvatar
-                ? "Replace or remove your current photo."
-                : "Add a profile picture so your nanny can see you."}
-            </DialogDescription>
+            <DialogTitle>
+              {hasAvatar ? "Profile picture" : "Add profile picture"}
+            </DialogTitle>
           </DialogHeader>
 
           {error && (
