@@ -66,6 +66,13 @@ interface TabButtonProps {
    *  body underneath so the tab and body merge seamlessly through
    *  the broken divider line. */
   activeBodyBg: string;
+  /** CSS colour value (any valid CSS colour) for the active body bg
+   *  — used by the inline box-shadow on the concave bottom-exterior
+   *  curves so the curve "fills" outward in the body colour. Must
+   *  match `activeBodyBg` visually. Kept separate because Tailwind's
+   *  JIT can't statically derive a `shadow-<color>` from a `bg-<...>`
+   *  arbitrary value. */
+  activeBodyBgCss: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   children: ReactNode;
@@ -73,7 +80,16 @@ interface TabButtonProps {
 
 const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
   function TabButton(
-    { id, controls, active, activeBodyBg, onClick, onKeyDown, children },
+    {
+      id,
+      controls,
+      active,
+      activeBodyBg,
+      activeBodyBgCss,
+      onClick,
+      onKeyDown,
+      children,
+    },
     ref,
   ) {
     return (
@@ -90,29 +106,53 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
         onClick={onClick}
         onKeyDown={onKeyDown}
         className={[
-          // Base geometry. `relative` for stacking. Rounded top
-          // corners; bottom corners stay square because the active
-          // tab's bottom is supposed to flow into the deck body.
-          "relative rounded-t-lg px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
-          // Width: active wider (~60/40 split). `flex-[3] basis-0`
-          // active vs `flex-[2] basis-0` inactive.
+          // Base geometry. `relative` for stacking + so the bottom-
+          // exterior concave curves can position absolutely. Bigger
+          // top radius (rounded-t-2xl = 16px) for a more natural
+          // browser-tab silhouette. Bottom corners remain square
+          // (the curve "outward" effect is added via pseudo-element
+          // siblings on the active tab).
+          "relative rounded-t-2xl px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
+          // Width: active wider (~60/40 split).
           active ? "flex-[3] basis-0" : "flex-[2] basis-0",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2",
           active
-            ? // Active: violet outline on top + sides; NO bottom border.
-              // `-mb-[2px]` pulls the tab's bottom edge down 2px so
-              // the body bg covers (and "breaks") the strip's
-              // bottom divider line at the active tab's x-range.
-              // `z-10` keeps the tab above the divider so its bg
-              // wins the paint at the overlap. `border-b-0` on the
-              // last side completes the open-bottom outline.
-              `${activeBodyBg} text-violet-700 border-2 border-violet-600 border-b-0 -mb-[2px] z-10 shadow-[0_-1px_2px_rgba(124,58,237,0.05)]`
+            ? // Active: violet outline on top + sides; NO bottom
+              // border. `z-10` keeps the tab above the strip's
+              // absolute divider element (z-0) so the tab's body bg
+              // covers — and "breaks" — the divider at its x-range.
+              `${activeBodyBg} text-violet-700 border-2 border-violet-600 border-b-0 z-10 shadow-[0_-1px_2px_rgba(124,58,237,0.05)]`
             : // Inactive: NO outline. Pure text on the white strip,
               // blending with the chrome zone. Hover gives a subtle
               // bg + colour shift so it still reads as pressable.
               "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
+        {/* Bottom-exterior concave curves — only on active tab.
+            Classic Chrome-tab CSS trick: each pseudo-corner is a
+            12px transparent square with a single rounded inner
+            corner facing the tab. The box-shadow paints a 12x12
+            square down-and-out of the curve in the body colour,
+            which produces the outward concave curve that makes the
+            tab's silhouette flow gracefully into the strip instead
+            of terminating in a sharp 90° angle.
+            Inline style on box-shadow because Tailwind's JIT can't
+            derive a `shadow-color` from an arbitrary `bg-[...]`
+            literal. */}
+        {active && (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -left-3 bottom-0 h-3 w-3 rounded-br-[12px]"
+              style={{ boxShadow: `6px 6px 0 0 ${activeBodyBgCss}` }}
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-3 bottom-0 h-3 w-3 rounded-bl-[12px]"
+              style={{ boxShadow: `-6px 6px 0 0 ${activeBodyBgCss}` }}
+            />
+          </>
+        )}
         {children}
       </button>
     );
@@ -182,21 +222,39 @@ export function KatieTabs() {
 
   return (
     // Strip wrapper: white bg (matches DashboardNav above — one chrome
-    // zone). `border-b-2 border-violet-600` is the full-width horizontal
-    // divider that the active tab "sits on". `gap-1 px-1 pt-1` gives a
-    // small breathing border between the tabs and the strip edges.
+    // zone). `sticky top-16` keeps it pinned just below the 64-px
+    // DashboardNav when the BB-app deck content scrolls past, mirroring
+    // the always-visible behaviour the Katie deck already enjoys (its
+    // messages region scrolls internally so the strip never moves).
+    // `relative` is the positioning context for the absolute violet
+    // divider line at the strip's bottom; `pb-[2px]` reserves space
+    // for the divider so it doesn't overlap tab content.
     <div
       role="tablist"
       aria-label="Switch deck"
       aria-orientation="horizontal"
-      className="flex w-full gap-1 border-b-2 border-violet-600 bg-white px-1 pt-1 xl:hidden"
+      className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-1 pt-1 pb-[2px] xl:hidden"
     >
+      {/* Full-width violet horizontal divider, painted at the strip's
+          bottom edge. z-0 so the active tab (z-10) covers the divider
+          at its x-range — the tab's body-coloured bg "breaks" the
+          line where the deck flows up through. Replaces the previous
+          `border-b-2` on the strip, which produced a faint hairline
+          under the active tab on some pixel densities (sub-pixel
+          rounding of `-mb-[2px]` + the border didn't always align
+          perfectly). */}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-violet-600 z-0"
+      />
+
       <TabButton
         ref={katieTabRef}
         id={KATIE_TAB_ID}
         controls={KATIE_PANEL_ID}
         active={isKatieActive}
         activeBodyBg="bg-[hsl(var(--color-katie-bg-beige))]"
+        activeBodyBgCss="hsl(var(--color-katie-bg-beige))"
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
       >
@@ -226,6 +284,8 @@ export function KatieTabs() {
         controls={MAIN_PANEL_ID}
         active={!isKatieActive}
         activeBodyBg="bg-slate-50"
+        // slate-50 in Tailwind = #f8fafc.
+        activeBodyBgCss="#f8fafc"
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
       >
