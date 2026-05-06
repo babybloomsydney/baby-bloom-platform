@@ -66,13 +66,6 @@ interface TabButtonProps {
    *  body underneath so the tab and body merge seamlessly through
    *  the broken divider line. */
   activeBodyBg: string;
-  /** CSS colour value (any valid CSS colour) for the active body bg
-   *  — used by the inline box-shadow on the concave bottom-exterior
-   *  curves so the curve "fills" outward in the body colour. Must
-   *  match `activeBodyBg` visually. Kept separate because Tailwind's
-   *  JIT can't statically derive a `shadow-<color>` from a `bg-<...>`
-   *  arbitrary value. */
-  activeBodyBgCss: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   children: ReactNode;
@@ -80,16 +73,7 @@ interface TabButtonProps {
 
 const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
   function TabButton(
-    {
-      id,
-      controls,
-      active,
-      activeBodyBg,
-      activeBodyBgCss,
-      onClick,
-      onKeyDown,
-      children,
-    },
+    { id, controls, active, activeBodyBg, onClick, onKeyDown, children },
     ref,
   ) {
     return (
@@ -106,12 +90,11 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
         onClick={onClick}
         onKeyDown={onKeyDown}
         className={[
-          // Base geometry. `relative` for stacking + so the bottom-
-          // exterior concave curves can position absolutely. Bigger
-          // top radius (rounded-t-2xl = 16px) for a more natural
-          // browser-tab silhouette. Bottom corners remain square
-          // (the curve "outward" effect is added via pseudo-element
-          // siblings on the active tab).
+          // Base geometry. `relative` for stacking. `rounded-t-2xl`
+          // (16px) gives a more pronounced browser-tab silhouette
+          // than the prior 8px curve. Bottom corners stay square
+          // — the active tab's bottom flows directly into the deck
+          // body, sharing its colour.
           "relative rounded-t-2xl px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
           // Width: active wider (~60/40 split).
           active ? "flex-[3] basis-0" : "flex-[2] basis-0",
@@ -128,31 +111,6 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
               "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
-        {/* Bottom-exterior concave curves — only on active tab.
-            Classic Chrome-tab CSS trick: each pseudo-corner is a
-            12px transparent square with a single rounded inner
-            corner facing the tab. The box-shadow paints a 12x12
-            square down-and-out of the curve in the body colour,
-            which produces the outward concave curve that makes the
-            tab's silhouette flow gracefully into the strip instead
-            of terminating in a sharp 90° angle.
-            Inline style on box-shadow because Tailwind's JIT can't
-            derive a `shadow-color` from an arbitrary `bg-[...]`
-            literal. */}
-        {active && (
-          <>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -left-3 bottom-0 h-3 w-3 rounded-br-[12px]"
-              style={{ boxShadow: `6px 6px 0 0 ${activeBodyBgCss}` }}
-            />
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-3 bottom-0 h-3 w-3 rounded-bl-[12px]"
-              style={{ boxShadow: `-6px 6px 0 0 ${activeBodyBgCss}` }}
-            />
-          </>
-        )}
         {children}
       </button>
     );
@@ -254,7 +212,6 @@ export function KatieTabs() {
         controls={KATIE_PANEL_ID}
         active={isKatieActive}
         activeBodyBg="bg-[hsl(var(--color-katie-bg-beige))]"
-        activeBodyBgCss="hsl(var(--color-katie-bg-beige))"
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
       >
@@ -284,8 +241,6 @@ export function KatieTabs() {
         controls={MAIN_PANEL_ID}
         active={!isKatieActive}
         activeBodyBg="bg-slate-50"
-        // slate-50 in Tailwind = #f8fafc.
-        activeBodyBgCss="#f8fafc"
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
       >
