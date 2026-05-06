@@ -35,8 +35,106 @@ export const KATIE_PANEL_ID = "panel-katie";
 export const MAIN_TAB_ID = "tab-main";
 export const MAIN_PANEL_ID = "panel-main";
 
-import { useRef } from "react";
+import { forwardRef, useRef, type ReactNode } from "react";
 import { useKatie } from "@/contexts/KatieContext";
+
+// ── Visual building blocks ──────────────────────────────────────────────
+//
+// Per `web/design-quality.md`: designed states, intentional hierarchy.
+// The active tab carries a violet-600 top accent bar — brand colour,
+// 3px tall — that fully commits to "this is selected" without relying
+// on subtle bg-tone differences (which previous smoke testing surfaced
+// as too low-contrast against the white DashboardNav above).
+
+interface TabButtonProps {
+  id: string;
+  controls: string;
+  active: boolean;
+  /** Tailwind utility for the active tab head bg. Matches the deck
+   *  body underneath so the tab and body visually merge. */
+  activeBg: string;
+  onClick: () => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+  children: ReactNode;
+}
+
+const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
+  function TabButton(
+    { id, controls, active, activeBg, onClick, onKeyDown, children },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        id={id}
+        type="button"
+        role="tab"
+        aria-selected={active}
+        aria-controls={controls}
+        // Roving tabindex per the WAI-ARIA tabs pattern — only the
+        // active tab is in the tab order.
+        tabIndex={active ? 0 : -1}
+        onClick={onClick}
+        onKeyDown={onKeyDown}
+        className={[
+          // Geometry: rounded top corners, square bottom. Active gets
+          // `-mb-px` to overlap the strip's bottom border, merging into
+          // the deck body. `relative` lets the top accent bar position
+          // absolutely against the tab. Padding pt-3 leaves room for
+          // the 3px accent bar without shifting the label.
+          "relative flex-1 rounded-t-lg pb-2.5 pt-3 px-4 text-sm font-semibold transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
+          active
+            ? // Active: deck-body bg + violet text + shadow lift.
+              `-mb-px ${activeBg} text-violet-700 shadow-sm`
+            : // Inactive: blends with slate-100 strip; muted text.
+              "bg-transparent text-slate-500 hover:bg-slate-200/60 hover:text-slate-700",
+        ].join(" ")}
+      >
+        {/* Top accent bar — only on the active tab. Brand violet,
+            3px tall, full tab width minus rounded corners. The
+            cleanest "selected" signal short of a colour swatch. */}
+        {active && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-2 top-0 h-[3px] rounded-full bg-violet-600"
+          />
+        )}
+        {children}
+      </button>
+    );
+  },
+);
+
+interface UnreadBadgeProps {
+  count: number;
+  /** When true, a soft pulse animation runs on top of the static
+   *  badge to signal new arrivals on the inactive tab. Skipped on
+   *  prefers-reduced-motion. */
+  pulse: boolean;
+}
+
+function UnreadBadge({ count, pulse }: UnreadBadgeProps) {
+  const label = count > 9 ? "9+" : String(count);
+  return (
+    <span
+      aria-hidden="true"
+      className="relative inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 text-[11px] font-bold leading-none text-white shadow-sm"
+    >
+      {/* Soft halo pulse — `motion-safe:` gates the animation behind
+          prefers-reduced-motion (per web/performance.md). The static
+          badge underneath is enough on its own; the pulse just draws
+          the eye when the tab is inactive and a new message arrives. */}
+      {pulse && (
+        <span
+          aria-hidden="true"
+          className="motion-safe:animate-ping absolute inset-0 rounded-full bg-violet-500 opacity-75"
+        />
+      )}
+      <span className="relative">{label}</span>
+    </span>
+  );
+}
 
 export function KatieTabs() {
   const { visibleDeck, unreadCount, showKatie, showMain } = useKatie();
@@ -83,86 +181,44 @@ export function KatieTabs() {
       aria-orientation="horizontal"
       className="flex w-full gap-1 border-b border-slate-200 bg-slate-100 px-1 pt-1 xl:hidden"
     >
-      <button
+      <TabButton
         ref={katieTabRef}
         id={KATIE_TAB_ID}
-        type="button"
-        role="tab"
-        aria-selected={isKatieActive}
-        aria-controls={KATIE_PANEL_ID}
-        // Keyboard contract — only the active tab is in the tab order
-        // (roving tabindex). Arrow keys move focus AND swap decks
-        // because swapping is cheap (no panel load) — Automatic
-        // Activation per the WAI-ARIA APG tabs pattern.
-        tabIndex={isKatieActive ? 0 : -1}
+        controls={KATIE_PANEL_ID}
+        active={isKatieActive}
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
-        className={[
-          // Chrome-tab geometry: rounded top corners, square bottom so
-          // the active tab merges with the body below. Equal-width
-          // (flex-1) so the two tabs split the strip evenly. `-mb-px`
-          // on the active tab pulls it 1px down to overlap the strip's
-          // bottom border, making the active tab visually contiguous
-          // with the deck body underneath.
-          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
-          isKatieActive
-            ? // Active: tab head matches deck body bg (beige) and pops
-              // above the slate-100 strip bg. Subtle shadow gives the
-              // chrome-tab "lifted" feel without animating layout.
-              "-mb-px bg-[hsl(var(--color-katie-bg-beige))] text-slate-900 shadow-sm"
-            : // Inactive: matches the slate-100 strip bg so it reads
-              // as recessed into the bar; muted text colour keeps
-              // hierarchy clear.
-              "bg-transparent text-slate-500 hover:bg-slate-200/60 hover:text-slate-700",
-        ].join(" ")}
+        // Active Katie tab matches the beige deck body so they merge.
+        activeBg="bg-[hsl(var(--color-katie-bg-beige))]"
       >
         <span className="relative inline-flex items-center gap-1.5">
           Katie
-          {/* Unread proactive-message badge migrated from the old
-              KatieSwapButton. Visible only when count > 0. */}
           {unreadCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-violet-600 px-1 text-[10px] font-semibold leading-none text-white"
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </span>
+            <UnreadBadge count={unreadCount} pulse={!isKatieActive} />
           )}
           {unreadCount > 0 && (
-            // Screen-reader announcement of the badge count, decoupled
-            // from the visual marker so AT renders "Katie, 3 unread"
-            // not "Katie 3" (ambiguous) or "Katie three" (mojibake).
+            // SR-only announcement of the badge count. Joins after
+            // "Katie" with a leading comma so AT renders
+            // "Katie, 3 unread messages" rather than "Katie 3".
             <span className="sr-only">
               {`, ${unreadCount} unread message${unreadCount === 1 ? "" : "s"}`}
             </span>
           )}
         </span>
-      </button>
+      </TabButton>
 
-      <button
+      <TabButton
         ref={mainTabRef}
         id={MAIN_TAB_ID}
-        type="button"
-        role="tab"
-        aria-selected={!isKatieActive}
-        aria-controls={MAIN_PANEL_ID}
-        tabIndex={!isKatieActive ? 0 : -1}
+        controls={MAIN_PANEL_ID}
+        active={!isKatieActive}
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
-        className={[
-          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
-          !isKatieActive
-            ? // Active: matches the main deck's slate-50 body bg, pops
-              // above the slate-100 strip with subtle shadow.
-              "-mb-px bg-slate-50 text-slate-900 shadow-sm"
-            : // Inactive: blends with the slate-100 strip — recessed.
-              "bg-transparent text-slate-500 hover:bg-slate-200/60 hover:text-slate-700",
-        ].join(" ")}
+        // Active BabyBloom tab matches the slate-50 main deck body.
+        activeBg="bg-slate-50"
       >
         BabyBloom
-      </button>
+      </TabButton>
     </div>
   );
 }

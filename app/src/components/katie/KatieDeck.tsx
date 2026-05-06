@@ -9,7 +9,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { KatieHeader } from "./KatieHeader";
 import { KatieFooter } from "./KatieFooter";
 import { KatieInput } from "./KatieInput";
 import { KatieQuickActions } from "./KatieQuickActions";
@@ -243,7 +242,10 @@ export function KatieDeck() {
         }}
       >
         <div className="flex h-full flex-col bg-[hsl(var(--color-katie-bg-beige))]">
-          <KatieHeader />
+          {/* A-07 fix: deck-internal "BabyBloom · Katie" subheading
+              removed. The global DashboardNav above the tabs already
+              identifies the surface; the deck-internal header was
+              redundant once the tab strip landed. */}
 
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3">
             <div className="space-y-4">

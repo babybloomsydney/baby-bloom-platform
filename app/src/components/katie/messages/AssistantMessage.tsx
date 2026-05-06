@@ -1,8 +1,11 @@
 /**
  * Assistant (Katie) message row — left-aligned, sparkle accent, no bubble.
  *
- * Proactive messages get a small "Proactive" pill + subtle background
- * highlight until read.
+ * Proactive messages get a slightly deeper sparkle colour + a subtle
+ * background highlight until read. The visible "Proactive" / "Scheduled"
+ * pill chip was removed per user feedback (2026-05-06) — the unread
+ * highlight + Katie tab badge already signal that something arrived,
+ * the pill was redundant noise.
  */
 
 import { SparkleIcon } from "./SparkleIcon";
@@ -40,15 +43,6 @@ export function AssistantMessage({
         }
       />
       <div className="flex-1 space-y-2 text-sm text-slate-900">
-        {isProactive ? (
-          <div className="flex items-center gap-1.5 text-xs text-violet-700">
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 font-medium">
-              {triggerSource === "proactive_scheduled"
-                ? "Scheduled"
-                : "Proactive"}
-            </span>
-          </div>
-        ) : null}
         {content ? (
           <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
         ) : null}
