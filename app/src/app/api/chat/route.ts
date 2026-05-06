@@ -308,15 +308,34 @@ export async function POST(req: NextRequest) {
       });
       const runtimeContext = buildRuntimeContext(ctxForPrompt);
 
-      // Try to get / create the Gemini cache for this (model, role, hash).
+      // Tools first — needed BOTH for the cache (baked-in) and for the
+      // uncached generateStream calls. Gemini rejects requests that set
+      // both `cachedContent` and `tools`, so when a cache is in use the
+      // tools live inside the cache and we omit them on the call.
+      const toolDefs = collectTools(effectiveRole);
+      const tools: GeminiTool[] | undefined =
+        toolDefs.length > 0
+          ? [
+              {
+                functionDeclarations: toolDefs.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  parameters: t.parameters,
+                })),
+              },
+            ]
+          : undefined;
+
+      // Try to get / create the Gemini cache for this (model, role, hash, tools).
       // Returns null on any failure — the route then falls back to passing
-      // the full systemPrompt uncached.
-      const cacheName = await getOrCreateCachedContent(
+      // the full systemPrompt + tools uncached.
+      const cacheName = await getOrCreateCachedContent({
         model,
         effectiveRole,
         versionHash,
-        staticPrompt,
-      );
+        staticSystemInstruction: staticPrompt,
+        tools: tools ?? [],
+      });
 
       // Prefix USER turns with `[N min ago] / [yesterday] / etc` so
       // Gemini can reason about how long ago things were said. Assistant
@@ -360,20 +379,6 @@ export async function POST(req: NextRequest) {
       // active, this is unused (the cache provides systemInstruction,
       // and runtime is in the priming turns).
       const fallbackSystemPrompt = `${staticPrompt}\n\n${runtimeContext}`;
-
-      const toolDefs = collectTools(effectiveRole);
-      const tools: GeminiTool[] | undefined =
-        toolDefs.length > 0
-          ? [
-              {
-                functionDeclarations: toolDefs.map((t) => ({
-                  name: t.name,
-                  description: t.description,
-                  parameters: t.parameters,
-                })),
-              },
-            ]
-          : undefined;
 
       // ── Agentic loop (streams to controller) ─────────────────────────
       const toolCalls: Array<{
@@ -460,17 +465,23 @@ export async function POST(req: NextRequest) {
 
         for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
           // WU 13.2 — cached vs uncached call shape:
-          //   cached:    cachedContent set, NO systemPrompt, runtime in priming turns
-          //   uncached:  systemPrompt set, NO cachedContent, runtime in systemPrompt
+          //   cached:    cachedContent set, NO systemPrompt, NO tools (both baked into cache),
+          //              runtime in priming turns
+          //   uncached:  systemPrompt set + tools passed inline, NO cachedContent
+          //
+          // Real-soak fix 2026-05-06: previously `tools` was passed on
+          // every call. Gemini rejects that combo with:
+          //   "CachedContent can not be used with GenerateContent request
+          //    setting system_instruction, tools or tool_config."
+          // Tools now live inside the cache (see gemini-cache-manager).
           let stream;
           try {
             stream = await generateStream({
               model,
               ...(useCacheForThisTurn
                 ? { cachedContent: cacheName! }
-                : { systemPrompt: fallbackSystemPrompt }),
+                : { systemPrompt: fallbackSystemPrompt, tools }),
               contents: runningTurns,
-              tools,
             });
           } catch (err) {
             // Stale cache (TTL expired between create and use)? Evict +
@@ -488,7 +499,12 @@ export async function POST(req: NextRequest) {
             // would only break if Gemini's stale-cache semantics change
             // in a future SDK to fire mid-stream.
             if (useCacheForThisTurn && isStaleCacheError(err)) {
-              evictCacheEntry(model, effectiveRole, versionHash);
+              evictCacheEntry({
+                model,
+                effectiveRole,
+                versionHash,
+                tools: tools ?? [],
+              });
               useCacheForThisTurn = false;
               // Drop the priming turns — they're redundant when systemPrompt
               // is back to carrying the runtime context.
@@ -505,6 +521,16 @@ export async function POST(req: NextRequest) {
             } else {
               throw err;
             }
+          }
+
+          // Narrow `stream` from `Awaited<...> | undefined` to defined.
+          // Either the try set it, or the catch's stale-cache branch did,
+          // or the catch re-threw (handled by outer try). A future
+          // refactor that adds a fourth branch must keep this invariant.
+          if (stream === undefined) {
+            throw new Error(
+              "[api/chat] stream not assigned after generateStream try/catch — unreachable",
+            );
           }
 
           let roundText = "";

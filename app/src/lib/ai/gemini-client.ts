@@ -42,6 +42,34 @@ export interface GeminiTool {
 export type GeminiTurn = Content;
 
 /**
+ * Throws if the caller has passed a config combination Gemini will
+ * reject. Specifically: a request that sets `cachedContent` cannot
+ * also set `systemInstruction`, `tools`, or `toolConfig` — those
+ * values must already be baked into the cache via `createCache`.
+ *
+ * Throwing here is deliberately load-bearing: a silent acceptance
+ * lets the request reach Gemini and surface as a 400 only at runtime
+ * (which is exactly the bug this guard exists to prevent recurring).
+ */
+function assertNoCachedConflict(opts: {
+  systemPrompt?: string;
+  tools?: GeminiTool[];
+  cachedContent?: string;
+}): void {
+  if (!opts.cachedContent) return;
+  if (opts.systemPrompt) {
+    throw new Error(
+      "[gemini-client] cachedContent is incompatible with systemPrompt — bake systemInstruction into the cache via createCache()",
+    );
+  }
+  if (opts.tools && opts.tools.length > 0) {
+    throw new Error(
+      "[gemini-client] cachedContent is incompatible with tools — bake tools into the cache via createCache()",
+    );
+  }
+}
+
+/**
  * Sends a non-streaming request. Used for proactive ai-minimal tier,
  * compaction calls, and any synchronous reasoning step.
  */
@@ -52,6 +80,7 @@ export async function generate(options: {
   tools?: GeminiTool[];
   cachedContent?: string;
 }) {
+  assertNoCachedConflict(options);
   return gemini.models.generateContent({
     model: options.model,
     contents: options.contents,
@@ -82,6 +111,7 @@ export async function generateStream(options: {
   tools?: GeminiTool[];
   cachedContent?: string;
 }) {
+  assertNoCachedConflict(options);
   return gemini.models.generateContentStream({
     model: options.model,
     contents: options.contents,
@@ -130,10 +160,18 @@ export function echoModelParts(
  * Requires systemInstruction of >=1024 tokens (Gemini 3 minimum).
  * Returns the cache handle (cache.name) to pass as `cachedContent` in
  * subsequent generate() / generateStream() calls.
+ *
+ * `tools` MUST be baked in here when the downstream conversation uses
+ * function calling — Gemini rejects requests that set both `cachedContent`
+ * and `tools` on the same GenerateContent call:
+ *   "CachedContent can not be used with GenerateContent request setting
+ *    system_instruction, tools or tool_config."
+ * The cached entry already carries them.
  */
 export async function createCache(options: {
   model: GeminiModelId;
   systemInstruction: string;
+  tools?: GeminiTool[];
   displayName?: string;
   ttlSeconds?: number;
 }) {
@@ -141,6 +179,7 @@ export async function createCache(options: {
     model: options.model,
     config: {
       systemInstruction: options.systemInstruction,
+      ...(options.tools ? { tools: options.tools } : {}),
       ttl: `${options.ttlSeconds ?? 3600}s`,
       displayName: options.displayName ?? `katie-cache-${Date.now()}`,
     },
