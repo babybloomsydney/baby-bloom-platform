@@ -70,14 +70,18 @@ export function KatieTabs() {
   }
 
   return (
-    // `role="tablist"` + the per-tab `role="tab"` below give AT users
-    // the standard tab pattern. `aria-orientation="horizontal"` is the
+    // Tab-strip wrapper has its own slate bg so the strip stands out
+    // against the white DashboardNav above it (user feedback 2026-05-06).
+    // Active tabs pop by matching their deck body colour (beige / slate-50);
+    // inactive tabs blend with the strip and read as recessed.
+    // `role="tablist"` + the per-tab `role="tab"` below give AT users the
+    // standard tab pattern; `aria-orientation="horizontal"` is the
     // default but stating it makes the contract explicit.
     <div
       role="tablist"
       aria-label="Switch deck"
       aria-orientation="horizontal"
-      className="flex w-full xl:hidden"
+      className="flex w-full gap-1 border-b border-slate-200 bg-slate-100 px-1 pt-1 xl:hidden"
     >
       <button
         ref={katieTabRef}
@@ -96,15 +100,21 @@ export function KatieTabs() {
         className={[
           // Chrome-tab geometry: rounded top corners, square bottom so
           // the active tab merges with the body below. Equal-width
-          // (flex-1) so the two tabs split the strip evenly.
-          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors",
+          // (flex-1) so the two tabs split the strip evenly. `-mb-px`
+          // on the active tab pulls it 1px down to overlap the strip's
+          // bottom border, making the active tab visually contiguous
+          // with the deck body underneath.
+          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
           isKatieActive
-            ? // Active: tab head matches body bg (beige), no seam.
-              "bg-[hsl(var(--color-katie-bg-beige))] text-slate-900"
-            : // Inactive: muted beige variant + slate text — visually
-              // recessed so it reads as "behind" the active tab.
-              "bg-[hsl(var(--color-katie-bg-beige-muted))] text-slate-600 hover:text-slate-900",
+            ? // Active: tab head matches deck body bg (beige) and pops
+              // above the slate-100 strip bg. Subtle shadow gives the
+              // chrome-tab "lifted" feel without animating layout.
+              "-mb-px bg-[hsl(var(--color-katie-bg-beige))] text-slate-900 shadow-sm"
+            : // Inactive: matches the slate-100 strip bg so it reads
+              // as recessed into the bar; muted text colour keeps
+              // hierarchy clear.
+              "bg-transparent text-slate-500 hover:bg-slate-200/60 hover:text-slate-700",
         ].join(" ")}
       >
         <span className="relative inline-flex items-center gap-1.5">
@@ -141,13 +151,14 @@ export function KatieTabs() {
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
         className={[
-          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-medium transition-colors",
+          "flex-1 rounded-t-lg px-4 py-2.5 text-sm font-semibold transition-colors",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-1",
           !isKatieActive
-            ? // Active: matches the main deck's slate-50 body bg.
-              "bg-slate-50 text-slate-900"
-            : // Inactive: muted slate, recessed.
-              "bg-slate-200 text-slate-600 hover:text-slate-900",
+            ? // Active: matches the main deck's slate-50 body bg, pops
+              // above the slate-100 strip with subtle shadow.
+              "-mb-px bg-slate-50 text-slate-900 shadow-sm"
+            : // Inactive: blends with the slate-100 strip — recessed.
+              "bg-transparent text-slate-500 hover:bg-slate-200/60 hover:text-slate-700",
         ].join(" ")}
       >
         BabyBloom
