@@ -367,11 +367,18 @@ export function ParentHubClient({
   const resolvedTab: TabId = isTabId(aliasedInitialTab)
     ? aliasedInitialTab
     : "childcare";
-  const resolvedSub = (validSubs as readonly string[]).includes(
-    initialSub ?? "",
-  )
+  // A-04 init-time guard: `?s=nannies` is suppressed when the parent
+  // already has an active placement. Without this, a stale bookmark or
+  // the inline "see all nannies" link clicked before placement existed
+  // would mount the keep-alive BrowseNanniesTab on a hub where the
+  // tab itself is hidden (incoherent state — content visible, no
+  // highlighted tab). Falls back to "childcare" which is the natural
+  // default for a settled parent.
+  const rawSub = (validSubs as readonly string[]).includes(initialSub ?? "")
     ? (initialSub as "connections" | "nannies" | "childcare")
     : "childcare";
+  const resolvedSub: "connections" | "nannies" | "childcare" =
+    rawSub === "nannies" && placement ? "childcare" : rawSub;
   const resolvedView = initialView === "matches" ? "matches" : "all";
 
   const [activeTab, setActiveTabState] = useState<TabId>(resolvedTab);
@@ -778,11 +785,15 @@ export function ParentHubClient({
   const firstName = profile?.first_name || "Parent";
   const profilePic = profile?.profile_picture_url;
 
+  // A-04: hide the "Nannies" browse sub-tab when an active placement
+  // exists. Discoverability is preserved via the inline "see all
+  // nannies" link rendered under the PlacementCard on the position
+  // page. Placement-end (status flips off `active`) makes `placement`
+  // null again and the tab returns naturally.
   const subTabs = placement
     ? [
         { id: "childcare" as const, label: "My childcare" },
         { id: "connections" as const, label: "My Nanny" },
-        { id: "nannies" as const, label: "Nannies" },
       ]
     : [
         { id: "childcare" as const, label: "My childcare" },
@@ -1805,8 +1816,12 @@ export function ParentHubClient({
               </div>
             ))}
 
-          {/* Sub-tab: Nannies (keep mounted once activated) */}
-          {activatedSubs.has("nannies") && (
+          {/* Sub-tab: Nannies (keep mounted once activated). A-04
+              defensive `!placement` guard: even with the init-time
+              `?s=nannies` redirect above, future code paths that
+              mutate nannySubTab while a placement is live shouldn't
+              be able to mount the BrowseNanniesTab. */}
+          {activatedSubs.has("nannies") && !placement && (
             <div
               style={{
                 display: nannySubTab === "nannies" ? undefined : "none",

@@ -67,6 +67,18 @@ export interface PlacementCardProps {
    * anywhere navigates. Used by the chat tile.
    */
   onClick?: () => void;
+  /**
+   * Renders a small subtle "see all nannies" link under the default
+   * variant's View Profile button. Default false. Per amendment A-04:
+   * the parent's hub hides the browse-nannies sub-tab when an active
+   * placement exists, but discoverability is preserved via this inline
+   * link — quiet enough not to suggest "you might want to switch", but
+   * accessible for legitimate compare/replace cases.
+   *
+   * Compact variant ignores this prop — it's used in surfaces (Katie
+   * chat tile etc.) where the browse-nannies link would be out of place.
+   */
+  showBrowseNanniesLink?: boolean;
 }
 
 function computeAge(dateOfBirth: string | null): number | null {
@@ -204,6 +216,7 @@ export function PlacementCard({
   menuSlot,
   hideViewProfile = false,
   onClick,
+  showBrowseNanniesLink = false,
 }: PlacementCardProps) {
   const age = computeAge(placement.nannyDateOfBirth);
   const interactive = typeof onClick === "function";
@@ -416,6 +429,23 @@ export function PlacementCard({
               <ArrowRight className="ml-1.5 w-4 h-4" aria-hidden="true" />
             </Link>
           </Button>
+        </div>
+      )}
+
+      {/* A-04: subtle browse-nannies fallthrough. The parent hub hides
+          its "Nannies" sub-tab when a placement exists; this preserves
+          discoverability without prompting "switch nannies" energy.
+          a11y: persistent underline (WCAG 1.4.1 — color alone isn't a
+          sufficient differentiator) + py-2 padding so the touch target
+          clears WCAG 2.5.8 24px minimum despite the small text size. */}
+      {showBrowseNanniesLink && (
+        <div className="mt-3 text-center">
+          <Link
+            href="/parent?t=childcare&s=nannies"
+            className="inline-block py-2 px-1 text-xs text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-slate-800 hover:decoration-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2 rounded"
+          >
+            see all nannies
+          </Link>
         </div>
       )}
     </CardContent>

@@ -802,6 +802,7 @@ export function PositionPageClient({
                 </div>
               </>
             }
+            showBrowseNanniesLink
           />
 
           {/* Remove Nanny Dialog */}
