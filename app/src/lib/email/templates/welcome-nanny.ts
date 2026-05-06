@@ -1,0 +1,58 @@
+/**
+ * Welcome email — nanny signup.
+ *
+ * Copy is preserved verbatim from the inline template that lived in
+ * `lib/auth/actions.ts` prior to amendment A-01 (extraction only).
+ */
+
+import type { EmailTemplate } from "./types";
+
+type WelcomeNannyEmailParams = {
+  firstName: string;
+  appUrl: string;
+};
+
+export function buildWelcomeNannyEmail(
+  params: WelcomeNannyEmailParams,
+): EmailTemplate {
+  const { firstName, appUrl } = params;
+  const btnStyle =
+    "background: #8B5CF6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;";
+
+  const subject = `Welcome to Baby Bloom, ${firstName}!`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
+<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
+    </div>
+    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
+    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
+    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
+    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
+      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
+      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
+        <li>Complete your profile with your experience and qualifications</li>
+        <li>Upload your ID and WWCC for verification</li>
+        <li>Once verified, families in Sydney can find and connect with you</li>
+      </ol>
+    </div>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="${appUrl}/nanny/profile" style="${btnStyle}">Complete Your Profile</a>
+    </div>
+    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
+        Baby Bloom Sydney<br/>
+        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
+        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms of Service</a>
+      </p>
+    </div>
+  </div>
+</div>
+</body></html>`;
+
+  return { subject, html };
+}

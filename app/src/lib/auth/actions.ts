@@ -6,6 +6,9 @@ import { redirect } from "next/navigation";
 import { UserRole } from "./types";
 import { getDashboardPath } from "./roles";
 import { sendEmail } from "@/lib/email/resend";
+import { buildWelcomeNannyEmail } from "@/lib/email/templates/welcome-nanny";
+import { buildWelcomeParentEmail } from "@/lib/email/templates/welcome-parent";
+import { buildWelcomeInviteParentEmail } from "@/lib/email/templates/welcome-invite-parent";
 import { capitalizeName } from "@/lib/utils";
 import { signupViaInvite } from "@/lib/actions/bapp/child-invites";
 
@@ -13,9 +16,33 @@ const INVITE_TOKEN_REGEX = /^[A-HJKMN-Z2-9]{4}-[A-HJKMN-Z2-9]{4}$/;
 
 type InviteDirection = "nanny_to_parent" | "parent_to_nanny";
 
-interface InviteContext {
+type InviteContext = {
   token: string;
   direction: InviteDirection;
+  /** First name of the invite creator (the nanny in nanny_to_parent flow,
+   *  the parent in parent_to_nanny). Used by the welcome-variant email so
+   *  the recipient sees who invited them. May be `null` if the inviter
+   *  hasn't filled their profile yet. */
+  inviterFirstName: string | null;
+  /** First name of the child the invite is for. May be `null` for a freshly
+   *  created child_client row that hasn't been edited. */
+  childFirstName: string | null;
+  /** child_client row id — keeps deep-linking options open (e.g. an email
+   *  CTA that bypasses the invite landing). Currently unused by callers
+   *  but cheap to surface here while we already have it. */
+  childClientId: string;
+};
+
+function isInviteDirection(value: unknown): value is InviteDirection {
+  return value === "nanny_to_parent" || value === "parent_to_nanny";
+}
+
+/** Narrows the unpredictable Supabase FK-embed result shape (single row,
+ *  array of rows, null, or undefined) down to a single row or null. */
+function pickFkRow<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
 }
 
 async function lookupValidInvite(
@@ -27,9 +54,18 @@ async function lookupValidInvite(
   }
 
   const admin = createAdminClient();
+
+  // Step 1 — child_invites + child_client (direct FK embed, supported).
+  // We do NOT embed user_profiles here: child_invites.created_by_user_id
+  // references auth.users(id), and there's no direct FK between
+  // child_invites and user_profiles, so PostgREST silently drops the
+  // embed (real-soak finding 2026-05-06, code-reviewer CRITICAL).
+  // The two-hop user_profiles fetch is in step 2 below.
   const { data, error } = await admin
     .from("child_invites")
-    .select("direction, status")
+    .select(
+      "direction, status, child_client_id, created_by_user_id, child_client(first_name)",
+    )
     .eq("token", token)
     .maybeSingle();
 
@@ -37,7 +73,14 @@ async function lookupValidInvite(
     return null;
   }
 
-  const direction = data.direction as InviteDirection;
+  if (!isInviteDirection(data.direction)) {
+    // Defensive: the CHECK constraint on `child_invites.direction` should
+    // make this unreachable, but we narrow rather than cast so a future
+    // schema drift fails loudly instead of poisoning the InviteContext.
+    return null;
+  }
+  const direction = data.direction;
+
   // Direction encodes who created it; recipient is the opposite role.
   const expectedRecipientRole: UserRole =
     direction === "nanny_to_parent" ? "parent" : "nanny";
@@ -45,7 +88,46 @@ async function lookupValidInvite(
     return null;
   }
 
-  return { token, direction };
+  if (typeof data.child_client_id !== "string" || !data.child_client_id) {
+    return null;
+  }
+  const childClientId = data.child_client_id;
+
+  const child = pickFkRow(data.child_client);
+  const childFirstName =
+    typeof child?.first_name === "string" && child.first_name.length > 0
+      ? child.first_name
+      : null;
+
+  // Step 2 — inviter's first name. Separate query because the
+  // child_invites → user_profiles relationship is two-hop through
+  // auth.users. `created_by_user_id` is nullable (ON DELETE SET NULL),
+  // so an orphaned invite is allowed to claim — we just lose the
+  // personalised greeting in that case (welcome variant falls back).
+  let inviterFirstName: string | null = null;
+  const inviterUserId = data.created_by_user_id;
+  if (typeof inviterUserId === "string" && inviterUserId) {
+    const { data: profile } = await admin
+      .from("user_profiles")
+      .select("first_name")
+      .eq("user_id", inviterUserId)
+      .maybeSingle();
+    if (
+      profile &&
+      typeof profile.first_name === "string" &&
+      profile.first_name.length > 0
+    ) {
+      inviterFirstName = profile.first_name;
+    }
+  }
+
+  return {
+    token,
+    direction,
+    childClientId,
+    childFirstName,
+    inviterFirstName,
+  };
 }
 
 function inviteSignupSource(direction: InviteDirection): string {
@@ -209,87 +291,67 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
       // Non-critical, don't fail the signup
     }
 
-    // 6. Send welcome email (fire-and-forget)
+    // 6. Send welcome email (fire-and-forget).
+    //
+    // Three variants (amendment A-01, 2026-05-06):
+    //   • role=nanny                  → standard nanny welcome
+    //   • role=parent, no inviteCtx   → standard parent welcome
+    //   • role=parent, inviteCtx with
+    //     direction=nanny_to_parent   → invite-flow welcome (frames the
+    //                                   product as "track {child}'s day
+    //                                   with {nanny}", not "find a nanny")
+    //
+    // The opposite case — role=nanny signing up via a parent_to_nanny
+    // invite — currently falls through to the standard nanny welcome.
+    // It cannot accidentally reach the parent fall-through below because
+    // `lookupValidInvite` only returns a non-null inviteContext when the
+    // direction matches the role being signed up; a parent_to_nanny
+    // invite with role=nanny is handled in the first `if` branch and
+    // never reaches the parent-flow else.
+    //
+    // emailType strings are distinguishable in `email_logs` so the variants
+    // can be measured separately:
+    //   `welcome` (standard parent + nanny — preserved for back-compat with
+    //              existing dashboards/queries) and
+    //   `welcome-invite-parent` (new).
     const appUrl =
       process.env.NEXT_PUBLIC_APP_URL || "https://app-babybloom.vercel.app";
-    const baseStyle = `font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;`;
-    const btnStyle = `background: #8B5CF6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;`;
 
     if (role === "nanny") {
+      const { subject, html } = buildWelcomeNannyEmail({ firstName, appUrl });
       sendEmail({
         to: email,
-        subject: `Welcome to Baby Bloom, ${firstName}!`,
-        html: `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
-<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
-  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
-    <div style="text-align:center;margin-bottom:24px;">
-      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
-    </div>
-    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
-    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
-    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
-    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
-      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
-      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
-        <li>Complete your profile with your experience and qualifications</li>
-        <li>Upload your ID and WWCC for verification</li>
-        <li>Once verified, families in Sydney can find and connect with you</li>
-      </ol>
-    </div>
-    <div style="text-align:center;margin-top:24px;">
-      <a href="${appUrl}/nanny/profile" style="${btnStyle}">Complete Your Profile</a>
-    </div>
-    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
-      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
-        Baby Bloom Sydney<br/>
-        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
-        <a href="https://babybloomsydney.com.au/legal/professional-terms" style="color:#7c3aed;">Terms of Service</a>
-      </p>
-    </div>
-  </div>
-</div>
-</body></html>`,
+        subject,
+        html,
         emailType: "welcome",
         recipientUserId: userId,
       }).catch((err) => console.error("[Signup] ACC-001 email error:", err));
-    } else {
+    } else if (inviteContext && inviteContext.direction === "nanny_to_parent") {
+      // Inviter + child names may legitimately be null when the nanny
+      // hasn't filled her profile or named the child yet. The template
+      // handles the fallback wording internally — the subject avoids
+      // the merge-error-looking "your nanny" phrase, the body uses
+      // it inline where it reads naturally.
+      const { subject, html } = buildWelcomeInviteParentEmail({
+        firstName,
+        nannyFirstName: inviteContext.inviterFirstName,
+        childFirstName: inviteContext.childFirstName,
+        inviteToken: inviteContext.token,
+        appUrl,
+      });
       sendEmail({
         to: email,
-        subject: `Welcome to Baby Bloom, ${firstName}!`,
-        html: `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1e293b;background:#f8fafc;">
-<div style="max-width:600px;margin:0 auto;padding:32px 16px;">
-  <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:32px;">
-    <div style="text-align:center;margin-bottom:24px;">
-      <div style="display:inline-block;background:#f5f3ff;border-radius:50%;width:56px;height:56px;line-height:56px;font-size:28px;">&#127881;</div>
-    </div>
-    <h1 style="font-size:24px;font-weight:700;text-align:center;margin:0 0 8px;">Welcome, ${firstName}!</h1>
-    <p style="text-align:center;color:#64748b;margin:0 0 24px;">Your Baby Bloom account has been created.</p>
-    <p style="font-size:14px;color:#475569;line-height:1.6;">We're excited to have you join Baby Bloom Sydney. Here's how to get started:</p>
-    <div style="background:#f5f3ff;border-radius:12px;padding:16px;margin:16px 0;">
-      <p style="margin:0 0 8px;font-size:14px;font-weight:600;color:#7c3aed;">Next steps</p>
-      <ol style="margin:0;padding-left:20px;font-size:14px;color:#475569;line-height:1.8;">
-        <li>Browse our verified, education-focused nannies</li>
-        <li>Create a position to start matching with the right nanny</li>
-        <li>Request a meet and greet when you find a great fit</li>
-      </ol>
-    </div>
-    <div style="text-align:center;margin-top:24px;">
-      <a href="${appUrl}/parent/dashboard" style="${btnStyle}">Go to Your Dashboard</a>
-    </div>
-    <div style="margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
-      <p style="font-size:12px;color:#94a3b8;line-height:1.6;">
-        Baby Bloom Sydney<br/>
-        <a href="https://babybloomsydney.com.au/legal/privacy-policy" style="color:#7c3aed;">Privacy Policy</a> |
-        <a href="https://babybloomsydney.com.au/legal/client-terms" style="color:#7c3aed;">Terms of Service</a>
-      </p>
-    </div>
-  </div>
-</div>
-</body></html>`,
+        subject,
+        html,
+        emailType: "welcome-invite-parent",
+        recipientUserId: userId,
+      }).catch((err) => console.error("[Signup] ACC-003 email error:", err));
+    } else {
+      const { subject, html } = buildWelcomeParentEmail({ firstName, appUrl });
+      sendEmail({
+        to: email,
+        subject,
+        html,
         emailType: "welcome",
         recipientUserId: userId,
       }).catch((err) => console.error("[Signup] ACC-002 email error:", err));
