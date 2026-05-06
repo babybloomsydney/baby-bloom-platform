@@ -1,5 +1,7 @@
 // =============================================================================
-// Baby Bloom Education App — Type Definitions
+// Baby Bloom Children App — Type Definitions
+// (Previously labelled "Education App"; renamed in amendment A-02 to match
+// the user-facing "Children" tab. Substantive types unchanged.)
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -83,7 +85,7 @@ export interface ChildInvitePreview {
   inviterDisplay: string;
 }
 
-/** Pending-invite card shown on the recipient's education tab. */
+/** Pending-invite card shown on the recipient's "Children" tab. */
 export interface PendingInviteCard {
   inviteId: string;
   childClientId: string;

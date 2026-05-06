@@ -297,12 +297,43 @@ function VerificationModal({
 }
 
 // ── Tab definitions ──
+//
+// `"children"` was previously named `"education"` (amendment A-02). The
+// tab shows the children the parent is connected with — not educational
+// content. The internal id matches the visible label. Old `?t=education`
+// URLs are aliased at the parse site below so deep links keep working.
 const TABS = [
   { id: "childcare" as const, label: "Childcare" },
   { id: "babysitting" as const, label: "Babysitting" },
-  { id: "education" as const, label: "Education" },
+  { id: "children" as const, label: "Children" },
 ];
 type TabId = (typeof TABS)[number]["id"];
+
+/** Tab id aliases for backwards compatibility with bookmarked or emailed
+ *  deep-links that predate the A-02 rename. Add new entries here as
+ *  tabs are renamed; remove an entry once the old URL has been out of
+ *  circulation long enough to be safe to retire. */
+const TAB_ID_ALIASES: Record<string, TabId> = {
+  // 2026-05-06 — A-02 rename
+  education: "children",
+};
+
+/** Returns either a known TabId (alias hit) or the raw input (alias miss).
+ *  Caller should still pass the result through `isTabId` before using —
+ *  the alias map only catches known-old names, not arbitrary garbage. */
+function resolveTabAlias(raw: string | undefined): TabId | string | undefined {
+  if (raw === undefined) return undefined;
+  return TAB_ID_ALIASES[raw] ?? raw;
+}
+
+const VALID_TAB_IDS = TABS.map((t) => t.id) as readonly TabId[];
+
+function isTabId(value: unknown): value is TabId {
+  return (
+    typeof value === "string" &&
+    (VALID_TAB_IDS as readonly string[]).includes(value)
+  );
+}
 
 export function ParentHubClient({
   position,
@@ -325,11 +356,16 @@ export function ParentHubClient({
   const pathname = usePathname();
   const { profile } = useAuth();
 
-  // Resolve initial state from URL params
-  const validTabs: TabId[] = ["childcare", "babysitting"];
+  // Resolve initial state from URL params. `aliasedInitialTab` runs the
+  // raw `?t=` value through the rename-alias table so old `?t=education`
+  // URLs land on the renamed `"children"` tab without a redirect (A-02).
+  // `isTabId` is the type-predicate guard that lets us drop the
+  // previous `as TabId` cast — the validation is still real, but
+  // TypeScript narrows correctly through the guard.
   const validSubs = ["connections", "nannies", "childcare"] as const;
-  const resolvedTab = validTabs.includes(initialTab as TabId)
-    ? (initialTab as TabId)
+  const aliasedInitialTab = resolveTabAlias(initialTab);
+  const resolvedTab: TabId = isTabId(aliasedInitialTab)
+    ? aliasedInitialTab
     : "childcare";
   const resolvedSub = (validSubs as readonly string[]).includes(
     initialSub ?? "",
@@ -1999,7 +2035,7 @@ export function ParentHubClient({
       {/* ═══════════════════════════════════════════════════
           TAB CONTENT — EDUCATION
          ═══════════════════════════════════════════════════ */}
-      <div style={{ display: activeTab === "education" ? undefined : "none" }}>
+      <div style={{ display: activeTab === "children" ? undefined : "none" }}>
         <PendingInvitesSection initialInvites={pendingInvites} />
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}

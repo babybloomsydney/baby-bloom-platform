@@ -28,7 +28,12 @@ interface BAppLayoutProps {
 
 const TABS = [
   { id: "feed", label: "Feed", path: "", icon: Home },
-  { id: "activities", label: "Activities", path: "/activities", icon: Volleyball },
+  {
+    id: "activities",
+    label: "Activities",
+    path: "/activities",
+    icon: Volleyball,
+  },
   { id: "progress", label: "Progress", path: "/progress", icon: BarChart3 },
   { id: "library", label: "Library", path: "/library", icon: ImageIcon },
 ] as const;
@@ -41,7 +46,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
   const [planOpen, setPlanOpen] = useState(false);
 
   const basePath = `/${role}/development/${child.id}`;
-  const hubPath = `/${role}?t=education`;
+  const hubPath = `/${role}?t=children`;
 
   const initial = child.first_name?.[0]?.toUpperCase() ?? "?";
 
@@ -88,7 +93,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
                       "flex-1 flex items-center justify-center rounded-md py-1.5 transition-all",
                       isActive
                         ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
+                        : "text-slate-400 hover:text-slate-600",
                     )}
                   >
                     <Icon className="h-4 w-4" />
@@ -155,9 +160,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
           onClick={() => setFabOpen(!fabOpen)}
           className={cn(
             "flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-all duration-200",
-            fabOpen
-              ? "bg-red-500 rotate-45"
-              : "bg-emerald-500"
+            fabOpen ? "bg-red-500 rotate-45" : "bg-emerald-500",
           )}
         >
           <Plus className="h-5 w-5 text-white" />

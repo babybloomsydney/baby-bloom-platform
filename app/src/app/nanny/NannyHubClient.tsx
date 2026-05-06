@@ -133,7 +133,12 @@ interface NannyHubClientProps {
 
 // ── Tab definitions ──────────────────────────────────────────────────────────
 
-type MainTabId = "verification" | "nannying" | "babysitting" | "education";
+// `"children"` was previously named `"education"` (amendment A-02). The
+// tab shows the children the nanny is connected with — not educational
+// content — so "Children" is the user-visible label and the internal id
+// matches. Old `?t=education` URL-aliasing happens at the parse site
+// (ParentHubClient — the nanny hub doesn't currently read ?t= for tab).
+type MainTabId = "verification" | "nannying" | "babysitting" | "children";
 
 const PROFILE_TABS = [
   { id: "about" as const, label: "About" },
@@ -948,8 +953,8 @@ export function NannyHubClient({
                 locked: false,
               },
               {
-                id: "education" as MainTabId,
-                label: "Education",
+                id: "children" as MainTabId,
+                label: "Children",
                 locked: false,
               },
             ]
@@ -1042,7 +1047,7 @@ export function NannyHubClient({
           shareUnlocked={shareUnlocked}
         />
       )}
-      {activeTab === "education" && (
+      {activeTab === "children" && (
         <>
           <PendingInvitesSection initialInvites={pendingInvites} />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

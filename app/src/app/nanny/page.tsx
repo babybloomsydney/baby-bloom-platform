@@ -242,7 +242,7 @@ export default async function NannyHubPage() {
 
   const nannyId = nannyRes.data?.id;
 
-  // Phase 2: all data for both tabs + accordion availability + open positions + applications + education children
+  // Phase 2: all data for both tabs + accordion availability + open positions + applications + connected children (the "Children" tab)
   const [
     placementsRes,
     introsRes,
