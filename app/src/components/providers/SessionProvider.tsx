@@ -1,63 +1,63 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useCallback } from 'react';
-import { User } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
-import { AuthContext } from '@/contexts/AuthContext';
-import { UserRole, UserProfile } from '@/lib/auth/types';
+import { useEffect, useState, useCallback } from "react";
+import { User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
+import { AuthContext } from "@/contexts/AuthContext";
+import { UserRole, UserProfile } from "@/lib/auth/types";
 
-const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true';
+const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true";
 
 const DEV_PROFILES: Record<UserRole, UserProfile> = {
   nanny: {
-    id: 'dev-nanny-profile',
-    user_id: 'dev-nanny-user',
-    first_name: 'Emma',
-    last_name: 'Wilson',
-    email: 'emma@babybloom.dev',
-    suburb: 'Bondi',
-    postcode: '2026',
+    id: "dev-nanny-profile",
+    user_id: "dev-nanny-user",
+    first_name: "Emma",
+    last_name: "Wilson",
+    email: "emma@babybloom.dev",
+    suburb: "Bondi",
+    postcode: "2026",
     profile_picture_url: null,
   },
   parent: {
-    id: 'dev-parent-profile',
-    user_id: 'dev-parent-user',
-    first_name: 'James',
-    last_name: 'Chen',
-    email: 'james@babybloom.dev',
-    suburb: 'Surry Hills',
-    postcode: '2010',
+    id: "dev-parent-profile",
+    user_id: "dev-parent-user",
+    first_name: "James",
+    last_name: "Chen",
+    email: "james@babybloom.dev",
+    suburb: "Surry Hills",
+    postcode: "2010",
     profile_picture_url: null,
   },
   admin: {
-    id: 'dev-admin-profile',
-    user_id: 'dev-admin-user',
-    first_name: 'Bailey',
-    last_name: 'Admin',
-    email: 'admin@babybloom.dev',
-    suburb: 'Sydney',
-    postcode: '2000',
+    id: "dev-admin-profile",
+    user_id: "dev-admin-user",
+    first_name: "Bailey",
+    last_name: "Admin",
+    email: "admin@babybloom.dev",
+    suburb: "Sydney",
+    postcode: "2000",
     profile_picture_url: null,
   },
   super_admin: {
-    id: 'dev-admin-profile',
-    user_id: 'dev-admin-user',
-    first_name: 'Bailey',
-    last_name: 'Admin',
-    email: 'admin@babybloom.dev',
-    suburb: 'Sydney',
-    postcode: '2000',
+    id: "dev-admin-profile",
+    user_id: "dev-admin-user",
+    first_name: "Bailey",
+    last_name: "Admin",
+    email: "admin@babybloom.dev",
+    suburb: "Sydney",
+    postcode: "2000",
     profile_picture_url: null,
   },
 };
 
 function getDevRole(): UserRole {
-  if (typeof window === 'undefined') return 'nanny';
-  return (localStorage.getItem('bb-dev-role') as UserRole) || 'nanny';
+  if (typeof window === "undefined") return "nanny";
+  return (localStorage.getItem("bb-dev-role") as UserRole) || "nanny";
 }
 
 function DevSessionProvider({ children }: { children: React.ReactNode }) {
-  const [role, setRole] = useState<UserRole>('nanny');
+  const [role, setRole] = useState<UserRole>("nanny");
 
   useEffect(() => {
     setRole(getDevRole());
@@ -69,8 +69,11 @@ function DevSessionProvider({ children }: { children: React.ReactNode }) {
     id: profile.user_id,
     email: profile.email,
     app_metadata: {},
-    user_metadata: { first_name: profile.first_name, last_name: profile.last_name },
-    aud: 'authenticated',
+    user_metadata: {
+      first_name: profile.first_name,
+      last_name: profile.last_name,
+    },
+    aud: "authenticated",
     created_at: new Date().toISOString(),
   } as User;
 
@@ -82,7 +85,7 @@ function DevSessionProvider({ children }: { children: React.ReactNode }) {
         profile,
         isLoading: false,
         signOut: async () => {
-          window.location.href = '/';
+          window.location.href = "/";
         },
       }}
     >
@@ -111,37 +114,60 @@ function RealSessionProvider({ children }: SessionProviderProps) {
 
   const supabase = createClient();
 
-  const fetchUserData = useCallback(async (userId: string) => {
-    try {
-      // Fetch role
-      const { data: roleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
+  const fetchUserData = useCallback(
+    async (userId: string) => {
+      try {
+        // Fetch role
+        const { data: roleData, error: roleError } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId)
+          .single();
 
-      if (roleError) {
-        console.error('Error fetching role:', roleError);
-      } else if (roleData) {
-        setRole(roleData.role as UserRole);
+        if (roleError) {
+          console.error("Error fetching role:", roleError);
+        } else if (roleData) {
+          // Validate the value at the boundary instead of `as UserRole`
+          // casting blindly. A whitespace / casing / unexpected value
+          // from the DB would otherwise silently propagate through
+          // `dashboardNavRole(...)` as null, suppressing the header +
+          // tabs in production with no diagnostic.
+          const VALID_ROLES = [
+            "nanny",
+            "parent",
+            "admin",
+            "super_admin",
+          ] as const;
+          const raw =
+            typeof roleData.role === "string" ? roleData.role.trim() : "";
+          const matched = (VALID_ROLES as readonly string[]).includes(raw)
+            ? (raw as UserRole)
+            : null;
+          if (matched) {
+            setRole(matched);
+          } else {
+            console.error("Invalid role value from user_roles:", roleData.role);
+          }
+        }
+
+        // Fetch profile
+        const { data: profileData, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", userId)
+          .single();
+
+        if (profileError) {
+          console.error("Error fetching profile:", profileError);
+        } else if (profileData) {
+          setProfile(profileData as UserProfile);
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
       }
-
-      // Fetch profile
-      const { data: profileData, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching profile:', profileError);
-      } else if (profileData) {
-        setProfile(profileData as UserProfile);
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error);
-    }
-  }, [supabase]);
+    },
+    [supabase],
+  );
 
   const clearUserData = useCallback(() => {
     setUser(null);
@@ -153,50 +179,65 @@ function RealSessionProvider({ children }: SessionProviderProps) {
     clearUserData();
     try {
       // Clear server-side cookies first
-      await fetch('/api/auth/signout', { method: 'POST' });
+      await fetch("/api/auth/signout", { method: "POST" });
     } catch {
       // Fallback: try client-side signout
-      try { await supabase.auth.signOut(); } catch { /* ignore */ }
+      try {
+        await supabase.auth.signOut();
+      } catch {
+        /* ignore */
+      }
     }
-    window.location.href = '/login';
+    window.location.href = "/login";
   }, [supabase, clearUserData]);
 
   useEffect(() => {
-    // Get initial session
-    const getSession = async () => {
+    // Get initial session.
+    //
+    // Use `getUser()` (not `getSession()`) for the bootstrap so the
+    // JWT is validated against the Supabase server before we trust
+    // it. `getSession()` only reads the local cookie store and will
+    // happily return a `user` object for an expired token; the
+    // subsequent `user_roles` SELECT then fails silently under RLS,
+    // leaving `role` permanently null and the dashboard chrome
+    // (DashboardNav + KatieTabs) suppressed for the entire session.
+    const bootstrap = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { user: validatedUser },
+          error,
+        } = await supabase.auth.getUser();
 
-        if (session?.user) {
-          setUser(session.user);
-          await fetchUserData(session.user.id);
+        if (!error && validatedUser) {
+          setUser(validatedUser);
+          await fetchUserData(validatedUser.id);
         }
       } catch (error) {
-        console.error('Error getting session:', error);
+        console.error("Error getting session:", error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    getSession();
+    bootstrap();
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
-          setUser(session.user);
-          await fetchUserData(session.user.id);
-        } else if (event === 'SIGNED_OUT') {
-          clearUserData();
-        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-          setUser(session.user);
-        } else if (event === 'USER_UPDATED' && session?.user) {
-          setUser(session.user);
-          await fetchUserData(session.user.id);
-        }
-        setIsLoading(false);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        setUser(session.user);
+        await fetchUserData(session.user.id);
+      } else if (event === "SIGNED_OUT") {
+        clearUserData();
+      } else if (event === "TOKEN_REFRESHED" && session?.user) {
+        setUser(session.user);
+      } else if (event === "USER_UPDATED" && session?.user) {
+        setUser(session.user);
+        await fetchUserData(session.user.id);
       }
-    );
+      setIsLoading(false);
+    });
 
     return () => {
       subscription.unsubscribe();
