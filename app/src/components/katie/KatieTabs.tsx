@@ -66,6 +66,11 @@ interface TabButtonProps {
    *  body underneath so the tab and body merge seamlessly through
    *  the broken divider line. */
   activeBodyBg: string;
+  /** Same colour as `activeBodyBg`, expressed as a CSS colour value.
+   *  Used by the inline `box-shadow` + `backgroundColor` on the
+   *  outward-concave pseudo-corners (Tailwind's JIT can't statically
+   *  derive a `shadow-color` from an arbitrary `bg-[...]` literal). */
+  activeBodyBgCss: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
   children: ReactNode;
@@ -73,7 +78,16 @@ interface TabButtonProps {
 
 const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
   function TabButton(
-    { id, controls, active, activeBodyBg, onClick, onKeyDown, children },
+    {
+      id,
+      controls,
+      active,
+      activeBodyBg,
+      activeBodyBgCss,
+      onClick,
+      onKeyDown,
+      children,
+    },
     ref,
   ) {
     return (
@@ -111,6 +125,44 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
               "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
+        {/* Outward-concave bottom-exterior curves on the active tab —
+            matches the 16px top-corner radius so the silhouette
+            curves with the same arc on top and bottom. Classic
+            Chrome-tab pseudo-element trick:
+              • Each pseudo is a 16×16 filled square sitting just
+                outside the active tab's bottom-left/right corner.
+              • The corner of the pseudo facing the tab body is
+                rounded 16px, "cutting" a quarter-circle out of the
+                square — that cut becomes the visible concave curve.
+              • A `box-shadow` of size 16px in the body colour
+                extends the filled square down-and-out beyond the
+                pseudo's natural bounds, paving the path from the
+                tab's bottom edge into the strip's baseline.
+            Inline style is required because Tailwind's JIT can't
+            derive a runtime colour for `box-shadow`/`background-color`
+            from an arbitrary `bg-[...]` literal. */}
+        {active && (
+          <>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -left-4 bottom-0 h-4 w-4"
+              style={{
+                backgroundColor: activeBodyBgCss,
+                borderBottomRightRadius: "16px",
+                boxShadow: `8px 8px 0 0 ${activeBodyBgCss}`,
+              }}
+            />
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-4 bottom-0 h-4 w-4"
+              style={{
+                backgroundColor: activeBodyBgCss,
+                borderBottomLeftRadius: "16px",
+                boxShadow: `-8px 8px 0 0 ${activeBodyBgCss}`,
+              }}
+            />
+          </>
+        )}
         {children}
       </button>
     );
@@ -193,17 +245,14 @@ export function KatieTabs() {
       aria-orientation="horizontal"
       className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-1 pt-1 xl:hidden"
     >
-      {/* Full-width violet horizontal divider, painted at the strip's
-          bottom edge. z-0 so the active tab (z-10) covers the divider
-          at its x-range — the tab's body-coloured bg "breaks" the
-          line where the deck flows up through. Replaces the previous
-          `border-b-2` on the strip, which produced a faint hairline
-          under the active tab on some pixel densities (sub-pixel
-          rounding of `-mb-[2px]` + the border didn't always align
-          perfectly). */}
+      {/* Full-width violet horizontal divider at 33% opacity (per
+          user spec) so the line reads as a soft chrome boundary
+          rather than a hard rule. z-0 so the active tab (z-10)
+          covers the divider at its x-range — the tab's body-coloured
+          bg "breaks" the line where the deck flows up through. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-violet-600 z-0"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-violet-600/[.33] z-0"
       />
 
       <TabButton
@@ -212,6 +261,7 @@ export function KatieTabs() {
         controls={KATIE_PANEL_ID}
         active={isKatieActive}
         activeBodyBg="bg-[hsl(var(--color-katie-bg-beige))]"
+        activeBodyBgCss="hsl(var(--color-katie-bg-beige))"
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
       >
@@ -241,6 +291,8 @@ export function KatieTabs() {
         controls={MAIN_PANEL_ID}
         active={!isKatieActive}
         activeBodyBg="bg-slate-50"
+        // slate-50 = #f8fafc.
+        activeBodyBgCss="#f8fafc"
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
       >
