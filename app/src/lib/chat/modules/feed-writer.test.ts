@@ -189,6 +189,101 @@ describe("feed-writer apply — create_tile", () => {
     expect(r.ok).toBe(false);
     expect(mocks.insertMock).not.toHaveBeenCalled();
   });
+
+  // A-09 — internal_notes column threading. Uses a custom mock that
+  // captures the insert payload so we can assert the exact column
+  // shape (the shared makeCtx mock loses the payload).
+  it("threads internal_notes into the insert payload when provided", async () => {
+    const insertCapture = vi.fn();
+    const supabase = {
+      from: vi.fn(() => ({
+        insert: (payload: unknown) => {
+          insertCapture(payload);
+          return {
+            select: () => ({
+              single: () =>
+                Promise.resolve({
+                  data: { id: "tile-with-notes" },
+                  error: null,
+                }),
+            }),
+          };
+        },
+      })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    const r = await applyCreateTile(
+      {
+        title: "Park visit",
+        body: "Oliver loved the swings today.",
+        internal_notes:
+          "Parent flagged earlier this week that he was nervous of swings — note the shift.",
+      },
+      { userId: "u-1", children: [oliver], supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(insertCapture).toHaveBeenCalledTimes(1);
+    const payload = insertCapture.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.internal_notes).toBe(
+      "Parent flagged earlier this week that he was nervous of swings — note the shift.",
+    );
+    // Critical: internal_notes is a TOP-LEVEL column, NOT smuggled
+    // into the user-visible `data` JSONB.
+    expect(
+      (payload.data as Record<string, unknown>).internal_notes,
+    ).toBeUndefined();
+  });
+
+  it("omits internal_notes from the insert when not provided", async () => {
+    const insertCapture = vi.fn();
+    const supabase = {
+      from: vi.fn(() => ({
+        insert: (payload: unknown) => {
+          insertCapture(payload);
+          return {
+            select: () => ({
+              single: () =>
+                Promise.resolve({ data: { id: "tile-x" }, error: null }),
+            }),
+          };
+        },
+      })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await applyCreateTile(
+      { title: "T", body: "B" },
+      { userId: "u-1", children: [oliver], supabase },
+    );
+    const payload = insertCapture.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("internal_notes");
+  });
+
+  it("treats whitespace-only internal_notes as absent", async () => {
+    const insertCapture = vi.fn();
+    const supabase = {
+      from: vi.fn(() => ({
+        insert: (payload: unknown) => {
+          insertCapture(payload);
+          return {
+            select: () => ({
+              single: () =>
+                Promise.resolve({ data: { id: "tile-x" }, error: null }),
+            }),
+          };
+        },
+      })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
+
+    await applyCreateTile(
+      { title: "T", body: "B", internal_notes: "   \n  " },
+      { userId: "u-1", children: [oliver], supabase },
+    );
+    const payload = insertCapture.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("internal_notes");
+  });
 });
 
 describe("feed-writer — delete_tile", () => {

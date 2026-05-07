@@ -19,7 +19,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2 } from "lucide-react";
+import { Baby, Camera, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadFile } from "@/lib/supabase/storage";
 import { updateChildProfilePictureUrl } from "@/lib/actions/bapp/child-clients";
@@ -71,7 +71,6 @@ export function ChildAvatarEditor({
 
   const hasAvatar = !!currentUrl;
   const displayName = childFirstName ?? "Child";
-  const initial = (childFirstName?.[0] ?? "?").toUpperCase();
   // Disambiguator for the aria-label when childFirstName is null and
   // multiple children might render side-by-side (a11y-architect MED:
   // SC 2.4.6 — accessible names should be unique). Using the last 4
@@ -234,8 +233,13 @@ export function ChildAvatarEditor({
             className="h-full w-full object-cover"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-2xl font-bold text-emerald-500">
-            {initial}
+          // Default fallback: Baby lucide icon, not the child's initial.
+          // The initial fallback was replaced per user feedback
+          // (2026-05-07) — the baby silhouette reads as a clear
+          // "no photo yet" affordance rather than a personalised
+          // monogram which can feel like an intentional design choice.
+          <div className="flex h-full w-full items-center justify-center text-emerald-500">
+            <Baby aria-hidden="true" className="h-8 w-8" />
           </div>
         )}
 

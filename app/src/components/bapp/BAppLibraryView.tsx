@@ -117,9 +117,15 @@ export function BAppLibraryView({
 
   return (
     <>
-      {/* 3-column grid inside a tile card */}
+      {/* 3-column grid inside a tile card.
+          Per user feedback 2026-05-07: Instagram-style flush grid —
+          images sit directly next to each other (no gap, no
+          rounded corners on individual tiles) and the container
+          gives them uniform padding on all sides. The hairline
+          slate-100 background fills the seams while images are
+          loading so there's no flash of white between cells. */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="grid grid-cols-3 gap-0.5 p-1">
+        <div className="grid grid-cols-3 gap-0 p-3">
           {images.map((img) => {
             const d = img.data as Record<string, unknown>;
             const url = d.image_url as string;
@@ -128,7 +134,7 @@ export function BAppLibraryView({
                 key={img.id}
                 type="button"
                 onClick={() => setSelected(img)}
-                className="relative aspect-square overflow-hidden rounded-lg bg-slate-100"
+                className="relative aspect-square overflow-hidden bg-slate-100"
               >
                 <img
                   src={url}

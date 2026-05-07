@@ -39,7 +39,7 @@ beforeEach(() => {
 
 describe("KatieTabs — ARIA", () => {
   it("renders a tablist with two tabs", () => {
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     const tablist = screen.getByRole("tablist");
     expect(tablist).toBeInTheDocument();
     expect(screen.getAllByRole("tab")).toHaveLength(2);
@@ -47,49 +47,49 @@ describe("KatieTabs — ARIA", () => {
 
   it("marks the active tab via aria-selected", () => {
     currentDeck = "katie";
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     const katieTab = screen.getByRole("tab", { name: /Katie/ });
-    const mainTab = screen.getByRole("tab", { name: /Bloom/ });
+    const mainTab = screen.getByRole("tab", { name: /Portal/ });
     expect(katieTab).toHaveAttribute("aria-selected", "true");
     expect(mainTab).toHaveAttribute("aria-selected", "false");
   });
 
   it("only the active tab is in the tab order (roving tabindex)", () => {
     currentDeck = "main";
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     const katieTab = screen.getByRole("tab", { name: /Katie/ });
-    const mainTab = screen.getByRole("tab", { name: /Bloom/ });
+    const mainTab = screen.getByRole("tab", { name: /Portal/ });
     expect(katieTab).toHaveAttribute("tabindex", "-1");
     expect(mainTab).toHaveAttribute("tabindex", "0");
   });
 
   it("roving tabindex flips when the active deck changes (re-render)", () => {
     currentDeck = "main";
-    const { rerender } = render(<KatieTabs />);
+    const { rerender } = render(<KatieTabs role="parent" />);
     expect(screen.getByRole("tab", { name: /Katie/ })).toHaveAttribute(
       "tabindex",
       "-1",
     );
 
     currentDeck = "katie";
-    rerender(<KatieTabs />);
+    rerender(<KatieTabs role="parent" />);
     expect(screen.getByRole("tab", { name: /Katie/ })).toHaveAttribute(
       "tabindex",
       "0",
     );
-    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Portal/ })).toHaveAttribute(
       "tabindex",
       "-1",
     );
   });
 
   it("each tab links to its panel via aria-controls", () => {
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     expect(screen.getByRole("tab", { name: /Katie/ })).toHaveAttribute(
       "aria-controls",
       "panel-katie",
     );
-    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveAttribute(
+    expect(screen.getByRole("tab", { name: /Portal/ })).toHaveAttribute(
       "aria-controls",
       "panel-main",
     );
@@ -99,7 +99,7 @@ describe("KatieTabs — ARIA", () => {
 describe("KatieTabs — interactions", () => {
   it("clicking the inactive tab swaps decks", () => {
     currentDeck = "main";
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     fireEvent.click(screen.getByRole("tab", { name: /Katie/ }));
     expect(showKatieMock).toHaveBeenCalledTimes(1);
     expect(showMainMock).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe("KatieTabs — interactions", () => {
 
   it("ArrowRight on the Katie tab swaps to main AND moves focus", () => {
     currentDeck = "katie";
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     const katieTab = screen.getByRole("tab", { name: /Katie/ });
     katieTab.focus();
     fireEvent.keyDown(katieTab, { key: "ArrowRight" });
@@ -115,13 +115,13 @@ describe("KatieTabs — interactions", () => {
     // Focus assertion — required by the WAI-ARIA tabs pattern. Without
     // this, AT users would land on the wrong tab after Arrow nav even
     // though `aria-selected` reflects the new state.
-    expect(screen.getByRole("tab", { name: /Bloom/ })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: /Portal/ })).toHaveFocus();
   });
 
-  it("ArrowLeft on the Bloom tab swaps to Katie", () => {
+  it("ArrowLeft on the Portal tab swaps to Katie", () => {
     currentDeck = "main";
-    render(<KatieTabs />);
-    fireEvent.keyDown(screen.getByRole("tab", { name: /Bloom/ }), {
+    render(<KatieTabs role="parent" />);
+    fireEvent.keyDown(screen.getByRole("tab", { name: /Portal/ }), {
       key: "ArrowLeft",
     });
     expect(showKatieMock).toHaveBeenCalledTimes(1);
@@ -129,17 +129,17 @@ describe("KatieTabs — interactions", () => {
 
   it("Home key jumps to the Katie (start) tab", () => {
     currentDeck = "main";
-    render(<KatieTabs />);
-    fireEvent.keyDown(screen.getByRole("tab", { name: /Bloom/ }), {
+    render(<KatieTabs role="parent" />);
+    fireEvent.keyDown(screen.getByRole("tab", { name: /Portal/ }), {
       key: "Home",
     });
     expect(showKatieMock).toHaveBeenCalledTimes(1);
   });
 
-  it("End key jumps to the Bloom (end) tab", () => {
+  it("End key jumps to the Portal (end) tab", () => {
     currentDeck = "katie";
     cleanup(); // ensure prior render is unmounted to avoid duplicate roles
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     fireEvent.keyDown(screen.getByRole("tab", { name: /Katie/ }), {
       key: "End",
     });
@@ -150,21 +150,21 @@ describe("KatieTabs — interactions", () => {
 describe("KatieTabs — unread badge", () => {
   it("hides the badge when unreadCount is 0", () => {
     currentUnread = 0;
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     // No screen-reader 'unread' announcement.
     expect(screen.queryByText(/unread/i)).not.toBeInTheDocument();
   });
 
   it("renders the count up to 9", () => {
     currentUnread = 3;
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     expect(screen.getByRole("tab", { name: /Katie/ })).toHaveTextContent("3");
     expect(screen.getByText(/3 unread messages/i)).toBeInTheDocument();
   });
 
   it("clamps to 9+ for ten or more", () => {
     currentUnread = 42;
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     expect(screen.getByRole("tab", { name: /Katie/ })).toHaveTextContent("9+");
     // SR announcement uses the real count, not the clamped label.
     expect(screen.getByText(/42 unread messages/i)).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe("KatieTabs — unread badge", () => {
 
   it("uses singular 'message' for exactly 1 unread", () => {
     currentUnread = 1;
-    render(<KatieTabs />);
+    render(<KatieTabs role="parent" />);
     expect(screen.getByText(/1 unread message$/i)).toBeInTheDocument();
   });
 });

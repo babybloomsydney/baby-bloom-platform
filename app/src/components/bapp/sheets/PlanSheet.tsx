@@ -26,7 +26,9 @@ interface PlanSheetProps {
 
 export function PlanSheet({ open, onOpenChange, childId }: PlanSheetProps) {
   const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [progressMatrix, setProgressMatrix] = useState<Record<string, number>>({});
+  const [progressMatrix, setProgressMatrix] = useState<Record<string, number>>(
+    {},
+  );
   const [selected, setSelected] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -87,12 +89,9 @@ export function PlanSheet({ open, onOpenChange, childId }: PlanSheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[90vh] rounded-t-2xl px-4 pb-6"
-      >
+      <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
-          <SheetTitle className="text-base">Plan Activity</SheetTitle>
+          <SheetTitle className="text-base">Design Activity</SheetTitle>
         </SheetHeader>
 
         <div
@@ -109,7 +108,12 @@ export function PlanSheet({ open, onOpenChange, childId }: PlanSheetProps) {
                     key={id}
                     className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700"
                   >
-                    {m && <DomainBadge domain={m.domain} className="text-[10px] px-1.5 py-0" />}
+                    {m && (
+                      <DomainBadge
+                        domain={m.domain}
+                        className="text-[10px] px-1.5 py-0"
+                      />
+                    )}
                     <span className="max-w-[150px] truncate">
                       {m?.description ?? id}
                     </span>

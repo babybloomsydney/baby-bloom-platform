@@ -55,7 +55,15 @@ async function insertLog(
     .insert(row)
     .select("id")
     .single();
-  if (error || !data) return null;
+  if (error || !data) {
+    // Log the underlying Supabase error so RLS / constraint /
+    // network failures are diagnosable from server logs. The
+    // caller surface only carries a generic "Failed to save…"
+    // string to the user — without this log line the original
+    // error code + message would be lost forever.
+    console.error("[diary insertLog] bapp_logs insert failed:", error);
+    return null;
+  }
   return data as { id: string };
 }
 
@@ -241,6 +249,53 @@ function prepareSleep(
   };
 }
 
+interface PreparedUpdate {
+  child: ChildSummary;
+  updateData: Record<string, unknown>;
+}
+
+/** Free-form parent-update note. Sister of "General Observation"
+ *  but lives under the Diary surface (renders with badge "Diary
+ *  Entry"). Validation: trimmed note must be non-empty. */
+function prepareUpdate(
+  args: Record<string, unknown>,
+  children: ChildSummary[],
+):
+  | { ok: true; prepared: PreparedUpdate }
+  | { ok: false; error: string; terminal?: boolean } {
+  const r = resolveChild(args.child_name, children);
+  if (r.error) {
+    return {
+      ok: false,
+      error: r.error.error ?? "Could not resolve child.",
+      terminal: r.error.terminal,
+    };
+  }
+  const child = r.child;
+
+  const note = typeof args.note === "string" ? args.note.trim() : "";
+  if (note.length === 0) {
+    return {
+      ok: false,
+      error: "log_update needs a `note` describing the update.",
+    };
+  }
+
+  const imageUrl =
+    typeof args.image_url === "string" && args.image_url.trim().length > 0
+      ? args.image_url.trim()
+      : null;
+
+  const updateData: Record<string, unknown> = {
+    subtype: "update",
+    note,
+    title: "Diary Entry",
+    image_url: imageUrl,
+  };
+
+  return { ok: true, prepared: { child, updateData } };
+}
+
 // ── Tile builders ─────────────────────────────────────────────────────────
 
 function buildDiaryTile(
@@ -347,6 +402,42 @@ async function proposeLogSleep(
   };
 }
 
+async function proposeLogUpdate(
+  args: Record<string, unknown>,
+  ctx: Parameters<BloomBotModule["execute"]>[2],
+): Promise<ToolResult> {
+  const r = prepareUpdate(args, ctx.children);
+  if (!r.ok) {
+    return { success: false, error: r.error, terminal: r.terminal };
+  }
+  const { child, updateData } = r.prepared;
+  const draftId = `draft_${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  return {
+    success: true,
+    data: {
+      draft_id: draftId,
+      child_name: child.firstName,
+      preview: updateData,
+    },
+    tile: {
+      kind: "draft",
+      data: {
+        draftId,
+        toolName: "log_update",
+        args,
+        preview: buildDiaryTile(
+          draftId,
+          child.id,
+          ctx.userId,
+          updateData,
+          nowIso,
+        ),
+      },
+    },
+  };
+}
+
 // ── Apply path (frontend-callable via /api/chat/drafts/accept) ───────────
 
 export interface DiaryApplyResult {
@@ -426,13 +517,46 @@ export async function applyLogSleep(
   };
 }
 
+export async function applyLogUpdate(
+  args: Record<string, unknown>,
+  ctx: { userId: string; children: ChildSummary[]; supabase: SupabaseClient },
+): Promise<DiaryApplyResult | DiaryApplyError> {
+  const r = prepareUpdate(args, ctx.children);
+  if (!r.ok) {
+    return { ok: false, error: r.error };
+  }
+  const { child, updateData } = r.prepared;
+
+  const inserted = await insertLog(
+    { userId: ctx.userId, supabase: ctx.supabase },
+    {
+      child_client_id: child.id,
+      author_id: ctx.userId,
+      type: "diary",
+      status: "completed",
+      context: "adhoc",
+      data: updateData,
+    },
+  );
+  if (!inserted) {
+    return { ok: false, error: "Failed to save diary update." };
+  }
+
+  const nowIso = new Date().toISOString();
+  return {
+    ok: true,
+    data: { log_id: inserted.id, child_name: child.firstName },
+    tile: buildDiaryTile(inserted.id, child.id, ctx.userId, updateData, nowIso),
+  };
+}
+
 // ── Module export ────────────────────────────────────────────────────────
 
 export const diaryModule: BloomBotModule = {
   id: "diary",
   name: "Daily Diary",
   description:
-    "Drafts daily-care diary entries — meals (log_food) and sleep (log_sleep). Each tool returns a DRAFT tile the user must accept; nothing is inserted into bapp_logs until the user clicks Accept.",
+    "Drafts daily-care diary entries — meals (log_food), sleep (log_sleep), and free-form parent-updates (log_update). Each tool returns a DRAFT tile the user must accept; nothing is inserted into bapp_logs until the user clicks Accept.",
 
   tools: [
     {
@@ -471,6 +595,32 @@ export const diaryModule: BloomBotModule = {
           },
         },
         required: ["meal_type", "items"],
+      },
+    },
+    {
+      name: "log_update",
+      description:
+        "Draft a free-form parent-update diary entry — a note describing what the carer has been up to with the child, captured for the parent to read. Returns a draft tile the user can Accept, Amend, or Dismiss. Use this for narrative updates ('We went to the park and had a great morning…') that don't fit the food / sleep / observation patterns. NOTE: nothing is logged until the user accepts.",
+      parameters: {
+        type: "object",
+        properties: {
+          child_name: {
+            type: "string",
+            description:
+              "Which child (required if the user has multiple children; can omit if only one).",
+          },
+          note: {
+            type: "string",
+            description:
+              "The update text — narrative description of what's been happening with the child.",
+          },
+          image_url: {
+            type: "string",
+            description:
+              "Optional image URL to attach (Cloudinary or Supabase Storage URL).",
+          },
+        },
+        required: ["note"],
       },
     },
     {
@@ -516,9 +666,10 @@ export const diaryModule: BloomBotModule = {
   async execute(toolName, args, ctx) {
     if (toolName === "log_food") return proposeLogFood(args, ctx);
     if (toolName === "log_sleep") return proposeLogSleep(args, ctx);
+    if (toolName === "log_update") return proposeLogUpdate(args, ctx);
     return { success: false, error: `Unknown tool: ${toolName}` };
   },
 
   systemPromptFragment:
-    "Draft meals with `log_food` and sleep with `log_sleep`. Each call returns a DRAFT tile in the chat — the user clicks Accept to commit, Amend to revise, or Dismiss to drop. Do NOT tell the user the entry is logged after calling — say something like 'Drafted breakfast — review and accept when ready' and then stop. The user's button press finalises the entry.",
+    "Draft meals with `log_food`, sleep with `log_sleep`, and free-form parent-updates with `log_update`. `log_update` is for narrative notes — what the carer's been up to with the child, the kind of detail a parent reads to picture their day. Use it when the content is a story, not a structured meal/sleep/observation. Each call returns a DRAFT tile in the chat — the user clicks Accept to commit, Amend to revise, or Dismiss to drop. Do NOT tell the user the entry is logged after calling — say something like 'Drafted that update — review and accept when ready' and then stop. The user's button press finalises the entry.",
 };

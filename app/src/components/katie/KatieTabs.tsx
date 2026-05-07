@@ -86,7 +86,7 @@ interface ChromeTabBackdropProps {
 function ChromeTabBackdrop({
   fillColor,
   strokeColor,
-  strokeWidth = 2,
+  strokeWidth = 1,
 }: ChromeTabBackdropProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [{ w, h }, setSize] = useState({ w: 0, h: 0 });
@@ -106,17 +106,24 @@ function ChromeTabBackdrop({
 
   // Closed path for FILL — includes the bottom baseline so the body
   // colour fills the whole silhouette including the flares.
+  // Sweep-flag rules for the four arcs:
+  //   • Bottom-exterior flares (LEFT and RIGHT): sweep-flag 0
+  //     (counter-clockwise) so the arc bulges OUTWARD into the chrome
+  //     zone — the Chrome-tab silhouette. Sweep-flag 1 here pulled the
+  //     arc inward into the tab body, producing the "scooped" look.
+  //   • Top corners (TL and TR): sweep-flag 1 (clockwise) so the arc
+  //     curves inward into the tab body — standard rounded top corner.
   const closedPath =
     w > 0 && h > 0
       ? [
           `M ${-r} ${h}`,
-          `A ${r} ${r} 0 0 1 0 ${h - r}`, // outward flare LEFT-bottom
+          `A ${r} ${r} 0 0 0 0 ${h - r}`, // outward flare LEFT-bottom
           `L 0 ${r}`,
           `A ${r} ${r} 0 0 1 ${r} 0`, // TL corner
           `L ${w - r} 0`,
           `A ${r} ${r} 0 0 1 ${w} ${r}`, // TR corner
           `L ${w} ${h - r}`,
-          `A ${r} ${r} 0 0 1 ${w + r} ${h}`, // outward flare RIGHT-bottom
+          `A ${r} ${r} 0 0 0 ${w + r} ${h}`, // outward flare RIGHT-bottom
           `Z`,
         ].join(" ")
       : "";
@@ -127,13 +134,13 @@ function ChromeTabBackdrop({
     w > 0 && h > 0
       ? [
           `M ${-r} ${h}`,
-          `A ${r} ${r} 0 0 1 0 ${h - r}`,
+          `A ${r} ${r} 0 0 0 0 ${h - r}`,
           `L 0 ${r}`,
           `A ${r} ${r} 0 0 1 ${r} 0`,
           `L ${w - r} 0`,
           `A ${r} ${r} 0 0 1 ${w} ${r}`,
           `L ${w} ${h - r}`,
-          `A ${r} ${r} 0 0 1 ${w + r} ${h}`,
+          `A ${r} ${r} 0 0 0 ${w + r} ${h}`,
         ].join(" ")
       : "";
 
@@ -171,14 +178,14 @@ interface TabButtonProps {
   id: string;
   controls: string;
   active: boolean;
-  /** Tailwind utility for the active tab head bg. Matches the deck
-   *  body underneath so the tab and body merge seamlessly through
-   *  the broken divider line. */
-  activeBodyBg: string;
-  /** Same colour as `activeBodyBg`, expressed as a CSS colour value.
-   *  Used by the inline `box-shadow` + `backgroundColor` on the
-   *  outward-concave pseudo-corners (Tailwind's JIT can't statically
-   *  derive a `shadow-color` from an arbitrary `bg-[...]` literal). */
+  /** CSS colour value for the SVG-painted body fill of the active
+   *  tab. Matches the deck body colour underneath so the tab and
+   *  body merge seamlessly through the broken divider line.
+   *  No equivalent Tailwind class is applied to the button itself —
+   *  the button is transparent and the SVG silhouette paints the
+   *  rounded shape. (A bg utility on the button would re-introduce
+   *  the underlying rectangle and its sharp corners would poke past
+   *  the rounded SVG outline.) */
   activeBodyBgCss: string;
   onClick: () => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
@@ -187,16 +194,7 @@ interface TabButtonProps {
 
 const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
   function TabButton(
-    {
-      id,
-      controls,
-      active,
-      activeBodyBg,
-      activeBodyBgCss,
-      onClick,
-      onKeyDown,
-      children,
-    },
+    { id, controls, active, activeBodyBgCss, onClick, onKeyDown, children },
     ref,
   ) {
     return (
@@ -215,28 +213,39 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
         className={[
           // Base geometry. `relative` so the SVG backdrop can sit
           // absolutely beneath the tab's text + icon content.
-          "relative px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
+          // `bg-transparent` is mandatory — see ActiveBodyBgCss prop
+          // doc above. The button is a transparent hit-box; the SVG
+          // alone paints the rounded chrome-tab silhouette.
+          // `group` so the per-tab icon can react to button hover
+          // via `group-hover:` (same violet shift as the label).
+          "group relative bg-transparent px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
           // Width: active wider (~60/40 split).
           active ? "flex-[3] basis-0" : "flex-[2] basis-0",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2",
           active
             ? // Active: SVG backdrop paints the chrome-tab silhouette
-              // (rounded top + outward bottom flares + violet stroke).
-              // `z-10` puts the active tab above the strip's
-              // divider so the SVG's filled bg covers the line at
-              // the tab's x-range. No CSS border / radius needed
-              // here — the SVG carries both fill and outline.
-              `${activeBodyBg} text-violet-700 z-10`
-            : // Inactive: NO outline, NO backdrop. Pure text +
-              // hover state, blending with the chrome zone.
-              "bg-transparent text-slate-500 rounded-t-2xl hover:bg-slate-50 hover:text-slate-700",
+              // (rounded top + outward bottom flares + slate-200
+              // stroke). `z-10` puts the active tab above the strip's
+              // divider so the SVG's filled body bg covers the
+              // divider line at the tab's x-range. No CSS bg /
+              // border / radius applied here — the SVG carries them.
+              "text-violet-700 z-10"
+            : // Inactive: NO outline, NO backdrop. Hover changes
+              // ONLY the text colour to brand violet — no bg
+              // shimmer, no greying — so the tab strip stays a
+              // calm chrome zone (per user feedback 2026-05-07).
+              "text-slate-500 rounded-t-2xl hover:text-violet-600",
         ].join(" ")}
       >
         {active && (
           <ChromeTabBackdrop
             fillColor={activeBodyBgCss}
-            strokeColor="#7c3aed"
-            strokeWidth={2}
+            // slate-200 (#e2e8f0) at 1px — exact match for the
+            // universal tile outline (`border border-slate-200`) and
+            // for the strip's bottom divider, so the active tab's
+            // outline reads as one continuous line with the divider.
+            strokeColor="#e2e8f0"
+            strokeWidth={1}
           />
         )}
         <span className="relative z-10">{children}</span>
@@ -275,8 +284,17 @@ function UnreadBadge({ count, pulse }: UnreadBadgeProps) {
 
 // ── KatieTabs ───────────────────────────────────────────────────────────
 
-export function KatieTabs() {
+interface KatieTabsProps {
+  /** Drives the right-tab label: nanny → "Nanny Portal", parent →
+   *  "Parent Portal". Generic "Bloom" was replaced per user feedback
+   *  (2026-05-07) — "Portal" frames the deck as the user's own
+   *  workspace rather than a brand surface. */
+  role: "nanny" | "parent";
+}
+
+export function KatieTabs({ role }: KatieTabsProps) {
   const { visibleDeck, unreadCount, showKatie, showMain } = useKatie();
+  const portalLabel = role === "nanny" ? "Nanny Portal" : "Parent Portal";
 
   const katieTabRef = useRef<HTMLButtonElement | null>(null);
   const mainTabRef = useRef<HTMLButtonElement | null>(null);
@@ -319,16 +337,18 @@ export function KatieTabs() {
       role="tablist"
       aria-label="Switch deck"
       aria-orientation="horizontal"
-      className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-1 pt-1 xl:hidden"
+      className="sticky top-16 z-30 relative flex w-full gap-1 bg-white px-4 pt-0 xl:hidden"
     >
-      {/* Full-width violet horizontal divider at 33% opacity (per
-          user spec) so the line reads as a soft chrome boundary
-          rather than a hard rule. z-0 so the active tab (z-10)
-          covers the divider at its x-range — the tab's body-coloured
-          bg "breaks" the line where the deck flows up through. */}
+      {/* Full-width slate-200 horizontal divider — same colour,
+          thickness, and opacity as the universal tile outline
+          (`border border-slate-200`) so the divider and the active
+          tab's outline read as ONE continuous line. z-0 so the
+          active tab (z-10) covers the divider at its x-range — the
+          tab's body-coloured bg "breaks" the line where the deck
+          flows up through. */}
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-violet-600/[.33] z-0"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-slate-200 z-0"
       />
 
       <TabButton
@@ -336,8 +356,7 @@ export function KatieTabs() {
         id={KATIE_TAB_ID}
         controls={KATIE_PANEL_ID}
         active={isKatieActive}
-        activeBodyBg="bg-[hsl(var(--color-katie-bg-beige))]"
-        activeBodyBgCss="hsl(var(--color-katie-bg-beige))"
+        activeBodyBgCss="hsl(var(--color-katie-bg-lilac))"
         onClick={showKatie}
         onKeyDown={(e) => handleKeyDown(e, "katie")}
       >
@@ -345,8 +364,14 @@ export function KatieTabs() {
           <SparkleIcon
             aria-hidden="true"
             className={
-              "h-4 w-4 shrink-0 " +
-              (isKatieActive ? "text-violet-600" : "text-slate-400")
+              // Inactive icon adopts the same hover→violet rule as
+              // the label (per user feedback 2026-05-07): the
+              // sparkle and the word should track together. Group
+              // hover propagates from the parent button.
+              "h-4 w-4 shrink-0 transition-colors " +
+              (isKatieActive
+                ? "text-violet-600"
+                : "text-slate-400 group-hover:text-violet-600")
             }
           />
           Katie
@@ -366,8 +391,9 @@ export function KatieTabs() {
         id={MAIN_TAB_ID}
         controls={MAIN_PANEL_ID}
         active={!isKatieActive}
-        activeBodyBg="bg-slate-50"
-        // slate-50 = #f8fafc.
+        // slate-50 = #f8fafc — must match the BB-app deck body bg
+        // so the tab silhouette and the body below merge through
+        // the broken divider line.
         activeBodyBgCss="#f8fafc"
         onClick={showMain}
         onKeyDown={(e) => handleKeyDown(e, "main")}
@@ -376,11 +402,13 @@ export function KatieTabs() {
           <Baby
             aria-hidden="true"
             className={
-              "h-4 w-4 shrink-0 " +
-              (!isKatieActive ? "text-violet-600" : "text-slate-400")
+              "h-4 w-4 shrink-0 transition-colors " +
+              (!isKatieActive
+                ? "text-violet-600"
+                : "text-slate-400 group-hover:text-violet-600")
             }
           />
-          Bloom
+          {portalLabel}
         </span>
       </TabButton>
     </div>

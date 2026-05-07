@@ -872,3 +872,120 @@ export async function updateChildProfilePictureUrl(
     return { success: false, error: "Failed to update profile picture" };
   }
 }
+
+// ── updateChildDetails ───────────────────────────────────────────────
+//
+// Edits a child's `first_name` and / or `date_of_birth` from the
+// hero-card pencil-edit dialog (A-09, 2026-05-07). Mirrors the same
+// admin-client + explicit-ownership-gate pattern as
+// `updateChildProfilePictureUrl` so the security model stays
+// consistent across all child mutations.
+//
+// Validation:
+//   - first_name: 1–80 chars after trim. Empty / whitespace-only is
+//     rejected so the hero card never lands in the "Child" fallback.
+//   - date_of_birth: ISO yyyy-mm-dd, must parse, must NOT be in the
+//     future (DOB-in-future would break `ageMonthsFromDob` + every
+//     downstream age-gated rule).
+// Both fields are optional individually — at least one must be set
+// or the call is a no-op (returns success:false to surface the bug).
+
+const NAME_MAX_LENGTH = 80;
+const DOB_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidFirstName(name: string | undefined): name is string {
+  if (typeof name !== "string") return false;
+  const trimmed = name.trim();
+  return trimmed.length > 0 && trimmed.length <= NAME_MAX_LENGTH;
+}
+
+function isValidDateOfBirth(dob: string | undefined): dob is string {
+  if (typeof dob !== "string") return false;
+  if (!DOB_REGEX.test(dob)) return false;
+  const date = new Date(dob);
+  if (Number.isNaN(date.getTime())) return false;
+  // Reject future dates — a child can't be born tomorrow. Compared
+  // against UTC midnight today so timezone-edge submissions don't
+  // false-reject a valid same-day birth.
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  return date.getTime() <= todayUtc.getTime();
+}
+
+export async function updateChildDetails(
+  childClientId: string,
+  fields: { first_name?: string; date_of_birth?: string | null },
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return { success: false, error: "Not authenticated" };
+    }
+
+    if (!UUID_REGEX_CHILD.test(childClientId)) {
+      return { success: false, error: "Child not found" };
+    }
+
+    // Build the update payload from validated fields only. Omitting
+    // a field leaves it untouched in the DB. Allowing `null` for
+    // date_of_birth lets the user clear an incorrect prior entry.
+    const update: { first_name?: string; date_of_birth?: string | null } = {};
+    if (fields.first_name !== undefined) {
+      if (!isValidFirstName(fields.first_name)) {
+        return { success: false, error: "Invalid first name" };
+      }
+      update.first_name = fields.first_name.trim();
+    }
+    if (fields.date_of_birth !== undefined) {
+      if (fields.date_of_birth === null) {
+        update.date_of_birth = null;
+      } else if (!isValidDateOfBirth(fields.date_of_birth)) {
+        return { success: false, error: "Invalid date of birth" };
+      } else {
+        update.date_of_birth = fields.date_of_birth;
+      }
+    }
+    if (Object.keys(update).length === 0) {
+      return { success: false, error: "No fields to update" };
+    }
+
+    // Ownership gate (same shape as updateChildProfilePictureUrl).
+    const admin = createAdminClient();
+    const { data: child, error: childErr } = await admin
+      .from("child_client")
+      .select("id, parent_user_id, nanny_user_id")
+      .eq("id", childClientId)
+      .maybeSingle();
+    if (childErr || !child) {
+      return { success: false, error: "Child not found" };
+    }
+    const isParent = child.parent_user_id === user.id;
+    const isNanny = child.nanny_user_id === user.id;
+    if (!isParent && !isNanny) {
+      return { success: false, error: "Not authorised for this child" };
+    }
+
+    // SECURITY: admin .update() bypasses RLS. The ownership gate
+    // above is the only enforcement layer.
+    const { error: updateError } = await admin
+      .from("child_client")
+      .update(update)
+      .eq("id", childClientId);
+    if (updateError) {
+      console.error("[updateChildDetails] update error:", updateError);
+      return { success: false, error: "Failed to update child details" };
+    }
+
+    // Both parties see the new name / DOB on the hero card.
+    revalidatePath(`/parent/development/${childClientId}`);
+    revalidatePath(`/nanny/development/${childClientId}`);
+    return { success: true, error: null };
+  } catch (err) {
+    console.error("updateChildDetails unexpected error:", err);
+    return { success: false, error: "Failed to update child details" };
+  }
+}

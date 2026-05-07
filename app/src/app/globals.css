@@ -36,13 +36,15 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
 
-    /* A-07 — Katie scrapbook-beige theme. Per spec (oklch ~96% 0.02 80)
-       converted to shadcn HSL for consistency with the rest of this
-       file's tokens. Pale, warm, very low chroma — the "scrapbook
-       paper" feel. Used as the Katie tab + body background to give
-       the deck its own visual identity vs the slate-50 main deck. */
-    --color-katie-bg-beige: 38 40% 96%;
-    --color-katie-bg-beige-muted: 38 25% 92%;
+    /* A-07 — Katie lilac theme. Mirrors the violet-100 / violet-200
+       lilac accent used on user hero tiles (e.g. NannyProfileTile's
+       `bg-gradient-to-br from-violet-100 to-violet-50` header strip)
+       so Katie's deck reads as the same brand-family lilac the user
+       already sees on their own profile hero. Used as the Katie tab
+       + body background to give the deck its own visual identity vs
+       the slate-50 main deck. */
+    --color-katie-bg-lilac: 250 100% 98%; /* tailwind violet-50 */
+    --color-katie-bg-lilac-muted: 251 91% 95%; /* tailwind violet-100 */
   }
   .dark {
     --background: 0 0% 3.9%;

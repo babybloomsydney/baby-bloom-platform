@@ -218,9 +218,16 @@ export async function getActivity(logId: string): Promise<{
 
     const admin = createAdminClient();
 
+    // SECURITY: explicit column list excludes `internal_notes` (Katie's
+    // private context column — see katie-internal-notes.sql header).
+    // `getActivity` is reachable from client components via
+    // server-action import, so any future renderer that destructures
+    // the result must not see internal_notes.
     const { data: log, error } = await admin
       .from("bapp_logs")
-      .select("*")
+      .select(
+        "id, child_client_id, author_id, type, status, context, parent_log_id, data, created_at, updated_at, is_active",
+      )
       .eq("id", logId)
       .eq("type", "activity")
       .eq("is_active", true)

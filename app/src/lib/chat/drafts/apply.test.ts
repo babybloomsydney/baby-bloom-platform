@@ -111,6 +111,22 @@ describe("applyDraft", () => {
     expect(insertMock).toHaveBeenCalled();
   });
 
+  it("dispatches log_update to applyLogUpdate", async () => {
+    const { supabase, children, insertMock } = makeCtx();
+    const r = await applyDraft("log_update", { note: "Park visit." }, null, {
+      userId: "u-1",
+      children,
+      supabase,
+    });
+    expect(r.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    if (r.ok && r.tile.kind === "diary") {
+      const d = r.tile.data.item.data as Record<string, unknown>;
+      expect(d.subtype).toBe("update");
+      expect(d.title).toBe("Diary Entry");
+    }
+  });
+
   it("merges imageUrl into args before applying", async () => {
     const { supabase, children, insertMock } = makeCtx();
     const r = await applyDraft(

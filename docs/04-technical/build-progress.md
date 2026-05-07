@@ -554,3 +554,38 @@
 - `src/components/bapp/tiles/ActivityTile.tsx` — Replaced description with objectives list (DomainBadge + desc), kept recommendedLine, badge always "Activity"
 - `src/components/bapp/sheets/ActivityDetailSheet.tsx` — "Log Activity" button always visible (unlimited completions)
 - `src/lib/ai/prompts/bapp-activity-generation.ts` — Overhauled system + user prompts for activity variety and specificity
+
+### 2026-05-07 — V1.1 A-09 polish wave (settings rebuild, tile improvements, FAB redesign, diary "Update", Katie polish)
+
+Multi-surface ship covering ~30 user-visible changes. Full detail in `system/APP/Ammendments/V 1.1/PROGRESS.md` under A-09. Headlines:
+
+**Settings (parent + nanny)** — formal sidebar/detail tree (Profile · Account · Linked children · Contact Us). Nanny Account contains a nested Verification sub-branch (Identity, WWCC). Internal verification-level numbers + tier names ("Level 4", "Provisionally verified") removed from all user copy — public language is binary Verified / Action required / Not started. Address picker reuses GNAF + Sydney service-area filter from verification. AU mobile validated client- and server-side, required at all times. Password change wired via Supabase reset-password email. Email change locked read-only (server flow + DB trigger left in place). Close-account is a small grey link at the bottom of Account view only.
+
+**Tile system** — 3-dot delete menu on every tile (`TileActionMenu` + `softDeleteBAppLog` server action). Insight panel converted to expandable `InsightAccordion` with violet-gradient chrome matching CustomTile. ObservationTile no longer renders the "General" pill. CustomTile uses `data.title` as label and hides inline author. ActivityTile icon → Volleyball. CustomTile icon → SparkleIcon. New `hideAuthor` + `logId` props on TileHeader.
+
+**FAB** — centred at viewport bottom, smaller, brand violet. Pop-up colours: Design Activity (was Plan Activity) = indigo + violet SparkleIcon; Observation = emerald-100/600 (matches Growth tile); Diary Entry = violet-100/600.
+
+**Diary "Update"** — new free-form parent-update subtype mirroring General Observation. New `UpdateData` type, `UpdateTile` branch, top-of-list selection in `DiarySheet`, dynamic placeholder using `childFirstName`. Katie `log_update` tool (propose + apply) registered in diaryModule + `apply.ts` dispatch. 9 new tests.
+
+**Hero card** — live age display (from DOB), pencil-edit dialog for name + DOB (`ChildDetailsEditor` + `updateChildDetails` action), back arrow to hub, Baby icon as default avatar.
+
+**Children tab** — profile picture rendering, Baby fallback, full-width "Add Child" CTA when empty / inline link when populated, label fixed.
+
+**Katie chat** — opens at bottom on load + on deck switch (`useLayoutEffect`); SparkleIcon only on streaming + most recent assistant message; user bubbles match universal tile chrome; lilac bg replaces beige; bottom-pinned input fixed (overflow-hidden on outer h-dvh wrapper); rounded chrome-tab silhouette via SVG; hover changes only text + icon to violet; tabs hidden on settings paths.
+
+**Library grid** — flush Instagram-style (no rounded thumbnails, gap-0, uniform p-3 container padding).
+
+**Tab reorders**:
+- Parent: Children, Childcare, Babysitting
+- Nanny main: Nannying, Children, Babysitting
+- Nanny sub-tabs: Connections, Jobs (default Connections)
+
+**Public /contact page** — rebuilt with `PublicContactForm`; `submitContactRequest` (auth) + `submitPublicContactRequest` (anon) emailing admin@babybloomsydney.com.au via Resend.
+
+**Global sticky-footer** — `<MiniFooter />` passed as separate slot to `KatieShell` so it pins to viewport bottom on short pages and sits at end-of-content on long pages.
+
+**Migrations applied to repo**:
+- `supabase/migrations/katie-internal-notes.sql` — adds `bapp_logs.internal_notes TEXT`. App-layer SELECT enumeration in `getFeed` / `library` / `activities-feed` / `getActivity` excludes it from user-facing reads. Katie's `read_recent_feed` includes it for LLM context. **Apply to prod via Studio SQL editor before deploy.**
+- `supabase/migrations/sync-user-profile-email.sql` — auth.users → user_profiles email mirror trigger. Studio rejected (auth.users ownership). App-level fallback lives in `/api/auth/callback/route.ts` (`syncUserProfileEmailIfNeeded`) — load-bearing path.
+
+**Verification**: typecheck 0 · 60 test files / 741 tests passing · `npm run build` green · code-reviewer + typescript-reviewer + security-reviewer + database-reviewer + silent-failure-hunter ran in parallel across multiple rounds. HIGH findings closed before commit.

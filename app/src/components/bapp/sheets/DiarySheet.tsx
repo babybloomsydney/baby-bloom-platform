@@ -13,14 +13,18 @@ import {
   ArrowLeft,
   Utensils,
   Moon,
+  BookOpen,
   Check,
   Loader2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { logDiaryEntry } from "@/lib/actions/bapp/diary";
 import { ImageUpload } from "../shared/ImageUpload";
 
-type DiaryType = "food" | "sleep";
+// "update" is the free-form parent-update entry (added 2026-05-07).
+// Sits at the top of the type-selection step, mirrors the General
+// Observation pattern in scope (note + optional image), produces
+// a tile labelled "Diary Entry".
+type DiaryType = "update" | "food" | "sleep";
 type FoodSubtype = "meal" | "snack" | "bottle";
 
 // Bottle quantity options: 30ml/1oz → 240ml/8oz in 30ml increments
@@ -39,6 +43,10 @@ interface DiarySheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   childId: string;
+  /** Child's first name — used to personalise the Update note
+   *  placeholder ("What have you been up to with Oliver?"). Falls
+   *  back to "the kids" when null/empty. */
+  childFirstName?: string | null;
 }
 
 function calcDuration(start: string, end: string): string | null {
@@ -63,7 +71,12 @@ function calcDuration(start: string, end: string): string | null {
   return `${hours}h ${mins}m`;
 }
 
-export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
+export function DiarySheet({
+  open,
+  onOpenChange,
+  childId,
+  childFirstName,
+}: DiarySheetProps) {
   const [step, setStep] = useState<"type" | "form">("type");
   const [diaryType, setDiaryType] = useState<DiaryType | null>(null);
 
@@ -78,7 +91,10 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
   const [sleepEnd, setSleepEnd] = useState("");
   const [sleepNotes, setSleepNotes] = useState("");
 
-  // Image state
+  // Update state — free-form parent-update note (added 2026-05-07).
+  const [updateNote, setUpdateNote] = useState("");
+
+  // Image state — shared by all subtypes.
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
   // UI state
@@ -89,7 +105,7 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
   // Auto-calculate duration
   const duration = useMemo(
     () => calcDuration(sleepStart, sleepEnd),
-    [sleepStart, sleepEnd]
+    [sleepStart, sleepEnd],
   );
 
   // Reset on close
@@ -105,6 +121,7 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
         setSleepStart("");
         setSleepEnd("");
         setSleepNotes("");
+        setUpdateNote("");
         setImageUrl(null);
         setLoading(false);
         setSuccess(false);
@@ -145,6 +162,40 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
     }
   }
 
+  async function submitUpdate() {
+    setLoading(true);
+    setError(null);
+
+    const data: Record<string, unknown> = {
+      subtype: "update",
+      note: updateNote.trim(),
+      title: "Diary Entry",
+      image_url: imageUrl,
+    };
+
+    try {
+      const result = await logDiaryEntry(childId, data);
+      if (result.success) {
+        setSuccess(true);
+        setTimeout(() => onOpenChange(false), 800);
+      } else {
+        // `result.error` may legally be null per the action's
+        // return type; fall through to a generic message so the
+        // sheet never shows a blank failure state.
+        setError(result.error ?? "Couldn't save your update.");
+        setLoading(false);
+      }
+    } catch (err) {
+      // Server-action transport failures (network drop, edge
+      // crash, serialisation error) throw out of `await`. Without
+      // this catch, `loading` stays true forever and the sheet
+      // becomes permanently stuck on the spinner.
+      console.error("[DiarySheet submitUpdate] transport error:", err);
+      setError("Something went wrong. Please try again.");
+      setLoading(false);
+    }
+  }
+
   async function submitSleep() {
     setLoading(true);
     setError(null);
@@ -169,10 +220,7 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
     }
   }
 
-  const foodValid =
-    foodSubtype === "bottle"
-      ? !!bottleQuantity
-      : !!foodDetails;
+  const foodValid = foodSubtype === "bottle" ? !!bottleQuantity : !!foodDetails;
 
   const sleepValid = !!sleepStart && !!sleepEnd;
 
@@ -182,10 +230,7 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[85vh] rounded-t-2xl px-4 pb-6"
-      >
+      <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
           <div className="flex items-center gap-2">
             {step !== "type" && (
@@ -202,6 +247,7 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
             )}
             <SheetTitle className="text-base">
               {step === "type" && "New Diary Entry"}
+              {step === "form" && diaryType === "update" && "Update"}
               {step === "form" && diaryType === "food" && "Food Log"}
               {step === "form" && diaryType === "sleep" && "Sleep Log"}
             </SheetTitle>
@@ -227,6 +273,25 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
             {/* Step 1: Type Selection */}
             {step === "type" && (
               <div className="space-y-2">
+                {/* Update — top of the list per user spec
+                    (2026-05-07). Free-form parent-update entry,
+                    mirrors the General Observation pattern in
+                    scope. Produces a tile labelled "Diary Entry". */}
+                <button
+                  type="button"
+                  onClick={() => selectType("update")}
+                  className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50"
+                >
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                    <BookOpen className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-slate-800">Update</p>
+                    <p className="text-xs text-slate-400">
+                      Update parents on what you have been up to
+                    </p>
+                  </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => selectType("food")}
@@ -260,7 +325,40 @@ export function DiarySheet({ open, onOpenChange, childId }: DiarySheetProps) {
               </div>
             )}
 
-            {/* Step 2a: Food Log */}
+            {/* Step 2a: Update — free-form parent-update note.
+                Validation: note must be non-empty after trim
+                (image alone isn't enough, since the tile body is
+                the note). */}
+            {step === "form" && diaryType === "update" && (
+              <div className="space-y-4">
+                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                <div>
+                  <Label className="text-xs text-slate-500">Note</Label>
+                  <textarea
+                    value={updateNote}
+                    onChange={(e) => setUpdateNote(e.target.value)}
+                    placeholder={`What have you been up to with ${
+                      childFirstName?.trim() || "the kids"
+                    }?`}
+                    className="mt-1 w-full rounded-lg border border-slate-200 p-3 text-sm focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                    rows={5}
+                  />
+                </div>
+                <Button
+                  onClick={submitUpdate}
+                  disabled={loading || !updateNote.trim()}
+                  className="w-full bg-violet-500 hover:bg-violet-600"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save Update"
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Step 2b: Food Log */}
             {step === "form" && diaryType === "food" && (
               <div className="space-y-4">
                 {/* Food type selector */}

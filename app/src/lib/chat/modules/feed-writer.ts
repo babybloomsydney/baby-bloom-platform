@@ -15,12 +15,18 @@
 import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { KatieNoteTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { BAppLogInsert } from "@/types/bapp";
 import { resolveChild } from "./utils";
 
 interface PreparedCustom {
   child: ChildSummary;
   data: Record<string, unknown>;
   tilePreview: KatieNoteTile;
+  /** Optional Katie-private context note. Stored in
+   *  `bapp_logs.internal_notes` (added by katie-internal-notes.sql);
+   *  excluded from every user-facing SELECT — see that migration's
+   *  header. */
+  internalNotes: string | null;
 }
 
 function prepareCustom(
@@ -65,6 +71,14 @@ function prepareCustom(
     data.badge = args.badge.trim();
   }
 
+  // Katie-private notes — kept out of `data` (which is user-visible)
+  // and threaded separately to the apply step which writes to the
+  // dedicated `bapp_logs.internal_notes` column. Trimmed; empty
+  // strings collapse to null so we don't store whitespace.
+  const internalNotesRaw =
+    typeof args.internal_notes === "string" ? args.internal_notes.trim() : "";
+  const internalNotes = internalNotesRaw.length > 0 ? internalNotesRaw : null;
+
   const tileImage =
     typeof data.image_url === "string" && data.image_url.length > 0
       ? data.image_url
@@ -83,7 +97,10 @@ function prepareCustom(
     },
   };
 
-  return { ok: true, prepared: { child, data, tilePreview } };
+  return {
+    ok: true,
+    prepared: { child, data, tilePreview, internalNotes },
+  };
 }
 
 // ── Propose path (LLM-callable) ──────────────────────────────────────────
@@ -136,18 +153,28 @@ export async function applyCreateTile(
 ): Promise<CustomApplyResult | CustomApplyError> {
   const r = prepareCustom(args, ctx.children);
   if (!r.ok) return { ok: false, error: r.error };
-  const { child, data, tilePreview } = r.prepared;
+  const { child, data, tilePreview, internalNotes } = r.prepared;
+
+  // Insert payload typed against `BAppLogInsert` so it stays in
+  // sync with the canonical `BAppLog` row shape. Adding a column
+  // to BAppLog will surface here as a TS error rather than silent
+  // drift. The narrow literal types on `type`/`status`/`context`
+  // are pinned to the values custom tiles always use.
+  const insertPayload: BAppLogInsert = {
+    child_client_id: child.id,
+    author_id: ctx.userId,
+    type: "custom",
+    status: "completed",
+    context: "adhoc",
+    data,
+  };
+  if (internalNotes) {
+    insertPayload.internal_notes = internalNotes;
+  }
 
   const { data: inserted, error } = await ctx.supabase
     .from("bapp_logs")
-    .insert({
-      child_client_id: child.id,
-      author_id: ctx.userId,
-      type: "custom",
-      status: "completed",
-      context: "adhoc",
-      data,
-    })
+    .insert(insertPayload)
     .select("id")
     .single();
 
@@ -158,6 +185,33 @@ export async function applyCreateTile(
     };
   }
   const logId = (inserted as { id: string }).id;
+
+  // INSIGHTS — A-09 deferred-by-design.
+  //
+  // The user's brief asks Katie-authored tiles to generate insights
+  // "just like manual tile creations do (only select tiles, not all
+  // of them)". The existing `generateTileInsight` pipeline
+  // (src/lib/actions/bapp/insights.ts) is structured around the
+  // manual flow's domain / milestone / mastery context — its
+  // entryType union is `"progress" | "observation" | "report"` and
+  // its prompt is grounded in the dev-domain framework.
+  //
+  // Custom tiles are freeform Katie notes with no inherent domain
+  // anchor. Wiring them through the existing pipeline would either
+  // break the type union or produce off-topic insights. The
+  // architecturally correct path is:
+  //   1. Add a custom-shaped prompt + entryType to insights.ts
+  //      (or split into a dedicated module).
+  //   2. Wire that here, gated on body substantiveness.
+  // That's a separate work-unit because it's a prompt-design
+  // decision, not a refactor — left for the next pass so this
+  // amendment ships without an under-baked AI surface.
+  //
+  // When Katie gains `log_observation` / `log_progress` /
+  // `submit_report` tools (Phase 2 in IMPLEMENTATION-PLAN.md), they
+  // MUST call `generateTileInsight` exactly the way the manual
+  // server actions do (insights.ts is non-fatal — try/catch around
+  // it preserves the log).
 
   return {
     ok: true,
@@ -281,6 +335,11 @@ export const feedWriterModule: BloomBotModule = {
             type: "string",
             description:
               "Optional short label shown on the tile (e.g. 'Summary', 'Tip', 'Milestone'). Keep it child-relevant.",
+          },
+          internal_notes: {
+            type: "string",
+            description:
+              "PRIVATE notes about WHY this tile matters that ONLY you (Katie) will read in future context — never shown to the parent or nanny. Use to capture context the family doesn't need to see: 'parent flagged screen-time concerns last week', 'child seemed quiet during this observation', 'tracking sleep regression that started 2 weeks ago'. Optional. Skip when the tile body already covers everything you'd want to remember.",
           },
         },
         required: ["title", "body"],

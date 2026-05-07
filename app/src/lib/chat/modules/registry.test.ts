@@ -52,6 +52,7 @@ describe("module registry", () => {
       expect(names).toContain("update_progress");
       expect(names).toContain("log_food");
       expect(names).toContain("log_sleep");
+      expect(names).toContain("log_update");
       expect(names).toContain("log_observation");
       expect(names).toContain("plan_activity");
       expect(names).toContain("create_tile");

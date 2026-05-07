@@ -8,7 +8,13 @@
  * comes in Phase 1D.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { KatieFooter } from "./KatieFooter";
 import { KatieInput } from "./KatieInput";
 import { KatieQuickActions } from "./KatieQuickActions";
@@ -46,7 +52,7 @@ function EmptyState({ role, onChipSelect }: EmptyStateProps) {
 }
 
 export function KatieDeck() {
-  const { currentSurface } = useKatie();
+  const { currentSurface, visibleDeck } = useKatie();
   const { role } = useAuth();
   const [messages, setMessages] = useState<KatieMessage[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,12 +89,37 @@ export function KatieDeck() {
     };
   }, []);
 
-  // Auto-scroll on new content
-  useEffect(() => {
+  // Auto-scroll on new content. `useLayoutEffect` runs synchronously
+  // after DOM mutations and before paint, so `scrollHeight` reflects
+  // the final rendered layout — `useEffect` could fire while the
+  // container was still height-zero (during the hydrating gate's
+  // first paint), leaving the scroll short. `isHydrating` is in the
+  // deps so the scroll re-fires the moment the gate clears and
+  // messages become visible.
+  useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamingText]);
+  }, [messages, streamingText, isHydrating]);
+
+  // Re-scroll to bottom when the user switches the carousel back to
+  // Katie. Without this, swapping main → Katie leaves the deck at
+  // whatever scroll position it had before the swap (often the top
+  // if the user had scrolled up to read older messages, OR the
+  // initial position if the deck was just mounted). Per user spec
+  // 2026-05-07: always open at the most recent message.
+  //
+  // The `isHydrating` guard avoids a silent no-op: if the user
+  // switches to Katie before the initial fetch resolves, the
+  // container is still height-zero and `scrollHeight` is 0. The
+  // first effect above re-fires when hydration completes (because
+  // `isHydrating` is in its deps) and lands the scroll correctly.
+  useLayoutEffect(() => {
+    if (visibleDeck !== "katie" || isHydrating) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [visibleDeck, isHydrating]);
 
   // Append helper
   const append = useCallback((msg: KatieMessage) => {
@@ -241,7 +272,7 @@ export function KatieDeck() {
           onDismiss: handleDraftDismiss,
         }}
       >
-        <div className="flex h-full flex-col bg-[hsl(var(--color-katie-bg-beige))]">
+        <div className="flex h-full flex-col bg-[hsl(var(--color-katie-bg-lilac))]">
           {/* A-07 fix: deck-internal "BabyBloom · Katie" subheading
               removed. The global DashboardNav above the tabs already
               identifies the surface; the deck-internal header was
@@ -253,14 +284,37 @@ export function KatieDeck() {
                 <EmptyState role={role ?? ""} onChipSelect={handleSend} />
               ) : null}
 
-              {messages.map((m) => (
-                <MessageRow key={m.id} message={m} />
-              ))}
+              {(() => {
+                // Sparkle icon only shows on the most-recent
+                // assistant message OR the streaming bubble (per
+                // user feedback 2026-05-07). When a stream is in
+                // flight, the streaming bubble below carries the
+                // icon and the previously-most-recent assistant
+                // message in the list goes back to no-icon — so we
+                // suppress the icon on every persisted message
+                // while streaming.
+                const lastAssistantIndex = isStreaming
+                  ? -1
+                  : messages.reduce(
+                      (acc, m, i) => (m.role === "assistant" ? i : acc),
+                      -1,
+                    );
+                return messages.map((m, i) => (
+                  <MessageRow
+                    key={m.id}
+                    message={m}
+                    isMostRecentAssistant={i === lastAssistantIndex}
+                  />
+                ));
+              })()}
 
               {isStreaming && (streamingText.length > 0 || streamingTile) ? (
                 <AssistantMessage
                   content={streamingText}
                   tile={streamingTile}
+                  // Streaming bubble always shows the icon — it IS
+                  // the live "Katie is responding" surface.
+                  showIcon
                 />
               ) : null}
               {isStreaming && streamingText.length === 0 && !streamingTile ? (

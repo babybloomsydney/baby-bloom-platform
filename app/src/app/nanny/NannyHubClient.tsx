@@ -175,8 +175,12 @@ export function NannyHubClient({
   const [activeTab, setActiveTab] = useState<MainTabId>(
     isTabsLocked ? "verification" : "nannying",
   );
+  // Default sub-tab is Connections (leftmost) per user spec
+  // 2026-05-07. Connections show first because most active nannies
+  // already have placements they want to glance at; Jobs is the
+  // secondary "what else is out there" surface.
   const [nannySubTab, setNannySubTab] = useState<"jobs" | "connections">(
-    "jobs",
+    "connections",
   );
   const [profileExpanded, setProfileExpanded] = useState(false);
   const [profileTab, setProfileTab] = useState<ProfileTabId>("about");
@@ -946,15 +950,19 @@ export function NannyHubClient({
               },
             ]
           : [
+              // Tab order — per user spec 2026-05-07: Nannying first
+              // (the nanny's primary surface), Children second so the
+              // connected-children list sits between the two professional
+              // surfaces, Babysitting last.
               { id: "nannying" as MainTabId, label: "Nannying", locked: false },
-              {
-                id: "babysitting" as MainTabId,
-                label: "Babysitting",
-                locked: false,
-              },
               {
                 id: "children" as MainTabId,
                 label: "Children",
+                locked: false,
+              },
+              {
+                id: "babysitting" as MainTabId,
+                label: "Babysitting",
                 locked: false,
               },
             ]
@@ -994,8 +1002,10 @@ export function NannyHubClient({
           <div className="px-4 pt-3 pb-0">
             <div className="flex gap-0.5 rounded-lg bg-slate-100 p-0.5">
               {[
-                { id: "jobs" as const, label: "Jobs" },
+                // Sub-tab order — Connections leftmost per user spec
+                // 2026-05-07.
                 { id: "connections" as const, label: "Connections" },
+                { id: "jobs" as const, label: "Jobs" },
               ].map((tab) => {
                 const isActive = nannySubTab === tab.id;
                 return (

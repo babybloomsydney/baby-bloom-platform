@@ -7,7 +7,7 @@
  *   - Attach an image (file picker → upload → attaches to next user
  *     message; Katie reads the URL as text context, then drives the
  *     draft-tile flow with the image already in hand)
- *   - Log food / Log sleep / Log observation / Plan activity /
+ *   - Log food / Log sleep / Log observation / Design activity /
  *     Update progress / Custom note (stubbed in 8.22a; each shortcut
  *     ships in 8.22d as a synthetic user message that triggers
  *     Katie's propose_X flow)
@@ -137,7 +137,7 @@ export function KatieActionMenu({ disabled = false }: KatieActionMenuProps) {
     { label: "Log food", icon: UtensilsCrossed },
     { label: "Log sleep", icon: Moon },
     { label: "Log observation", icon: Eye },
-    { label: "Plan activity", icon: Sparkles },
+    { label: "Design activity", icon: Sparkles },
     { label: "Update progress", icon: TrendingUp },
     { label: "Custom note", icon: StickyNote },
   ];

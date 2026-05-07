@@ -51,10 +51,24 @@ export function KatieInput({
     return () => window.removeEventListener("keydown", handle);
   }, []);
 
-  // Auto-grow textarea
+  // Auto-grow textarea.
+  //
+  // When `value` is empty, we deliberately DON'T set an inline height —
+  // we clear any previous inline height and let CSS `min-h-8` drive the
+  // single-row baseline. Earlier code unconditionally read scrollHeight
+  // on every render including initial mount, which races with layout:
+  // before the browser has measured the textarea, scrollHeight reports
+  // 0, and we'd freeze `style.height = 0px` until the user typed
+  // (visible as a 1-2px sliver of the input). Bailing out on empty
+  // both sidesteps the race and removes any need for a min-clamp on
+  // the empty-string branch.
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
+    if (value.length === 0) {
+      ta.style.height = "";
+      return;
+    }
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
   }, [value]);
@@ -148,7 +162,12 @@ export function KatieInput({
           placeholder={disabled ? "Katie is writing…" : placeholder}
           rows={1}
           aria-label="Message Katie"
-          className="flex-1 resize-none rounded-md border-0 bg-slate-100 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+          // `min-h-8` (32px) is the belt-and-braces floor that prevents
+          // the textarea from collapsing if the JS height calc ever
+          // races layout — see the auto-grow effect comment above.
+          // Matches text-sm line-height (20px) + py-1.5 (12px) so an
+          // un-styled empty state lands exactly here.
+          className="flex-1 min-h-8 resize-none rounded-md border-0 bg-slate-100 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
         />
 
         <button

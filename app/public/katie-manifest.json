@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-05-05T05:00:10.279Z",
+  "generated_at": "2026-05-07T06:57:48.671Z",
   "summary": {
     "route_count": 53,
     "page_count": 99,
     "cron_count": 7,
-    "migration_count": 12,
-    "server_action_file_count": 32
+    "migration_count": 16,
+    "server_action_file_count": 35
   },
   "routes": [
     {
@@ -734,6 +734,16 @@
       "modified_at": "2026-04-23T05:27:15.997Z"
     },
     {
+      "filename": "katie-internal-notes-rollback.sql",
+      "bytes": 111,
+      "modified_at": "2026-05-07T03:39:53.875Z"
+    },
+    {
+      "filename": "katie-internal-notes.sql",
+      "bytes": 2437,
+      "modified_at": "2026-05-07T03:39:48.388Z"
+    },
+    {
       "filename": "katie-proposals-rollback.sql",
       "bytes": 89,
       "modified_at": "2026-04-23T07:46:20.324Z"
@@ -762,9 +772,23 @@
       "filename": "reset-test-user.sql",
       "bytes": 1289,
       "modified_at": "2026-03-20T02:09:28.783Z"
+    },
+    {
+      "filename": "sync-user-profile-email-rollback.sql",
+      "bytes": 173,
+      "modified_at": "2026-05-07T05:19:43.692Z"
+    },
+    {
+      "filename": "sync-user-profile-email.sql",
+      "bytes": 4863,
+      "modified_at": "2026-05-07T05:19:36.770Z"
     }
   ],
   "server_actions": [
+    {
+      "file": "src/lib/actions/account-security.ts",
+      "functions": ["requestPasswordChange"]
+    },
     {
       "file": "src/lib/actions/admin.ts",
       "functions": [
@@ -817,7 +841,9 @@
         "onboardChild",
         "removeNannyFromChild",
         "nannyLeaveChild",
-        "deleteChild"
+        "deleteChild",
+        "updateChildProfilePictureUrl",
+        "updateChildDetails"
       ]
     },
     {
@@ -849,6 +875,10 @@
     {
       "file": "src/lib/actions/bapp/library.ts",
       "functions": ["getLibraryImages"]
+    },
+    {
+      "file": "src/lib/actions/bapp/logs.ts",
+      "functions": ["softDeleteBAppLog"]
     },
     {
       "file": "src/lib/actions/bapp/milestones.ts",
@@ -902,6 +932,10 @@
         "getParentConnectionRequests",
         "getNannyConnectionRequests"
       ]
+    },
+    {
+      "file": "src/lib/actions/contact.ts",
+      "functions": ["submitContactRequest", "submitPublicContactRequest"]
     },
     {
       "file": "src/lib/actions/inbox.ts",
@@ -999,7 +1033,8 @@
         "saveTypeformPosition",
         "closePosition",
         "updateParentAccountSettings",
-        "deactivateParentAccount"
+        "deactivateParentAccount",
+        "updateParentProfilePictureUrl"
       ]
     },
     {

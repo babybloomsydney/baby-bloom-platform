@@ -303,10 +303,14 @@ function VerificationModal({
 // tab shows the children the parent is connected with — not educational
 // content. The internal id matches the visible label. Old `?t=education`
 // URLs are aliased at the parse site below so deep links keep working.
+// Tab order — Children leftmost (per user spec 2026-05-07): the
+// connected-children list is the parent's most-used surface, so it
+// reads top-of-mind. Childcare and Babysitting follow as secondary
+// surfaces.
 const TABS = [
+  { id: "children" as const, label: "Children" },
   { id: "childcare" as const, label: "Childcare" },
   { id: "babysitting" as const, label: "Babysitting" },
-  { id: "children" as const, label: "Children" },
 ];
 type TabId = (typeof TABS)[number]["id"];
 

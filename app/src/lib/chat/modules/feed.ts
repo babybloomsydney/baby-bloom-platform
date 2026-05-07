@@ -30,10 +30,18 @@ async function readRecentFeed(
   );
   const typeFilter = args.type_filter as FeedType | undefined;
 
+  // `internal_notes` is included on Katie's feed-read so she can see
+  // her own private context on previously-created tiles. Critical:
+  // this is Katie's tool-result surface, NOT the user-visible feed
+  // UI — the response flows into Katie's prompt context, never
+  // straight to the parent/nanny. The prompt fragment below
+  // explicitly instructs Katie to USE these notes as context but
+  // never quote them back. The user-facing `getFeed` action in
+  // src/lib/actions/bapp/feed.ts deliberately OMITS this column.
   let query = ctx.supabase
     .from("bapp_logs")
     .select(
-      "id, type, status, context, data, author_id, created_at, updated_at",
+      "id, type, status, context, data, author_id, created_at, updated_at, internal_notes",
     )
     .eq("child_client_id", child.id)
     .eq("is_active", true) // see READINESS-ASSESSMENT.md H1 — soft-delete filter
@@ -111,5 +119,5 @@ export const feedModule: BloomBotModule = {
   },
 
   systemPromptFragment:
-    "Use `read_recent_feed` to see a child's recent history before making suggestions. Ordered newest-first. Filter by `type_filter` when you want a specific category.",
+    "Use `read_recent_feed` to see a child's recent history before making suggestions. Ordered newest-first. Filter by `type_filter` when you want a specific category.\n\nEntries may carry an `internal_notes` field — these are PRIVATE context notes you wrote yourself in earlier turns, never seen by the parent or nanny. Use them silently to inform your replies (e.g. recall that the parent flagged a sleep regression). NEVER quote internal_notes back in your visible message; treat them strictly as background memory.",
 };

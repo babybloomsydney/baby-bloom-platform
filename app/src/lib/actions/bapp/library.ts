@@ -36,9 +36,13 @@ export async function getLibraryImages(
     const admin = createAdminClient();
 
     // is_active filter keeps soft-deleted tiles out of the image library.
+    // SECURITY: explicit column list excludes `internal_notes` (Katie's
+    // private context column — see katie-internal-notes.sql header).
     let query = admin
       .from("bapp_logs")
-      .select("*")
+      .select(
+        "id, child_client_id, author_id, type, status, context, parent_log_id, data, created_at, updated_at, is_active",
+      )
       .eq("child_client_id", childId)
       .eq("is_active", true)
       .not("data->image_url", "is", null)

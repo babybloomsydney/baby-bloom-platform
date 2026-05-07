@@ -6,9 +6,9 @@
  * surfaces so the tile reads as Katie-authored at a glance.
  */
 
-import { Sparkles } from "lucide-react";
 import { TileHeader } from "./TileHeader";
 import { TileImage } from "./TileImage";
+import { SparkleIcon } from "@/components/katie/messages/SparkleIcon";
 import type { FeedItem } from "@/types/bapp";
 
 interface CustomTileProps {
@@ -24,23 +24,31 @@ interface CustomTileData {
 
 export function CustomTile({ item }: CustomTileProps) {
   const data = item.data as unknown as CustomTileData;
-  const badge = data.badge ?? "Katie";
+  // Header label: prefer the AI-supplied title, then any explicit
+  // badge, then a generic "Note". Per user feedback (2026-05-07) the
+  // header must NEVER read "Katie" — Katie's authorship is conveyed
+  // by the leading SparkleIcon, so spelling her name in text would
+  // be redundant. The standalone title `<p>` below the header is
+  // dropped (it duplicated the new header label).
+  const headerLabel = data.title ?? data.badge ?? "Note";
 
   return (
     <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/80 to-white p-3 shadow-sm">
       <TileHeader
-        icon={Sparkles}
+        icon={SparkleIcon}
         iconColor="bg-violet-100 text-violet-600"
-        badgeText={badge}
+        badgeText={headerLabel}
         authorName={item.author_name}
         createdAt={item.created_at}
+        // Custom tiles are Katie-authored. The leading SparkleIcon
+        // already conveys that — adding the calling user's name as
+        // text next to the badge would be misleading.
+        hideAuthor
+        logId={item.id}
       />
       <div className="mt-3 space-y-2">
         {data.image_url && (
           <TileImage src={data.image_url} alt={data.title ?? "Custom tile"} />
-        )}
-        {data.title && (
-          <p className="text-sm font-semibold text-slate-900">{data.title}</p>
         )}
         {data.body && (
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">

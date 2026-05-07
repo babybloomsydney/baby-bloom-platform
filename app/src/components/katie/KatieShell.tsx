@@ -49,6 +49,18 @@ function isDistractionFreePath(pathname: string): boolean {
   return DISTRACTION_FREE_PATHS.some((p) => pathname.startsWith(p));
 }
 
+/** Routes where the DashboardNav still renders but the Katie/Portal
+ *  tabs are hidden. Settings is the canonical case (2026-05-07): a
+ *  settings page is its own focused surface, the deck-swap UI would
+ *  add visual noise + ambiguous routing. Kept separate from
+ *  `DISTRACTION_FREE_PATHS` because we DO want the global header /
+ *  avatar dropdown / sign-out on settings. */
+const TABS_HIDDEN_PATHS = ["/nanny/settings", "/parent/settings"];
+
+function isTabsHiddenPath(pathname: string): boolean {
+  return TABS_HIDDEN_PATHS.some((p) => pathname.startsWith(p));
+}
+
 /** Maps the auth role to the value DashboardNav expects. The DashboardNav
  *  prop only accepts `"nanny" | "parent"`; admin / super_admin currently
  *  see no top-bar swap UI here (admin surfaces have their own chrome).
@@ -64,27 +76,49 @@ const KATIE_UI_ENABLED =
 // Breakpoint tailored to LAYOUT.md spec. Swapping carousel kicks in below.
 const CAROUSEL_BP = "1280px";
 
-export function KatieShell({ children }: { children: ReactNode }) {
+interface KatieShellProps {
+  children: ReactNode;
+  /** Optional footer rendered at the bottom of `<main>`. Used by the
+   *  root layout to render `<MiniFooter />` so it sticks to the
+   *  bottom of the viewport when content is shorter than the
+   *  viewport, and sits at the end of the content (after scroll)
+   *  when content overflows. The classic "sticky footer" CSS pattern,
+   *  achieved via `flex-col` on `<main>` + `flex-1` on the content
+   *  wrapper. */
+  footer?: ReactNode;
+}
+
+export function KatieShell({ children, footer }: KatieShellProps) {
   const { user, role } = useAuth();
 
   // Bail out for logged-out pages and when the flag is off — render children
-  // full-width as before. Admin + super_admin now see the Katie deck too
-  // (Phase 3 admin module enables inspection/edit of Katie herself via
-  // Gemini Pro).
+  // full-width as before, but still apply the sticky-footer layout so the
+  // footer pins to viewport bottom on short pages.
   if (!KATIE_UI_ENABLED || !user || !role) {
-    return <>{children}</>;
+    return (
+      <div className="flex min-h-dvh flex-col">
+        <div className="flex flex-1 flex-col">{children}</div>
+        {footer}
+      </div>
+    );
   }
 
   return (
     <KatieProvider>
-      <ShellInner>{children}</ShellInner>
+      <ShellInner footer={footer}>{children}</ShellInner>
     </KatieProvider>
   );
 }
 
 // ── Inner component that consumes the context ───────────────────────────
 
-function ShellInner({ children }: { children: ReactNode }) {
+function ShellInner({
+  children,
+  footer,
+}: {
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
   const { visibleDeck, unreadCount, setUnreadCount } = useKatie();
   const pathname = usePathname();
   const { role: authRole } = useAuth();
@@ -103,8 +137,11 @@ function ShellInner({ children }: { children: ReactNode }) {
 
   // Header / tabs render only on full-chrome routes. Distraction-free
   // paths (verification onboarding, parent typeform) opt out so the
-  // user's focus stays on the task.
+  // user's focus stays on the task. Settings pages opt out of tabs
+  // ONLY — the global header still shows so the user has access to
+  // the avatar dropdown / sign-out.
   const showChrome = !isDistractionFreePath(pathname);
+  const showTabs = showChrome && !isTabsHiddenPath(pathname);
   const navRole = dashboardNavRole(authRole);
 
   // Tailwind's JIT picks up arbitrary values in template strings at build time.
@@ -146,8 +183,23 @@ function ShellInner({ children }: { children: ReactNode }) {
   // tab-strip height, clipping the input + footer below the fold on
   // iOS Safari (code-reviewer MED 2026-05-06).
   return (
+    // `overflow-hidden` on the carousel breakpoint clips the outer
+    // wrapper to its `h-dvh`. With body scroll suppressed, the only
+    // scrollable surfaces are the explicit `overflow-y-auto`
+    // descendants — `<main>` for the BB-app deck and KatieDeck's
+    // internal messages list for the chat deck. Two bugs were
+    // caused by the prior body-scroll behaviour (2026-05-07):
+    //   1. KatieTabs (sticky top-16 of the outer wrapper) slid
+    //      past the viewport once body scroll moved the wrapper.
+    //   2. The Katie input + footer could be scrolled past on
+    //      mobile because the aside's `h-full` was sized against an
+    //      outer that the body could move.
+    // Clipping body scroll fixes both at the root: outer stays
+    // anchored to the viewport, sticky tabs always pin, KatieInput
+    // sits at viewport bottom because the deck container is now
+    // reliably exactly viewport-minus-chrome tall.
     <div
-      className="flex h-dvh w-full flex-col xl:h-auto xl:min-h-dvh"
+      className="flex h-dvh w-full flex-col overflow-hidden xl:h-auto xl:min-h-dvh xl:overflow-visible"
       style={{ ["--katie-bp" as string]: CAROUSEL_BP }}
     >
       {/* A-07 fix: persistent header + tabs.
@@ -161,11 +213,11 @@ function ShellInner({ children }: { children: ReactNode }) {
             per spec §60. Hidden on desktop (xl+) where side-by-side
             renders both decks. */}
       {showChrome && navRole && <DashboardNav role={navRole} />}
-      {showChrome && <KatieTabs />}
+      {showTabs && navRole && <KatieTabs role={navRole} />}
 
       <div className="flex w-full min-h-0 flex-1 xl:flex-row">
         {/* Katie column — visible side-by-side on wide; full-screen carousel panel on narrow.
-            A-07: aside body adopts the scrapbook-beige bg so the active Katie tab head
+            A-07: aside body adopts the lilac bg so the active Katie tab head
             merges seamlessly with the body below it (Chrome-tab visual). Applied on
             both mobile + desktop per Bailey's confirmation that desktop should match.
             ARIA: this aside IS the tabpanel for the Katie tab — `role="tabpanel"`
@@ -175,7 +227,7 @@ function ShellInner({ children }: { children: ReactNode }) {
           role="tabpanel"
           aria-labelledby={KATIE_TAB_ID}
           className={[
-            "sticky top-0 flex h-full min-w-0 overscroll-contain border-r border-slate-200 bg-[hsl(var(--color-katie-bg-beige))] xl:h-dvh",
+            "sticky top-0 flex h-full min-w-0 overscroll-contain border-r border-slate-200 bg-[hsl(var(--color-katie-bg-lilac))] xl:h-dvh",
             // Wide: ⅓ of the main width (approximated via max-w-xs) pinned left
             "xl:w-[336px] xl:flex-shrink-0",
             // Narrow: full-width carousel panel, shown/hidden via class
@@ -183,7 +235,14 @@ function ShellInner({ children }: { children: ReactNode }) {
             visibleDeck === "katie" ? "xl:relative" : "hidden xl:flex",
           ].join(" ")}
         >
-          <div className="w-full min-w-0">
+          {/* `h-full min-h-0` so KatieDeck's `h-full` resolves to
+              the aside's actual height even when the message list
+              tries to push past it. Without `min-h-0` flex children
+              default to `min-height: auto` (intrinsic content size),
+              which would let a long conversation grow the wrapper
+              past the aside and the bottom-pinned input would slide
+              below the fold. */}
+          <div className="h-full min-h-0 w-full min-w-0">
             <KatieDeck />
           </div>
         </aside>
@@ -191,10 +250,33 @@ function ShellInner({ children }: { children: ReactNode }) {
         {/* Main deck — hidden when carousel is showing Katie; always visible on wide.
             We wrap children in a tabpanel div rather than putting the role on
             the <main> element itself so the existing main-landmark semantics
-            stay intact (a11y-architect HIGH on tabpanel linkage). */}
+            stay intact (a11y-architect HIGH on tabpanel linkage).
+
+            `overflow-y-auto` on the carousel breakpoint moves the
+            scroll context INSIDE main rather than letting BB-app
+            content overflow into body scroll. Two bugs were caused
+            by the prior body-scrolls-too behaviour (2026-05-07):
+              1. The KatieTabs strip is `sticky top-16` to the OUTER
+                 (h-dvh) wrapper. When body scrolled, the wrapper
+                 scrolled with it and the tabs slid past the
+                 viewport. Pinning scroll inside main keeps the
+                 wrapper anchored — tabs stay pinned forever.
+              2. The Katie deck's pinned-bottom input was scrollable-
+                 past on mobile because its parent aside lived inside
+                 a body-scrolling page. With the outer anchored, the
+                 aside's own internal flex layout pins the input to
+                 the bottom of the viewport as designed.
+            Desktop (xl:) keeps `overflow-visible` so document scroll
+            continues to drive the page on wider layouts. */}
         <main
           className={[
-            "min-w-0 flex-1",
+            // `flex flex-col` so the inner content wrapper can grow
+            // via `flex-1` and the footer naturally sits at the
+            // bottom of main's box. When content fits, footer pins
+            // to viewport bottom. When content overflows, footer
+            // appears at the end of the scroll. Standard sticky-
+            // footer pattern (per user feedback 2026-05-07).
+            "flex flex-col min-w-0 flex-1 overflow-y-auto xl:overflow-visible",
             visibleDeck === "main" ? "block" : "hidden xl:block",
           ].join(" ")}
         >
@@ -203,9 +285,11 @@ function ShellInner({ children }: { children: ReactNode }) {
             role="tabpanel"
             aria-labelledby={MAIN_TAB_ID}
             tabIndex={0}
+            className="flex-1"
           >
             {children}
           </div>
+          {footer}
         </main>
       </div>
     </div>

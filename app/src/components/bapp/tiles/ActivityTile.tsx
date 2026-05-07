@@ -1,6 +1,6 @@
 "use client";
 
-import { Wand2, Loader2 } from "lucide-react";
+import { Volleyball, Loader2 } from "lucide-react";
 import { TileHeader } from "./TileHeader";
 import { DomainBadge } from "../shared/DomainBadge";
 import type { FeedItem, ActivityData } from "@/types/bapp";
@@ -39,11 +39,17 @@ export function ActivityTile({ item, onViewActivity }: ActivityTileProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
       <TileHeader
-        icon={Wand2}
+        // Volleyball matches the Activities tab in BAppLayout's TABS —
+        // the whole-app rule (2026-05-07) that tile icons must mirror
+        // the surface they relate to. Was `Wand2` (the FAB
+        // "plan-activity" affordance) which conflated the planning
+        // action with the resulting activity tile.
+        icon={Volleyball}
         iconColor="bg-indigo-100 text-indigo-600"
         badgeText="Activity"
         authorName={item.author_name}
         createdAt={item.created_at}
+        logId={item.id}
       />
 
       {plan && (
@@ -51,9 +57,7 @@ export function ActivityTile({ item, onViewActivity }: ActivityTileProps) {
           <p className="text-sm font-medium text-slate-800">
             {plan.creativeName}
           </p>
-          <p className="text-xs text-indigo-500">
-            {plan.recommendedLine}
-          </p>
+          <p className="text-xs text-indigo-500">{plan.recommendedLine}</p>
 
           {/* Selected objectives */}
           {data.prompt_context && data.prompt_context.length > 0 && (

@@ -156,7 +156,30 @@ export interface BAppLog {
   data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  /** Soft-delete flag added by katie-foundation.sql. Feed queries
+   *  filter `is_active=true` so flipping this to false hides the
+   *  row from the user without losing audit history. */
+  is_active: boolean;
+  /** Katie's private context-only notes added by
+   *  katie-internal-notes.sql. NEVER surfaced to the user UI —
+   *  user-facing SELECTs (getFeed, library, activities-feed,
+   *  getActivity) enumerate columns to omit this field. Only
+   *  Katie's `read_recent_feed` tool reads it (server-side LLM
+   *  context only). Optional in the type because user-facing
+   *  reads return rows WITHOUT this field populated. */
+  internal_notes?: string | null;
 }
+
+/** Subset of BAppLog usable as an INSERT payload. Excludes
+ *  server-generated columns (id / created_at / updated_at) and
+ *  optional fields like parent_log_id / internal_notes. Stays
+ *  derived from BAppLog so a future row-shape change cannot
+ *  silently drift between the two. */
+export type BAppLogInsert = Omit<
+  BAppLog,
+  "id" | "created_at" | "updated_at" | "parent_log_id" | "is_active"
+> &
+  Partial<Pick<BAppLog, "parent_log_id" | "is_active" | "internal_notes">>;
 
 /** Log row joined with author name + optional parent log data (for feed display) */
 export interface FeedItem extends BAppLog {
@@ -249,6 +272,19 @@ export interface SleepData {
   duration: string | null;
   notes: string | null;
   title: "Sleep Log";
+  image_url: string | null;
+}
+
+/** data shape for type='diary', subtype='update'.
+ *  Free-form parent-update entry — note + optional image, no
+ *  domain / milestone tagging. Mirrors the General Observation
+ *  pattern but lives under the Diary surface so it appears in the
+ *  daily log alongside food + sleep. Tile renders with badge
+ *  "Diary Entry". */
+export interface UpdateData {
+  subtype: "update";
+  note: string;
+  title: "Diary Entry";
   image_url: string | null;
 }
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { TrendingUp, Sparkles } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import { TileHeader } from "./TileHeader";
 import { TileImage } from "./TileImage";
+import { InsightAccordion } from "./InsightAccordion";
 import { DomainBadge } from "../shared/DomainBadge";
 import { MasteryLabel } from "../shared/MasteryLabel";
 import type { FeedItem, ProgressData } from "@/types/bapp";
@@ -25,6 +26,7 @@ export function ProgressTile({ item, milestoneMap }: ProgressTileProps) {
         badgeText="Growth"
         authorName={item.author_name}
         createdAt={item.created_at}
+        logId={item.id}
       />
 
       <div className="mt-3 space-y-2">
@@ -34,9 +36,7 @@ export function ProgressTile({ item, milestoneMap }: ProgressTileProps) {
         )}
 
         {/* Image */}
-        {data.image_url && (
-          <TileImage src={data.image_url} alt="Progress" />
-        )}
+        {data.image_url && <TileImage src={data.image_url} alt="Progress" />}
 
         {/* Update list */}
         {data.updates && data.updates.length > 0 && (
@@ -60,17 +60,8 @@ export function ProgressTile({ item, milestoneMap }: ProgressTileProps) {
           </div>
         )}
 
-        {/* AI insight */}
-        {data.insight && (
-          <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-2">
-            <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
-            <div className="space-y-1.5">
-              {data.insight.split("\n\n").map((p, i) => (
-                <p key={i} className="text-xs italic text-amber-700">{p}</p>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* AI insight — expandable accordion. */}
+        {data.insight && <InsightAccordion insight={data.insight} />}
       </div>
     </div>
   );

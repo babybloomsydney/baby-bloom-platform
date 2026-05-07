@@ -1,35 +1,71 @@
 "use client";
 
+/**
+ * Nanny settings — tree-driven multi-level drill-down.
+ *
+ * Top-level tree (2026-05-07):
+ *
+ *   Profile           — leaf (legal name, DOB, address)
+ *   Account           — branch
+ *     ▸ Contact details
+ *     ▸ Verification (branch)
+ *         ▸ Identity
+ *         ▸ WWCC
+ *     ▸ Security
+ *     (small "Close account" link at the bottom)
+ *   Linked children   — leaf
+ *   Contact Us        — leaf
+ *
+ * Notes (per user feedback 2026-05-07):
+ *   - "Communication preferences" is intentionally NOT shipped in
+ *     v1.
+ *   - Internal verification level numbers / tier names ("Level 2",
+ *     "Provisionally verified") are NEVER displayed user-facing.
+ *     Public-facing language is binary: "Verified" / "Action
+ *     required" / "Not started".
+ *   - Address edits route through the GNAF picker
+ *     (AddressPickerDialog).
+ *   - Mobile is REQUIRED + AU regex validated.
+ *   - Email is read-only in v1.
+ */
+
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Loader2,
+  AlertTriangle,
+  X,
+  ExternalLink,
+  User,
+  Settings,
+  Users,
+  LifeBuoy,
+  ShieldCheck,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   updateNannyAccountSettings,
   deactivateNannyAccount,
-  updateAccountEmail,
 } from "@/lib/actions/nanny";
+import { requestPasswordChange } from "@/lib/actions/account-security";
 import { ChildManagementCard } from "@/components/bapp/ChildManagementCard";
 import type { ChildClient } from "@/types/bapp";
+import { SettingsShell } from "@/components/settings/SettingsShell";
+import { IdentityCard } from "@/components/settings/IdentityCard";
+import { SettingsSubsection } from "@/components/settings/SettingsSubsection";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { EditFieldDialog } from "@/components/settings/EditFieldDialog";
+import { AddressPickerDialog } from "@/components/settings/AddressPickerDialog";
+import { ContactSection } from "@/components/settings/ContactSection";
 import {
-  Save,
-  Loader2,
-  CheckCircle,
-  Lock,
-  Shield,
-  ExternalLink,
-  AlertTriangle,
-  X,
-} from "lucide-react";
+  formatAuMobile,
+  isAuMobile,
+  normaliseAuMobile,
+} from "@/lib/au-contact";
+import type { SettingsNode } from "@/components/settings/tree";
 
 interface Props {
   profile: {
@@ -50,27 +86,124 @@ interface Props {
   managedChildren?: ChildClient[];
 }
 
-const WWCC_STATUS_COLORS: Record<
-  string,
-  { bg: string; text: string; label: string }
-> = {
-  not_started: {
-    bg: "bg-slate-100",
-    text: "text-slate-600",
-    label: "Not Started",
-  },
-  pending: { bg: "bg-amber-100", text: "text-amber-700", label: "Pending" },
-  processing: { bg: "bg-blue-100", text: "text-blue-700", label: "Processing" },
-  doc_verified: {
-    bg: "bg-emerald-100",
-    text: "text-emerald-700",
-    label: "Verified",
-  },
-  review: { bg: "bg-amber-100", text: "text-amber-700", label: "Under Review" },
-  rejected: { bg: "bg-red-100", text: "text-red-700", label: "Rejected" },
-  failed: { bg: "bg-red-100", text: "text-red-700", label: "Failed" },
-  expired: { bg: "bg-red-100", text: "text-red-700", label: "Expired" },
-};
+function publicIdentityStatus(level: number): {
+  label: string;
+  tone: "success" | "warning" | "neutral";
+  isVerified: boolean;
+} {
+  if (level >= 2) {
+    return { label: "Verified", tone: "success", isVerified: true };
+  }
+  if (level === 1) {
+    return { label: "Action required", tone: "warning", isVerified: false };
+  }
+  return { label: "Not started", tone: "warning", isVerified: false };
+}
+
+function publicWwccStatus(
+  status: string | null,
+): {
+  label: string;
+  tone: "success" | "warning" | "danger" | "neutral";
+} | null {
+  if (!status) return null;
+  switch (status) {
+    case "doc_verified":
+      return { label: "Verified", tone: "success" };
+    case "pending":
+    case "processing":
+    case "review":
+      return { label: "Pending review", tone: "warning" };
+    case "not_started":
+      return { label: "Not started", tone: "neutral" };
+    case "rejected":
+    case "failed":
+      return { label: "Action required", tone: "danger" };
+    case "expired":
+      return { label: "Expired", tone: "danger" };
+    default:
+      return { label: "Pending review", tone: "warning" };
+  }
+}
+
+function VerifiedPill({ verified }: { verified: boolean }) {
+  if (!verified) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+      <ShieldCheck className="h-2.5 w-2.5" aria-hidden="true" />
+      Verified
+    </span>
+  );
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function buildTree(args: {
+  identityStatus: ReturnType<typeof publicIdentityStatus>;
+  wwccStatus: ReturnType<typeof publicWwccStatus>;
+  childCount: number;
+}): SettingsNode[] {
+  const { identityStatus, wwccStatus, childCount } = args;
+  return [
+    { id: "profile", label: "Profile", icon: User },
+    {
+      id: "account",
+      label: "Account",
+      icon: Settings,
+      children: [
+        { id: "contact", label: "Contact details" },
+        {
+          id: "verification",
+          label: "Verification",
+          // No status pill on the Verification entry per user
+          // feedback (2026-05-07) — the user sees the verification
+          // state only after they drill in. Identity / WWCC
+          // sub-pages still surface their own statuses inline.
+          children: [
+            {
+              id: "identity",
+              label: "Identity",
+              status: {
+                label: identityStatus.label,
+                tone: identityStatus.tone,
+              },
+            },
+            {
+              id: "wwcc",
+              label: "WWCC",
+              status: wwccStatus
+                ? { label: wwccStatus.label, tone: wwccStatus.tone }
+                : { label: "Not started", tone: "neutral" },
+            },
+          ],
+        },
+        { id: "security", label: "Security" },
+      ],
+    },
+    {
+      id: "linked-children",
+      label: "Linked children",
+      icon: Users,
+      status:
+        childCount > 0
+          ? { label: String(childCount), tone: "neutral" }
+          : undefined,
+    },
+    { id: "contact-us", label: "Contact Us", icon: LifeBuoy },
+    // Hidden danger leaf — reached only via the small link at the
+    // bottom of Account's drill-down menu.
+    { id: "close-account", label: "Close account", hidden: true, danger: true },
+  ];
+}
 
 export function NannySettingsClient({
   profile,
@@ -78,477 +211,687 @@ export function NannySettingsClient({
   wwcc,
   managedChildren = [],
 }: Props) {
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-  const [saveStatus, setSaveStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
-  const [error, setError] = useState<string | null>(null);
-  const [showCloseModal, setShowCloseModal] = useState(false);
-  const [closeConfirmName, setCloseConfirmName] = useState("");
-  const [isDeactivating, setIsDeactivating] = useState(false);
-  const [emailStatus, setEmailStatus] = useState<
-    "idle" | "saving" | "sent" | "error"
-  >("idle");
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const params = useSearchParams();
+  const activeId = params.get("s") ?? "";
+  const fullName = `${profile.first_name} ${profile.last_name}`.trim();
 
-  const isLocked = verificationLevel >= 2;
+  const identityStatus = publicIdentityStatus(verificationLevel);
+  const wwccStatus = publicWwccStatus(wwcc?.status ?? null);
 
-  const [form, setForm] = useState({
-    first_name: profile.first_name,
-    last_name: profile.last_name,
-    email: profile.email,
-    date_of_birth: profile.date_of_birth,
-    mobile_number: profile.mobile_number,
-    suburb: profile.suburb,
-    postcode: profile.postcode,
+  const tree = buildTree({
+    identityStatus,
+    wwccStatus,
+    childCount: managedChildren.length,
   });
 
-  const emailChanged = form.email !== profile.email;
-  const isDirty =
-    form.first_name !== profile.first_name ||
-    form.last_name !== profile.last_name ||
-    form.date_of_birth !== profile.date_of_birth ||
-    form.mobile_number !== profile.mobile_number ||
-    form.suburb !== profile.suburb ||
-    form.postcode !== profile.postcode;
+  return (
+    <SettingsShell
+      title="Settings"
+      basePath="/nanny/settings"
+      tree={tree}
+      activeId={activeId}
+      identityCard={
+        <IdentityCard
+          fullName={fullName || "Your account"}
+          email={profile.email}
+          roleLabel="Nanny"
+          verificationBadge={
+            <VerifiedPill verified={identityStatus.isVerified} />
+          }
+        />
+      }
+      pageBottomLink={
+        // Only surface "Close account" on the Account drill-down
+        // page itself — not on every settings view. Per user spec
+        // (2026-05-07): nested within Account, at the very bottom
+        // of the page, separate from the rest of the menu.
+        activeId === "account"
+          ? { label: "Close account", targetId: "close-account" }
+          : undefined
+      }
+      renderLeaf={(node) => {
+        switch (node.id) {
+          case "profile":
+            return (
+              <ProfileSection
+                profile={profile}
+                identityVerified={identityStatus.isVerified}
+              />
+            );
+          case "contact":
+            return <ContactDetailsSection profile={profile} />;
+          case "identity":
+            return (
+              <IdentitySection
+                profile={profile}
+                identityStatus={identityStatus}
+              />
+            );
+          case "wwcc":
+            return <WwccSection wwcc={wwcc} wwccStatus={wwccStatus} />;
+          case "security":
+            return <SecuritySection />;
+          case "linked-children":
+            return <ChildrenSection items={managedChildren} />;
+          case "contact-us":
+            return <ContactSection />;
+          case "close-account":
+            return <CloseAccountSection fullName={fullName} />;
+          default:
+            return null;
+        }
+      }}
+    />
+  );
+}
 
-  const update = <K extends keyof typeof form>(
-    key: K,
-    value: (typeof form)[K],
-  ) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-    if (key === "email") {
-      setEmailStatus("idle");
-      setEmailError(null);
-    } else {
-      setSaveStatus("idle");
-    }
-  };
+// ── Profile (legal name, DOB, address) ────────────────────────
 
-  const handleSave = () => {
-    setSaveStatus("saving");
+function ProfileSection({
+  profile,
+  identityVerified,
+}: {
+  profile: Props["profile"];
+  identityVerified: boolean;
+}) {
+  const router = useRouter();
+  const [editingName, setEditingName] = useState(false);
+  const [editingDob, setEditingDob] = useState(false);
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [first, setFirst] = useState(profile.first_name);
+  const [last, setLast] = useState(profile.last_name);
+  const [dob, setDob] = useState(profile.date_of_birth);
+
+  return (
+    <div className="space-y-6">
+      <SettingsSubsection header="Personal information">
+        <SettingsRow
+          label="Full legal name"
+          value={
+            `${profile.first_name} ${profile.last_name}`.trim() || undefined
+          }
+          locked={identityVerified}
+          badge={
+            identityVerified
+              ? { label: "Verified", tone: "success" }
+              : undefined
+          }
+          onClick={
+            identityVerified
+              ? undefined
+              : () => {
+                  setFirst(profile.first_name);
+                  setLast(profile.last_name);
+                  setEditingName(true);
+                }
+          }
+        />
+        <SettingsRow
+          label="Date of birth"
+          value={
+            profile.date_of_birth
+              ? formatDate(profile.date_of_birth)
+              : undefined
+          }
+          locked={identityVerified}
+          badge={
+            identityVerified
+              ? { label: "Verified", tone: "success" }
+              : undefined
+          }
+          isLast
+          onClick={
+            identityVerified
+              ? undefined
+              : () => {
+                  setDob(profile.date_of_birth);
+                  setEditingDob(true);
+                }
+          }
+        />
+      </SettingsSubsection>
+
+      <SettingsSubsection header="Address">
+        <SettingsRow
+          label="Suburb"
+          value={profile.suburb}
+          onClick={() => setEditingAddress(true)}
+        />
+        <SettingsRow
+          label="Postcode"
+          value={profile.postcode}
+          isLast
+          onClick={() => setEditingAddress(true)}
+        />
+      </SettingsSubsection>
+
+      <EditFieldDialog
+        open={editingName}
+        onOpenChange={setEditingName}
+        title="Edit your full name"
+        canSubmit={first.trim().length > 0 && last.trim().length > 0}
+        onSubmit={async () => {
+          const r = await updateNannyAccountSettings({
+            first_name: first.trim(),
+            last_name: last.trim(),
+          });
+          if (r.success) {
+            router.refresh();
+            return { success: true };
+          }
+          return { success: false, error: r.error };
+        }}
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-first">First name</Label>
+            <Input
+              id="edit-first"
+              value={first}
+              onChange={(e) => setFirst(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-last">Last name</Label>
+            <Input
+              id="edit-last"
+              value={last}
+              onChange={(e) => setLast(e.target.value)}
+            />
+          </div>
+        </div>
+      </EditFieldDialog>
+
+      <EditFieldDialog
+        open={editingDob}
+        onOpenChange={setEditingDob}
+        title="Edit your date of birth"
+        canSubmit={dob.length > 0}
+        onSubmit={async () => {
+          const r = await updateNannyAccountSettings({
+            date_of_birth: dob || null,
+          });
+          if (r.success) {
+            router.refresh();
+            return { success: true };
+          }
+          return { success: false, error: r.error };
+        }}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="edit-dob">Date of birth</Label>
+          <Input
+            id="edit-dob"
+            type="date"
+            value={dob}
+            onChange={(e) => setDob(e.target.value)}
+            autoFocus
+          />
+        </div>
+      </EditFieldDialog>
+
+      <AddressPickerDialog
+        open={editingAddress}
+        onOpenChange={setEditingAddress}
+        currentSuburb={profile.suburb}
+        currentPostcode={profile.postcode}
+        onSubmit={async (address) => {
+          const r = await updateNannyAccountSettings({
+            suburb: address.suburb,
+            postcode: address.postcode,
+          });
+          if (r.success) {
+            router.refresh();
+            return { success: true };
+          }
+          return { success: false, error: r.error };
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Contact details ────────────────────────────────────────────
+
+function ContactDetailsSection({ profile }: { profile: Props["profile"] }) {
+  const router = useRouter();
+  const [editingMobile, setEditingMobile] = useState(false);
+  const [mobile, setMobile] = useState(profile.mobile_number);
+
+  const trimmed = mobile.trim();
+  const mobileValid = trimmed.length > 0 && isAuMobile(trimmed);
+
+  // Email change disabled in v1 — see ParentSettingsClient comment.
+
+  return (
+    <div className="space-y-6">
+      <SettingsSubsection header="Email">
+        <SettingsRow
+          label="Email address"
+          value={profile.email}
+          badge={
+            profile.email ? { label: "Verified", tone: "success" } : undefined
+          }
+          isLast
+        />
+      </SettingsSubsection>
+
+      <SettingsSubsection header="Phone">
+        <SettingsRow
+          label="Mobile number"
+          value={
+            profile.mobile_number
+              ? formatAuMobile(profile.mobile_number)
+              : undefined
+          }
+          isLast
+          onClick={() => {
+            setMobile(profile.mobile_number);
+            setEditingMobile(true);
+          }}
+        />
+      </SettingsSubsection>
+
+      <EditFieldDialog
+        open={editingMobile}
+        onOpenChange={setEditingMobile}
+        title="Edit mobile number"
+        canSubmit={mobileValid}
+        onSubmit={async () => {
+          if (!mobileValid) {
+            return {
+              success: false,
+              error: "Enter a valid Australian mobile number.",
+            };
+          }
+          const r = await updateNannyAccountSettings({
+            mobile_number: normaliseAuMobile(mobile),
+          });
+          if (r.success) {
+            router.refresh();
+            return { success: true };
+          }
+          return { success: false, error: r.error };
+        }}
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="edit-mobile">Mobile number</Label>
+          <Input
+            id="edit-mobile"
+            type="tel"
+            value={mobile}
+            onChange={(e) => setMobile(e.target.value)}
+            placeholder="04XX XXX XXX"
+            autoFocus
+            inputMode="tel"
+          />
+          {trimmed.length > 0 && !mobileValid && (
+            <p className="text-xs text-rose-600">
+              That doesn&apos;t look like an Australian mobile number. Format:
+              04XX XXX XXX.
+            </p>
+          )}
+          {mobileValid && (
+            <p className="text-xs text-emerald-600">{formatAuMobile(mobile)}</p>
+          )}
+          <p className="text-[11px] text-slate-400">
+            Required — parents and Baby Bloom rely on this for account-critical
+            updates.
+          </p>
+        </div>
+      </EditFieldDialog>
+    </div>
+  );
+}
+
+// ── Verification: Identity ────────────────────────────────────
+
+function IdentitySection({
+  profile,
+  identityStatus,
+}: {
+  profile: Props["profile"];
+  identityStatus: ReturnType<typeof publicIdentityStatus>;
+}) {
+  const verified = identityStatus.isVerified;
+  return (
+    <div className="space-y-6">
+      <SettingsSubsection header="Identity status">
+        <SettingsRow
+          label="Status"
+          display={
+            <span
+              className={
+                "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium " +
+                (identityStatus.tone === "success"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : identityStatus.tone === "warning"
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-slate-100 text-slate-700")
+              }
+            >
+              {identityStatus.label}
+            </span>
+          }
+          isLast
+        />
+      </SettingsSubsection>
+
+      <SettingsSubsection header="Confirmed details">
+        <SettingsRow
+          label="Full legal name"
+          value={
+            `${profile.first_name} ${profile.last_name}`.trim() || undefined
+          }
+          locked={verified}
+          badge={verified ? { label: "Verified", tone: "success" } : undefined}
+        />
+        <SettingsRow
+          label="Date of birth"
+          value={
+            profile.date_of_birth
+              ? formatDate(profile.date_of_birth)
+              : undefined
+          }
+          locked={verified}
+          badge={verified ? { label: "Verified", tone: "success" } : undefined}
+          isLast
+        />
+      </SettingsSubsection>
+
+      {!verified && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-medium text-amber-900">
+            Identity not yet confirmed
+          </p>
+          <p className="mt-1 text-xs text-amber-800">
+            Submit your government-issued ID to access the full platform.
+          </p>
+          <Link
+            href="/nanny/onboarding-verification"
+            className="mt-3 inline-block"
+          >
+            <Button variant="outline" size="sm" className="gap-1.5">
+              Submit ID <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Verification: WWCC ───────────────────────────────────────
+
+function WwccSection({
+  wwcc,
+  wwccStatus,
+}: {
+  wwcc: Props["wwcc"];
+  wwccStatus: ReturnType<typeof publicWwccStatus>;
+}) {
+  if (!wwcc || !wwcc.number) {
+    return (
+      <SettingsSubsection header="Working With Children Check">
+        <div className="px-4 py-6 text-center">
+          <p className="text-sm font-medium text-slate-700">
+            Not yet submitted
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Submit your WWCC to start receiving match requests.
+          </p>
+          <Link href="/nanny/verification" className="mt-3 inline-block">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              Submit WWCC <ExternalLink className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </div>
+      </SettingsSubsection>
+    );
+  }
+
+  return (
+    <SettingsSubsection
+      header="Working With Children Check"
+      footnote={
+        <>
+          Need to update your WWCC?{" "}
+          <Link
+            href="/nanny/verification"
+            className="text-violet-600 hover:underline"
+          >
+            Submit a new check
+          </Link>
+        </>
+      }
+    >
+      <SettingsRow
+        label="WWCC number"
+        value={wwcc.number}
+        mono
+        locked
+        badge={
+          wwccStatus
+            ? { label: wwccStatus.label, tone: wwccStatus.tone }
+            : undefined
+        }
+      />
+      <SettingsRow
+        label="Expiry date"
+        value={wwcc.expiryDate ? formatDate(wwcc.expiryDate) : undefined}
+        isLast
+      />
+    </SettingsSubsection>
+  );
+}
+
+// ── Security ─────────────────────────────────────────────────
+
+function SecuritySection() {
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleClick() {
     setError(null);
     startTransition(async () => {
-      const payload: Record<string, string | null> = {};
-      if (!isLocked) {
-        if (form.first_name !== profile.first_name)
-          payload.first_name = form.first_name;
-        if (form.last_name !== profile.last_name)
-          payload.last_name = form.last_name;
-        if (form.date_of_birth !== profile.date_of_birth)
-          payload.date_of_birth = form.date_of_birth || null;
+      const r = await requestPasswordChange();
+      if (!r.success) {
+        setError(r.error ?? "Couldn't send the password reset email.");
+        return;
       }
-      if (form.mobile_number !== profile.mobile_number)
-        payload.mobile_number = form.mobile_number || null;
-      if (form.suburb !== profile.suburb) payload.suburb = form.suburb;
-      if (form.postcode !== profile.postcode) payload.postcode = form.postcode;
+      setSent(true);
+    });
+  }
 
-      const result = await updateNannyAccountSettings(payload);
-      if (result.success) {
-        setSaveStatus("saved");
-        router.refresh();
+  return (
+    <SettingsSubsection header="Password">
+      {sent ? (
+        <div className="px-4 py-5 text-sm">
+          <p className="font-medium text-emerald-700">
+            Password reset email sent
+          </p>
+          <p className="mt-1 text-slate-600">
+            Check your inbox for a link to set a new password. The link expires
+            after one hour.
+          </p>
+        </div>
+      ) : (
+        <div className="px-4 py-5 text-sm">
+          {error && (
+            <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {error}
+            </p>
+          )}
+          <p className="text-slate-600">
+            Send a password reset link to your registered email.
+          </p>
+          <Button
+            type="button"
+            onClick={handleClick}
+            disabled={isPending}
+            className="mt-4 bg-violet-600 text-white hover:bg-violet-700"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending…
+              </>
+            ) : (
+              "Send password reset email"
+            )}
+          </Button>
+        </div>
+      )}
+    </SettingsSubsection>
+  );
+}
+
+// ── Linked children ───────────────────────────────────────────
+
+function ChildrenSection({ items }: { items: ChildClient[] }) {
+  if (items.length === 0) {
+    return (
+      <SettingsSubsection header="Linked children">
+        <div className="px-4 py-6 text-center text-sm text-slate-500">
+          No linked children yet.
+        </div>
+      </SettingsSubsection>
+    );
+  }
+  return (
+    <SettingsSubsection header="Linked children">
+      <div className="px-4 py-4">
+        <ChildManagementCard items={items} role="nanny" />
+      </div>
+    </SettingsSubsection>
+  );
+}
+
+// ── Close account (danger leaf) ──────────────────────────────
+
+function CloseAccountSection({ fullName }: { fullName: string }) {
+  const router = useRouter();
+  const [showModal, setShowModal] = useState(false);
+  const [confirmName, setConfirmName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const nameMatches = confirmName.toLowerCase() === fullName.toLowerCase();
+
+  const handleDeactivate = () => {
+    setError(null);
+    startTransition(async () => {
+      const r = await deactivateNannyAccount();
+      if (r.success) {
+        router.push("/login");
       } else {
-        setSaveStatus("error");
-        setError(result.error);
+        setError(r.error);
       }
     });
   };
 
-  const handleEmailUpdate = async () => {
-    if (!emailChanged || !form.email.trim()) return;
-    setEmailStatus("saving");
-    setEmailError(null);
-    const result = await updateAccountEmail(form.email.trim());
-    if (result.success) {
-      setEmailStatus("sent");
-    } else {
-      setEmailStatus("error");
-      setEmailError(result.error);
-    }
-  };
-
-  const fullName = `${profile.first_name} ${profile.last_name}`.trim();
-  const nameMatches = closeConfirmName.toLowerCase() === fullName.toLowerCase();
-
-  const handleDeactivate = async () => {
-    setIsDeactivating(true);
-    const result = await deactivateNannyAccount();
-    if (result.success) {
-      router.push("/login");
-    } else {
-      setIsDeactivating(false);
-      setError(result.error);
-    }
-  };
-
-  const wwccStatus = wwcc?.status
-    ? WWCC_STATUS_COLORS[wwcc.status] || {
-        bg: "bg-slate-100",
-        text: "text-slate-600",
-        label: wwcc.status,
-      }
-    : null;
-
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Account Settings</h1>
-        <p className="mt-1 text-slate-500">
-          Manage your personal information and account preferences
-        </p>
-      </div>
-
-      {/* Personal Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Personal Information</CardTitle>
-          <CardDescription>
-            Your private details — not shown on your public profile
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="firstName" className="flex items-center gap-1.5">
-                First Name
-                {isLocked && <Lock className="h-3 w-3 text-slate-400" />}
-              </Label>
-              <Input
-                id="firstName"
-                value={form.first_name}
-                onChange={(e) => update("first_name", e.target.value)}
-                disabled={isLocked}
-                className={isLocked ? "bg-slate-50 text-slate-500" : ""}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName" className="flex items-center gap-1.5">
-                Last Name
-                {isLocked && <Lock className="h-3 w-3 text-slate-400" />}
-              </Label>
-              <Input
-                id="lastName"
-                value={form.last_name}
-                onChange={(e) => update("last_name", e.target.value)}
-                disabled={isLocked}
-                className={isLocked ? "bg-slate-50 text-slate-500" : ""}
-              />
-            </div>
-          </div>
-          {isLocked && (
-            <p className="text-xs text-slate-400">
-              Name is locked after identity verification
+    <>
+      <div className="overflow-hidden rounded-xl border border-rose-200 bg-rose-50/40 p-5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle
+            className="mt-0.5 h-5 w-5 shrink-0 text-rose-600"
+            aria-hidden="true"
+          />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-rose-900">
+              Closing your account is permanent
             </p>
-          )}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="email">Email</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => update("email", e.target.value)}
-                  className="flex-1"
-                />
-                {emailChanged && (
-                  <Button
-                    onClick={handleEmailUpdate}
-                    disabled={emailStatus === "saving"}
-                    size="sm"
-                    className="bg-violet-600 hover:bg-violet-700 text-white h-10 px-4 shrink-0"
-                  >
-                    {emailStatus === "saving" ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Update"
-                    )}
-                  </Button>
-                )}
-              </div>
-              {emailStatus === "sent" && (
-                <p className="text-xs text-green-600">
-                  Confirmation email sent — check your inbox to verify the new
-                  address.
-                </p>
-              )}
-              {emailStatus === "error" && (
-                <p className="text-xs text-red-500">{emailError}</p>
-              )}
-            </div>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="dob" className="flex items-center gap-1.5">
-                Date of Birth
-                {isLocked && <Lock className="h-3 w-3 text-slate-400" />}
-              </Label>
-              <Input
-                id="dob"
-                type="date"
-                value={form.date_of_birth}
-                onChange={(e) => update("date_of_birth", e.target.value)}
-                disabled={isLocked}
-                className={isLocked ? "bg-slate-50 text-slate-500" : ""}
-              />
-              {isLocked && (
-                <p className="text-xs text-slate-400">
-                  Locked after identity verification
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="mobile">Mobile Number</Label>
-              <Input
-                id="mobile"
-                type="tel"
-                value={form.mobile_number}
-                onChange={(e) => update("mobile_number", e.target.value)}
-                placeholder="04XX XXX XXX"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Address */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Address</CardTitle>
-          <CardDescription>
-            Your location helps us match you with nearby families
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="suburb">Suburb</Label>
-              <Input
-                id="suburb"
-                value={form.suburb}
-                onChange={(e) => update("suburb", e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="postcode">Postcode</Label>
-              <Input
-                id="postcode"
-                value={form.postcode}
-                onChange={(e) => update("postcode", e.target.value)}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* WWCC */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-violet-500" />
-            Working With Children Check
-          </CardTitle>
-          <CardDescription>Your WWCC verification status</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {wwcc && wwcc.number ? (
-            <div className="space-y-3">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">WWCC Number</p>
-                  <p className="text-sm font-medium text-slate-900">
-                    {wwcc.number}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Status</p>
-                  {wwccStatus && (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${wwccStatus.bg} ${wwccStatus.text}`}
-                    >
-                      {wwccStatus.label}
-                    </span>
-                  )}
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Expiry Date</p>
-                  <p className="text-sm font-medium text-slate-900">
-                    {wwcc.expiryDate
-                      ? new Date(wwcc.expiryDate).toLocaleDateString("en-AU", {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-500">Not yet submitted</p>
-              <Link href="/nanny/verification">
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  Submit WWCC <ExternalLink className="h-3.5 w-3.5" />
-                </Button>
-              </Link>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Notifications */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Notification Preferences</CardTitle>
-          <CardDescription>Choose how you want to be notified</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <p className="text-sm text-slate-500">
-              Notification settings coming soon
+            <p className="mt-1 text-sm text-rose-700">
+              This deactivates your account and hides your profile from all
+              families. You will be signed out and will need to contact support
+              to reactivate.
             </p>
-            <p className="mt-1 text-xs text-slate-400">
-              You&apos;ll be able to customize email and push notifications here
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Save bar */}
-      {isDirty && (
-        <div className="sticky bottom-4 z-10">
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              {saveStatus === "saved" && (
-                <>
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  <span className="text-green-600">Settings saved</span>
-                </>
-              )}
-              {saveStatus === "error" && (
-                <span className="text-red-500">{error}</span>
-              )}
-              {saveStatus === "idle" && (
-                <span className="text-slate-500">You have unsaved changes</span>
-              )}
-            </div>
             <Button
-              onClick={handleSave}
-              disabled={isPending || saveStatus === "saving"}
-              className="bg-violet-600 hover:bg-violet-700 text-white"
+              variant="outline"
+              onClick={() => setShowModal(true)}
+              className="mt-4 border-rose-300 text-rose-700 hover:bg-rose-100 hover:text-rose-800"
             >
-              {saveStatus === "saving" ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Settings
-                </>
-              )}
+              Close my account
             </Button>
           </div>
         </div>
-      )}
-
-      {/* Linked children — leave action per child */}
-      {managedChildren.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Linked children</CardTitle>
-            <CardDescription>
-              Step away from a child you no longer care for. Each action asks
-              for confirmation.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ChildManagementCard items={managedChildren} role="nanny" />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Close account link */}
-      <div className="pt-4 pb-8 text-center">
-        <button
-          onClick={() => setShowCloseModal(true)}
-          className="text-xs text-red-400 hover:text-red-600 underline underline-offset-2 transition-colors"
-        >
-          Close your account
-        </button>
       </div>
 
-      {/* Close Account Confirmation Modal */}
-      {showCloseModal && (
+      {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
+                <AlertTriangle className="h-5 w-5 text-rose-500" />
                 <h3 className="text-lg font-semibold text-slate-900">
-                  Close Your Account
+                  Close your account
                 </h3>
               </div>
               <button
                 onClick={() => {
-                  setShowCloseModal(false);
-                  setCloseConfirmName("");
+                  setShowModal(false);
+                  setConfirmName("");
+                  setError(null);
                 }}
                 className="text-slate-400 hover:text-slate-600"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-sm text-slate-600 mb-4">
-              This will deactivate your account and hide your profile from all
-              families. You will be signed out and will need to contact support
-              to reactivate.
+            {error && (
+              <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                {error}
+              </p>
+            )}
+            <p className="mb-4 text-sm text-slate-600">
+              This is permanent. You&apos;ll lose access immediately and need to
+              contact support to reactivate.
             </p>
             <div className="mb-2">
-              <p className="text-xs text-slate-500 mb-1">
+              <p className="mb-1 text-xs text-slate-500">
                 Type{" "}
                 <span className="font-semibold text-slate-700">{fullName}</span>{" "}
                 to confirm
               </p>
               <Input
-                value={closeConfirmName}
-                onChange={(e) => setCloseConfirmName(e.target.value)}
+                value={confirmName}
+                onChange={(e) => setConfirmName(e.target.value)}
                 placeholder="Your full name"
                 autoFocus
               />
             </div>
-            <div className="flex gap-3 mt-4">
+            <div className="mt-4 flex gap-3">
               <Button
                 variant="outline"
                 className="flex-1"
                 onClick={() => {
-                  setShowCloseModal(false);
-                  setCloseConfirmName("");
+                  setShowModal(false);
+                  setConfirmName("");
                 }}
+                disabled={isPending}
               >
                 Cancel
               </Button>
               <Button
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white"
-                disabled={!nameMatches || isDeactivating}
+                className="flex-1 bg-rose-600 text-white hover:bg-rose-700"
+                disabled={!nameMatches || isPending}
                 onClick={handleDeactivate}
               >
-                {isDeactivating ? (
+                {isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Closing...
+                    Closing…
                   </>
                 ) : (
-                  "Confirm & Close"
+                  "Confirm & close"
                 )}
               </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { diaryModule, applyLogFood, applyLogSleep } from "./diary";
+import {
+  diaryModule,
+  applyLogFood,
+  applyLogSleep,
+  applyLogUpdate,
+} from "./diary";
 import type { ChildSummary, ModuleContext } from "./types";
 
 const oliver: ChildSummary = {
@@ -310,5 +315,136 @@ describe("diary apply — log_sleep", () => {
     );
     expect(r.ok).toBe(false);
     expect(insertMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── Propose + apply for the new free-form Update entry ─────────────
+
+describe("diary module — log_update (propose)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns a draft tile labelled 'Diary Entry' and does NOT insert", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await diaryModule.execute(
+      "log_update",
+      { note: "Had a great morning at the park with Oliver." },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(r.tile?.kind).toBe("draft");
+    if (r.tile?.kind === "draft") {
+      expect(r.tile.data.toolName).toBe("log_update");
+      expect(typeof r.tile.data.draftId).toBe("string");
+      const preview = r.tile.data.preview;
+      expect(preview.kind).toBe("diary");
+      if (preview.kind === "diary") {
+        const previewData = preview.data.item.data as Record<string, unknown>;
+        expect(previewData.subtype).toBe("update");
+        expect(previewData.title).toBe("Diary Entry");
+        expect(previewData.note).toBe(
+          "Had a great morning at the park with Oliver.",
+        );
+        expect(previewData.image_url).toBeNull();
+      }
+    }
+  });
+
+  it("trims whitespace on the note", async () => {
+    const { ctx } = makeCtx();
+    const r = await diaryModule.execute(
+      "log_update",
+      { note: "   Park visit.   " },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    if (r.success && r.tile?.kind === "draft") {
+      const preview = r.tile.data.preview;
+      if (preview.kind === "diary") {
+        expect((preview.data.item.data as Record<string, unknown>).note).toBe(
+          "Park visit.",
+        );
+      }
+    }
+  });
+
+  it("rejects empty note", async () => {
+    const { ctx } = makeCtx();
+    const r = await diaryModule.execute("log_update", { note: "   " }, ctx);
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/note/);
+  });
+
+  it("rejects missing note", async () => {
+    const { ctx } = makeCtx();
+    const r = await diaryModule.execute("log_update", {}, ctx);
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/note/);
+  });
+
+  it("threads image_url through into the draft preview", async () => {
+    const { ctx } = makeCtx();
+    const r = await diaryModule.execute(
+      "log_update",
+      { note: "Beach day", image_url: "https://example.com/img.jpg" },
+      ctx,
+    );
+    expect(r.success).toBe(true);
+    if (r.success && r.tile?.kind === "draft") {
+      const preview = r.tile.data.preview;
+      if (preview.kind === "diary") {
+        expect(
+          (preview.data.item.data as Record<string, unknown>).image_url,
+        ).toBe("https://example.com/img.jpg");
+      }
+    }
+  });
+});
+
+describe("diary apply — log_update", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("inserts a diary log with subtype='update' and returns the persisted tile", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogUpdate(
+      { note: "First swim lesson today!" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(true);
+    expect(insertMock).toHaveBeenCalled();
+    if (r.ok) {
+      expect(r.data.log_id).toBe("log-1");
+      expect(r.tile.kind).toBe("diary");
+      const persisted = r.tile.data.item.data as Record<string, unknown>;
+      expect(persisted.subtype).toBe("update");
+      expect(persisted.title).toBe("Diary Entry");
+      expect(persisted.note).toBe("First swim lesson today!");
+    }
+  });
+
+  it("validation failures don't insert", async () => {
+    const { ctx, insertMock } = makeCtx();
+    const r = await applyLogUpdate(
+      { note: "" },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it("surfaces insert errors", async () => {
+    const { ctx, insertMock } = makeCtx();
+    insertMock.mockResolvedValueOnce({
+      data: null,
+      error: { message: "boom" },
+    });
+    const r = await applyLogUpdate(
+      { note: "Park visit." },
+      { userId: ctx.userId, children: ctx.children, supabase: ctx.supabase },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toMatch(/Failed to save diary update/);
+    }
   });
 });

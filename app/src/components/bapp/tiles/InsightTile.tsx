@@ -1,6 +1,7 @@
 "use client";
 
 import { Lightbulb } from "lucide-react";
+import { TileActionMenu } from "./TileActionMenu";
 import type { FeedItem, InsightData } from "@/types/bapp";
 
 interface InsightTileProps {
@@ -22,6 +23,10 @@ export function InsightTile({ item }: InsightTileProps) {
           </span>
           <p className="mt-2 text-sm italic text-amber-800">{data.text}</p>
         </div>
+        {/* InsightTile doesn't use the shared TileHeader, so the
+            action menu is wired in directly to keep delete-from-feed
+            consistent across every tile type. */}
+        <TileActionMenu logId={item.id} />
       </div>
     </div>
   );

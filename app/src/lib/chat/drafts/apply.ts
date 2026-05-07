@@ -16,7 +16,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ChatTile } from "@/lib/chat/tiles";
 import type { ChildSummary } from "@/lib/chat/modules/types";
-import { applyLogFood, applyLogSleep } from "@/lib/chat/modules/diary";
+import {
+  applyLogFood,
+  applyLogSleep,
+  applyLogUpdate,
+} from "@/lib/chat/modules/diary";
 import { applyLogObservation } from "@/lib/chat/modules/observations";
 import { applyUpdateProgress } from "@/lib/chat/modules/progress";
 import {
@@ -84,6 +88,8 @@ export async function applyDraft(
       return applyLogFood(merged, ctx);
     case "log_sleep":
       return applyLogSleep(merged, ctx);
+    case "log_update":
+      return applyLogUpdate(merged, ctx);
     case "log_observation":
       return applyLogObservation(merged, ctx);
     case "update_progress":

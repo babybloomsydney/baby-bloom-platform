@@ -25,10 +25,23 @@ export async function getFeed(
     const admin = createAdminClient();
 
     // Fetch logs for this child, ordered newest first. is_active filter
-    // keeps soft-deleted tiles (Katie delete_tile) out of the feed.
+    // keeps soft-deleted tiles (Katie delete_tile or user-initiated
+    // softDeleteBAppLog) out of the feed.
+    //
+    // SECURITY: columns are enumerated explicitly to OMIT
+    // `internal_notes` (Katie's private context-only column added
+    // by katie-internal-notes.sql). See that migration's header
+    // for the visibility-model rationale — Postgres has no
+    // column-level RLS, so the app layer is the enforcement
+    // boundary for this column. Adding a new column to bapp_logs
+    // will NOT auto-flow through this query; the new column must
+    // be added to the SELECT list below if the client should see
+    // it.
     const { data: logs, error: logsError } = await admin
       .from("bapp_logs")
-      .select("*")
+      .select(
+        "id, child_client_id, author_id, type, status, context, parent_log_id, data, created_at, updated_at, is_active",
+      )
       .eq("child_client_id", childId)
       .eq("is_active", true)
       .order("created_at", { ascending: false })

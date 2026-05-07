@@ -78,10 +78,14 @@ export default function RootLayout({
         <SessionProvider>
           <VisitorTracker />
           {isDevMode && <DevSidebar />}
-          <KatieShell>
-            {children}
-            <MiniFooter />
-          </KatieShell>
+          {/* MiniFooter passed as a separate slot so the shell can
+              wrap the page content in a flex-grow div above it.
+              Result: footer sticks to viewport bottom when the page
+              is shorter than the viewport, and sits at the end of
+              scrolled content when the page is taller. (Sticky-
+              footer pattern, applied globally per user feedback
+              2026-05-07.) */}
+          <KatieShell footer={<MiniFooter />}>{children}</KatieShell>
           <Analytics />
           <CookieConsentBanner />
           {isDevMode && <DevToolbar />}

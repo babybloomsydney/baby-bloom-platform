@@ -614,6 +614,29 @@ export async function updateParentAccountSettings(
     return { success: false, error: "Not authenticated" };
   }
 
+  // Server-side AU mobile validation. Mobile is REQUIRED + must
+  // pass the regex when present in the payload — no empty / null
+  // values accepted (per user policy 2026-05-07). This mirrors
+  // the client-side validation in the settings dialog and prevents
+  // any direct-action bypass.
+  if (data.mobile_number !== undefined) {
+    const trimmed = (data.mobile_number ?? "").trim();
+    if (trimmed.length === 0) {
+      return { success: false, error: "Mobile number is required." };
+    }
+    const normalised = trimmed.replace(/[\s-]+/g, "");
+    const promoted = /^4\d{8}$/.test(normalised)
+      ? "0" + normalised
+      : normalised;
+    if (!/^04\d{8}$/.test(promoted)) {
+      return {
+        success: false,
+        error: "Enter a valid Australian mobile number.",
+      };
+    }
+    data = { ...data, mobile_number: promoted };
+  }
+
   const profileFields: Record<string, unknown> = {};
   if (data.first_name !== undefined) profileFields.first_name = data.first_name;
   if (data.last_name !== undefined) profileFields.last_name = data.last_name;
