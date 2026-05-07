@@ -51,10 +51,119 @@ export const KATIE_PANEL_ID = "panel-katie";
 export const MAIN_TAB_ID = "tab-main";
 export const MAIN_PANEL_ID = "panel-main";
 
-import { forwardRef, useRef, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { Baby } from "lucide-react";
 import { useKatie } from "@/contexts/KatieContext";
 import { SparkleIcon } from "./messages/SparkleIcon";
+
+// ── Chrome-tab silhouette as SVG ─────────────────────────────────────────
+//
+// Pure-CSS pseudo-elements couldn't carry the violet stroke along the
+// outward bottom-corner flares, leaving the visible outline rectangular
+// while the body fill extended past it — the "tab pinched at the bottom"
+// look. SVG renders the entire silhouette as one path: the same arc
+// radius (16px) on top corners and bottom-exterior corners, with both
+// fill (body colour) and stroke (violet) applied along the same path.
+// Two paths are drawn into the same SVG: a closed path including the
+// baseline for the FILL, and an open path without the baseline for the
+// STROKE (so no horizontal line is drawn at the bottom of the
+// silhouette — that area merges seamlessly with the strip baseline /
+// deck body below).
+//
+// We measure the button's actual width via ResizeObserver because the
+// path's straight-edge segments are width-dependent. Height is fixed
+// per the tab's padding + content, but width changes with the flexbox
+// 60/40 split + viewport size.
+
+const TAB_RADIUS = 16;
+
+interface ChromeTabBackdropProps {
+  fillColor: string;
+  strokeColor: string;
+  strokeWidth?: number;
+}
+
+function ChromeTabBackdrop({
+  fillColor,
+  strokeColor,
+  strokeWidth = 2,
+}: ChromeTabBackdropProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [{ w, h }, setSize] = useState({ w: 0, h: 0 });
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const rect = entry.contentRect;
+      setSize({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const r = TAB_RADIUS;
+
+  // Closed path for FILL — includes the bottom baseline so the body
+  // colour fills the whole silhouette including the flares.
+  const closedPath =
+    w > 0 && h > 0
+      ? [
+          `M ${-r} ${h}`,
+          `A ${r} ${r} 0 0 1 0 ${h - r}`, // outward flare LEFT-bottom
+          `L 0 ${r}`,
+          `A ${r} ${r} 0 0 1 ${r} 0`, // TL corner
+          `L ${w - r} 0`,
+          `A ${r} ${r} 0 0 1 ${w} ${r}`, // TR corner
+          `L ${w} ${h - r}`,
+          `A ${r} ${r} 0 0 1 ${w + r} ${h}`, // outward flare RIGHT-bottom
+          `Z`,
+        ].join(" ")
+      : "";
+
+  // Open path for STROKE — same arcs + sides + top, but no bottom
+  // baseline. The stroke ends at the flare endpoints on each side.
+  const openPath =
+    w > 0 && h > 0
+      ? [
+          `M ${-r} ${h}`,
+          `A ${r} ${r} 0 0 1 0 ${h - r}`,
+          `L 0 ${r}`,
+          `A ${r} ${r} 0 0 1 ${r} 0`,
+          `L ${w - r} 0`,
+          `A ${r} ${r} 0 0 1 ${w} ${r}`,
+          `L ${w} ${h - r}`,
+          `A ${r} ${r} 0 0 1 ${w + r} ${h}`,
+        ].join(" ")
+      : "";
+
+  return (
+    <div
+      ref={containerRef}
+      aria-hidden="true"
+      className="pointer-events-none absolute inset-0"
+    >
+      {w > 0 && h > 0 && (
+        <svg
+          className="absolute overflow-visible"
+          style={{ left: -r, top: 0 }}
+          width={w + 2 * r}
+          height={h}
+          viewBox={`${-r} 0 ${w + 2 * r} ${h}`}
+        >
+          <path d={closedPath} fill={fillColor} stroke="none" />
+          <path
+            d={openPath}
+            fill="none"
+            stroke={strokeColor}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+    </div>
+  );
+}
 
 // ── TabButton ───────────────────────────────────────────────────────────
 
@@ -104,68 +213,33 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
         onClick={onClick}
         onKeyDown={onKeyDown}
         className={[
-          // Base geometry. `relative` for stacking. `rounded-t-2xl`
-          // (16px) gives a more pronounced browser-tab silhouette
-          // than the prior 8px curve. Bottom corners stay square
-          // — the active tab's bottom flows directly into the deck
-          // body, sharing its colour.
-          "relative rounded-t-2xl px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
+          // Base geometry. `relative` so the SVG backdrop can sit
+          // absolutely beneath the tab's text + icon content.
+          "relative px-3 pt-2.5 pb-2 text-sm font-semibold transition-colors",
           // Width: active wider (~60/40 split).
           active ? "flex-[3] basis-0" : "flex-[2] basis-0",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600 focus-visible:ring-offset-2",
           active
-            ? // Active: violet outline on top + sides; NO bottom
-              // border. `z-10` keeps the tab above the strip's
-              // absolute divider element (z-0) so the tab's body bg
-              // covers — and "breaks" — the divider at its x-range.
-              `${activeBodyBg} text-violet-700 border-2 border-violet-600 border-b-0 z-10 shadow-[0_-1px_2px_rgba(124,58,237,0.05)]`
-            : // Inactive: NO outline. Pure text on the white strip,
-              // blending with the chrome zone. Hover gives a subtle
-              // bg + colour shift so it still reads as pressable.
-              "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
+            ? // Active: SVG backdrop paints the chrome-tab silhouette
+              // (rounded top + outward bottom flares + violet stroke).
+              // `z-10` puts the active tab above the strip's
+              // divider so the SVG's filled bg covers the line at
+              // the tab's x-range. No CSS border / radius needed
+              // here — the SVG carries both fill and outline.
+              `${activeBodyBg} text-violet-700 z-10`
+            : // Inactive: NO outline, NO backdrop. Pure text +
+              // hover state, blending with the chrome zone.
+              "bg-transparent text-slate-500 rounded-t-2xl hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
-        {/* Outward-concave bottom-exterior curves on the active tab,
-            matching the 16px top-corner radius so the silhouette
-            arcs with the same curvature on both ends.
-            Each side gets a 16×16 filled "wing" sitting just outside
-            the active tab's bottom corner. The wing's corner facing
-            INTO the tab body is rounded 16px — that single rounded
-            corner is the visible concave arc that flows from the
-            tab's bottom edge down to the strip's baseline.
-            Inline style on `backgroundColor` because Tailwind's JIT
-            can't statically derive a runtime colour from an
-            arbitrary `bg-[...]` literal. */}
         {active && (
-          <>
-            {/* LEFT wing: 16×16 filled square offset left of the
-                tab's bottom-left corner. Rounding the wing's
-                TOP-LEFT corner cuts away the far-from-tab quadrant
-                and leaves a filled quarter-disk in the bottom-right
-                (the corner adjacent to the tab). The visible curve
-                arcs from the tab's left edge (at y = bottom − 16)
-                down-and-out to the strip baseline at x = −16. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -left-4 bottom-0 h-4 w-4"
-              style={{
-                backgroundColor: activeBodyBgCss,
-                borderTopLeftRadius: "16px",
-              }}
-            />
-            {/* RIGHT wing: mirror — round the top-RIGHT corner so
-                the filled quarter-disk sits adjacent to the tab. */}
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-4 bottom-0 h-4 w-4"
-              style={{
-                backgroundColor: activeBodyBgCss,
-                borderTopRightRadius: "16px",
-              }}
-            />
-          </>
+          <ChromeTabBackdrop
+            fillColor={activeBodyBgCss}
+            strokeColor="#7c3aed"
+            strokeWidth={2}
+          />
         )}
-        {children}
+        <span className="relative z-10">{children}</span>
       </button>
     );
   },

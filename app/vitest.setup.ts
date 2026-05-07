@@ -9,3 +9,16 @@ process.env.GOOGLE_GENAI_API_KEY ??= "test-gemini-key";
 // the constructor throws, which cascades into any module that
 // transitively imports a server action under @/lib/actions/*.
 process.env.RESEND_API_KEY ??= "re_test_key";
+
+// jsdom doesn't ship ResizeObserver. Components that observe DOM size
+// (KatieTabs' ChromeTabBackdrop, etc.) crash on mount without a stub.
+// Minimal no-op implementation — observe/unobserve do nothing, so the
+// component falls through to its empty render branch instead of
+// invoking the SVG path math, which is fine for behaviour tests.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
