@@ -144,10 +144,15 @@ function RealSessionProvider({ children }: SessionProviderProps) {
             ? (raw as UserRole)
             : null;
           if (matched) {
+            // eslint-disable-next-line no-console
+            console.log("[auth] role set:", matched);
             setRole(matched);
           } else {
             console.error("Invalid role value from user_roles:", roleData.role);
           }
+        } else {
+          // eslint-disable-next-line no-console
+          console.warn("[auth] user_roles returned no row for", userId);
         }
 
         // Fetch profile
@@ -192,25 +197,28 @@ function RealSessionProvider({ children }: SessionProviderProps) {
   }, [supabase, clearUserData]);
 
   useEffect(() => {
-    // Get initial session.
-    //
-    // Use `getUser()` (not `getSession()`) for the bootstrap so the
-    // JWT is validated against the Supabase server before we trust
-    // it. `getSession()` only reads the local cookie store and will
-    // happily return a `user` object for an expired token; the
-    // subsequent `user_roles` SELECT then fails silently under RLS,
-    // leaving `role` permanently null and the dashboard chrome
-    // (DashboardNav + KatieTabs) suppressed for the entire session.
+    // Get initial session via `getSession()` — reads the local
+    // cookie store. (We tried switching to `getUser()` to validate
+    // the JWT server-side but on Vercel that call returned an
+    // error/null silently in production for valid sessions, leaving
+    // user state empty and the dashboard chrome unmounted.)
     const bootstrap = async () => {
       try {
         const {
-          data: { user: validatedUser },
-          error,
-        } = await supabase.auth.getUser();
+          data: { session },
+        } = await supabase.auth.getSession();
 
-        if (!error && validatedUser) {
-          setUser(validatedUser);
-          await fetchUserData(validatedUser.id);
+        // Diagnostic logs — tell us in production console exactly
+        // what the auth bootstrap saw. Remove once stable.
+        // eslint-disable-next-line no-console
+        console.log(
+          "[auth] bootstrap session.user:",
+          session?.user?.id ?? null,
+        );
+
+        if (session?.user) {
+          setUser(session.user);
+          await fetchUserData(session.user.id);
         }
       } catch (error) {
         console.error("Error getting session:", error);
