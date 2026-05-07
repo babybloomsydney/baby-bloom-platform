@@ -125,40 +125,42 @@ const TabButton = forwardRef<HTMLButtonElement, TabButtonProps>(
               "bg-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700",
         ].join(" ")}
       >
-        {/* Outward-concave bottom-exterior curves on the active tab —
-            matches the 16px top-corner radius so the silhouette
-            curves with the same arc on top and bottom. Classic
-            Chrome-tab pseudo-element trick:
-              • Each pseudo is a 16×16 filled square sitting just
-                outside the active tab's bottom-left/right corner.
-              • The corner of the pseudo facing the tab body is
-                rounded 16px, "cutting" a quarter-circle out of the
-                square — that cut becomes the visible concave curve.
-              • A `box-shadow` of size 16px in the body colour
-                extends the filled square down-and-out beyond the
-                pseudo's natural bounds, paving the path from the
-                tab's bottom edge into the strip's baseline.
-            Inline style is required because Tailwind's JIT can't
-            derive a runtime colour for `box-shadow`/`background-color`
-            from an arbitrary `bg-[...]` literal. */}
+        {/* Outward-concave bottom-exterior curves on the active tab,
+            matching the 16px top-corner radius so the silhouette
+            arcs with the same curvature on both ends.
+            Each side gets a 16×16 filled "wing" sitting just outside
+            the active tab's bottom corner. The wing's corner facing
+            INTO the tab body is rounded 16px — that single rounded
+            corner is the visible concave arc that flows from the
+            tab's bottom edge down to the strip's baseline.
+            Inline style on `backgroundColor` because Tailwind's JIT
+            can't statically derive a runtime colour from an
+            arbitrary `bg-[...]` literal. */}
         {active && (
           <>
+            {/* LEFT wing: 16×16 filled square offset left of the
+                tab's bottom-left corner. Rounding the wing's
+                TOP-LEFT corner cuts away the far-from-tab quadrant
+                and leaves a filled quarter-disk in the bottom-right
+                (the corner adjacent to the tab). The visible curve
+                arcs from the tab's left edge (at y = bottom − 16)
+                down-and-out to the strip baseline at x = −16. */}
             <span
               aria-hidden="true"
               className="pointer-events-none absolute -left-4 bottom-0 h-4 w-4"
               style={{
                 backgroundColor: activeBodyBgCss,
-                borderBottomRightRadius: "16px",
-                boxShadow: `8px 8px 0 0 ${activeBodyBgCss}`,
+                borderTopLeftRadius: "16px",
               }}
             />
+            {/* RIGHT wing: mirror — round the top-RIGHT corner so
+                the filled quarter-disk sits adjacent to the tab. */}
             <span
               aria-hidden="true"
               className="pointer-events-none absolute -right-4 bottom-0 h-4 w-4"
               style={{
                 backgroundColor: activeBodyBgCss,
-                borderBottomLeftRadius: "16px",
-                boxShadow: `-8px 8px 0 0 ${activeBodyBgCss}`,
+                borderTopRightRadius: "16px",
               }}
             />
           </>
