@@ -12,18 +12,24 @@ import { ReportTile } from "./tiles/ReportTile";
 import { InsightTile } from "./tiles/InsightTile";
 import { CustomTile } from "./tiles/CustomTile";
 import { ActivityDetailSheet } from "./sheets/ActivityDetailSheet";
+import { ResumeBanner, type BannerStatus } from "./ResumeBanner";
 import type { FeedItem, Milestone } from "@/types/bapp";
 
 interface BAppFeedViewProps {
   childId: string;
   initialFeed: FeedItem[];
   milestones: Milestone[];
+  /** A-08 resume banner state — resolved server-side by the page so
+   *  the banner doesn't flash. Omit on routes that don't surface
+   *  the cascade (parent-side, certain admin views). */
+  bannerStatus?: BannerStatus;
 }
 
 export function BAppFeedView({
   childId,
   initialFeed,
   milestones,
+  bannerStatus,
 }: BAppFeedViewProps) {
   const [feed, setFeed] = useState<FeedItem[]>(initialFeed);
   const [detailItem, setDetailItem] = useState<FeedItem | null>(null);
@@ -79,6 +85,8 @@ export function BAppFeedView({
         item={detailItem}
         milestones={milestones}
       />
+
+      {bannerStatus ? <ResumeBanner status={bannerStatus} /> : null}
 
       {visibleFeed.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-center">

@@ -1,5 +1,6 @@
 import { getFeed } from "@/lib/actions/bapp/feed";
 import { getMilestones } from "@/lib/actions/bapp/milestones";
+import { getOnboardingBannerStatus } from "@/lib/actions/bapp/onboarding-banner";
 import { BAppFeedView } from "@/components/bapp/BAppFeedView";
 
 export default async function ParentDevelopmentFeedPage({
@@ -7,9 +8,10 @@ export default async function ParentDevelopmentFeedPage({
 }: {
   params: { childId: string };
 }) {
-  const [feedRes, milestonesRes] = await Promise.all([
+  const [feedRes, milestonesRes, bannerStatus] = await Promise.all([
     getFeed(params.childId),
     getMilestones(),
+    getOnboardingBannerStatus(),
   ]);
 
   return (
@@ -17,6 +19,7 @@ export default async function ParentDevelopmentFeedPage({
       childId={params.childId}
       initialFeed={feedRes.data}
       milestones={milestonesRes.data}
+      bannerStatus={bannerStatus}
     />
   );
 }
