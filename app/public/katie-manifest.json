@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-05-07T06:57:48.671Z",
+  "generated_at": "2026-05-08T06:10:26.026Z",
   "summary": {
     "route_count": 53,
     "page_count": 99,
     "cron_count": 7,
     "migration_count": 16,
-    "server_action_file_count": 35
+    "server_action_file_count": 36
   },
   "routes": [
     {
@@ -706,62 +706,62 @@
     {
       "filename": "education-app.sql",
       "bytes": 13414,
-      "modified_at": "2026-04-10T01:39:50.418Z"
+      "modified_at": "2026-05-07T07:06:54.824Z"
     },
     {
       "filename": "expand-milestones-210.sql",
       "bytes": 20941,
-      "modified_at": "2026-04-14T00:40:27.786Z"
+      "modified_at": "2026-05-07T07:06:54.824Z"
     },
     {
       "filename": "katie-admin-edits-rollback.sql",
       "bytes": 94,
-      "modified_at": "2026-04-23T07:38:43.968Z"
+      "modified_at": "2026-05-07T07:06:54.824Z"
     },
     {
       "filename": "katie-admin-edits.sql",
       "bytes": 2505,
-      "modified_at": "2026-04-23T07:38:39.387Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-foundation-rollback.sql",
       "bytes": 4660,
-      "modified_at": "2026-04-23T05:27:38.688Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-foundation.sql",
       "bytes": 23806,
-      "modified_at": "2026-04-23T05:27:15.997Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-internal-notes-rollback.sql",
       "bytes": 111,
-      "modified_at": "2026-05-07T03:39:53.875Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-internal-notes.sql",
       "bytes": 2437,
-      "modified_at": "2026-05-07T03:39:48.388Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-proposals-rollback.sql",
       "bytes": 89,
-      "modified_at": "2026-04-23T07:46:20.324Z"
+      "modified_at": "2026-05-07T07:06:54.825Z"
     },
     {
       "filename": "katie-proposals.sql",
       "bytes": 3103,
-      "modified_at": "2026-04-23T07:46:14.534Z"
+      "modified_at": "2026-05-07T07:06:54.826Z"
     },
     {
       "filename": "katie-tiles-rollback.sql",
       "bytes": 153,
-      "modified_at": "2026-04-24T03:34:51.537Z"
+      "modified_at": "2026-05-07T07:06:54.826Z"
     },
     {
       "filename": "katie-tiles.sql",
       "bytes": 1041,
-      "modified_at": "2026-04-24T03:34:46.915Z"
+      "modified_at": "2026-05-07T07:06:54.826Z"
     },
     {
       "filename": "nanny-leads-v2.sql",
@@ -776,12 +776,12 @@
     {
       "filename": "sync-user-profile-email-rollback.sql",
       "bytes": 173,
-      "modified_at": "2026-05-07T05:19:43.692Z"
+      "modified_at": "2026-05-07T07:06:54.826Z"
     },
     {
       "filename": "sync-user-profile-email.sql",
       "bytes": 4863,
-      "modified_at": "2026-05-07T05:19:36.770Z"
+      "modified_at": "2026-05-07T07:06:54.826Z"
     }
   ],
   "server_actions": [
@@ -887,6 +887,10 @@
     {
       "file": "src/lib/actions/bapp/observations.ts",
       "functions": ["logObservation", "logBulkProgress"]
+    },
+    {
+      "file": "src/lib/actions/bapp/onboarding-banner.ts",
+      "functions": ["getOnboardingBannerStatus", "dismissOnboardingBanner"]
     },
     {
       "file": "src/lib/actions/bapp/progress.ts",
