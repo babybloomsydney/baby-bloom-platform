@@ -22,6 +22,11 @@ describe("module registry", () => {
       expect(ids).toContain("history");
       expect(ids).toContain("katie-scheduling");
       expect(ids).toContain("verification");
+      // A-08: child-onboarding module is registered. The
+      // enabledForBot predicate gates it OFF once
+      // settings.onboarding_completed=true, but the static registry
+      // (no settings) sees every registered module.
+      expect(ids).toContain("child-onboarding");
     });
 
     it("returns modules for nanny role", () => {
@@ -111,6 +116,20 @@ describe("module registry", () => {
     it("includes a known bsr trigger id", () => {
       const ids = collectProactiveTriggers().map((t) => t.id);
       expect(ids).toContain("bsr.accepted_by_parent");
+    });
+
+    it("includes the A-08 child-onboarding triggers", () => {
+      const ids = collectProactiveTriggers().map((t) => t.id);
+      expect(ids).toContain("child.created");
+      expect(ids).toContain("parent.connected_to_child");
+    });
+  });
+
+  describe("collectTools — child-onboarding wiring", () => {
+    it("exposes update_onboarding_state once the module is registered", () => {
+      const tools = collectTools();
+      const names = tools.map((t) => t.name);
+      expect(names).toContain("update_onboarding_state");
     });
   });
 

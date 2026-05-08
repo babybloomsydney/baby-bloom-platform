@@ -31,6 +31,7 @@ import { profileModule } from "./profile";
 import { bsrModule } from "./bsr";
 import { jobSearchModule } from "./job-search";
 import { onboardingModule } from "./onboarding";
+import { childOnboardingModule } from "./child-onboarding";
 
 // ── Registry ────────────────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ const ALL_MODULES: BloomBotModule[] = [
   bsrModule,
   jobSearchModule,
   onboardingModule,
+  childOnboardingModule,
   // Future:
   //   insightsModule
 ];
