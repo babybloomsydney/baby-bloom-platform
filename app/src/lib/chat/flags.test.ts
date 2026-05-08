@@ -46,4 +46,71 @@ describe("katie flags", () => {
     const mod = await import("./flags");
     expect(mod.KATIE_DAILY_LIMIT_USD).toBe(0.65);
   });
+
+  // ── Latency build flags (Latency:Efficiency build, 2026-05-09) ────────
+
+  describe("KATIE_PARALLEL_TOOLS_ENABLED", () => {
+    it("defaults to true when env unset", async () => {
+      vi.stubEnv("KATIE_PARALLEL_TOOLS_ENABLED", "");
+      const mod = await import("./flags");
+      expect(mod.KATIE_PARALLEL_TOOLS_ENABLED).toBe(true);
+    });
+
+    it('can be disabled via env="false"', async () => {
+      vi.stubEnv("KATIE_PARALLEL_TOOLS_ENABLED", "false");
+      const mod = await import("./flags");
+      expect(mod.KATIE_PARALLEL_TOOLS_ENABLED).toBe(false);
+    });
+  });
+
+  describe("KATIE_PRELOAD_PASSTHROUGH_ENABLED", () => {
+    it("defaults to true when env unset", async () => {
+      vi.stubEnv("KATIE_PRELOAD_PASSTHROUGH_ENABLED", "");
+      vi.stubEnv("NEXT_PUBLIC_KATIE_PRELOAD_PASSTHROUGH_ENABLED", "");
+      const mod = await import("./flags");
+      expect(mod.KATIE_PRELOAD_PASSTHROUGH_ENABLED).toBe(true);
+    });
+
+    it("can be disabled via the server env var", async () => {
+      vi.stubEnv("KATIE_PRELOAD_PASSTHROUGH_ENABLED", "false");
+      const mod = await import("./flags");
+      expect(mod.KATIE_PRELOAD_PASSTHROUGH_ENABLED).toBe(false);
+    });
+
+    it("falls back to NEXT_PUBLIC_* when server var is unset", async () => {
+      // Use vi.unstubAllEnvs first so KATIE_PRELOAD_PASSTHROUGH_ENABLED is
+      // genuinely undefined (not empty-string from a prior stub). The `??`
+      // operator only falls through on undefined, not empty string —
+      // matches real env-var behaviour where the var is either set or
+      // not.
+      vi.unstubAllEnvs();
+      vi.stubEnv("NEXT_PUBLIC_KATIE_PRELOAD_PASSTHROUGH_ENABLED", "false");
+      const mod = await import("./flags");
+      expect(mod.KATIE_PRELOAD_PASSTHROUGH_ENABLED).toBe(false);
+    });
+  });
+
+  describe("KATIE_ALWAYS_ON_CONTEXT_ENABLED", () => {
+    it("defaults to true when env unset", async () => {
+      vi.stubEnv("KATIE_ALWAYS_ON_CONTEXT_ENABLED", "");
+      const mod = await import("./flags");
+      expect(mod.KATIE_ALWAYS_ON_CONTEXT_ENABLED).toBe(true);
+    });
+
+    it('can be disabled via env="false"', async () => {
+      vi.stubEnv("KATIE_ALWAYS_ON_CONTEXT_ENABLED", "false");
+      const mod = await import("./flags");
+      expect(mod.KATIE_ALWAYS_ON_CONTEXT_ENABLED).toBe(false);
+    });
+  });
+
+  describe("getKatieFlags() — latency build", () => {
+    it("includes the three new latency build flags", async () => {
+      const mod = await import("./flags");
+      const flags = mod.getKatieFlags();
+      expect(flags).toHaveProperty("KATIE_PARALLEL_TOOLS_ENABLED");
+      expect(flags).toHaveProperty("KATIE_PRELOAD_PASSTHROUGH_ENABLED");
+      expect(flags).toHaveProperty("KATIE_ALWAYS_ON_CONTEXT_ENABLED");
+    });
+  });
 });

@@ -2,7 +2,12 @@
  * Env-level feature flags for Katie (client-facing name for BloomBot).
  * Read once at module load; typed accessors only.
  *
- * All flags default to DISABLED so production is safe unless explicitly enabled.
+ * Most flags default to DISABLED so production is safe unless explicitly
+ * enabled. The Latency:Efficiency build (2026-05-09) introduced
+ * kill-switch-style flags (KATIE_PARALLEL_TOOLS_ENABLED,
+ * KATIE_PRELOAD_PASSTHROUGH_ENABLED, KATIE_ALWAYS_ON_CONTEXT_ENABLED) that
+ * default to TRUE — Bailey's directive is "speed by default; flag-off
+ * if anything regresses." Each kill-switch flag's JSDoc says "Default: true".
  *
  * Set in `.env.local` (local dev) and in Vercel env (preview + production).
  * See system/APP/BLOOMBOT/IMPLEMENTATION-PLAN.md WU 0.10.
@@ -80,6 +85,69 @@ export const KATIE_IMAGE_MARKER_ENABLED = parseBool(
 );
 
 /**
+ * F1 — parallel tool execution within a Gemini round (Latency:Efficiency
+ * build, 2026-05-09). When true, the chat route's per-round tool loop
+ * uses `Promise.all(roundCalls.map(runTool))` instead of awaiting each
+ * tool sequentially. SSE event order is preserved by emitting
+ * `tool_call` events upfront and `tool_result` events from the resolved
+ * results in original order.
+ *
+ * Default: true. Server-only flag. Set `KATIE_PARALLEL_TOOLS_ENABLED=false`
+ * to revert to the sequential path without a redeploy.
+ */
+export const KATIE_PARALLEL_TOOLS_ENABLED = parseBool(
+  process.env.KATIE_PARALLEL_TOOLS_ENABLED,
+  true,
+);
+
+/**
+ * F2 — accept `body.preload` from the chat client (Latency:Efficiency
+ * build, 2026-05-09). When true, the chat route accepts a
+ * `PreloadedContext` slot in the request body, verifies each entry,
+ * and embeds the verified slots in the runtime context block so Katie
+ * can answer from already-loaded data instead of round-tripping through
+ * tools.
+ *
+ * Server-side: drops `body.preload` silently when false (kill-switch
+ * behaviour, no logs to avoid noise).
+ * Client-side: when `NEXT_PUBLIC_KATIE_PRELOAD_PASSTHROUGH_ENABLED=false`,
+ * the chat client omits `preload` from the request body — keeps the
+ * wire payload small and prevents stale context if the server is
+ * disabled.
+ *
+ * Default: true (both sides).
+ */
+export const KATIE_PRELOAD_PASSTHROUGH_ENABLED = parseBool(
+  process.env.KATIE_PRELOAD_PASSTHROUGH_ENABLED ??
+    process.env.NEXT_PUBLIC_KATIE_PRELOAD_PASSTHROUGH_ENABLED,
+  true,
+);
+
+/**
+ * F3 — server-side always-on context fetches (Latency:Efficiency
+ * build, 2026-05-09). When true, the chat route runs
+ * `buildAlwaysOnContext` alongside `buildMemoryTable` and
+ * `buildDevelopmentalSnapshots` in the pre-flight `Promise.all`. The
+ * builder pre-fetches all-children profiles + recent feeds + recent
+ * agent memory + my-profile-basics so Katie can answer about any
+ * accessible child without a tool round.
+ *
+ * Slots populated when this flag is true: `children_profiles`,
+ * `children_recent_feeds`, `recent_agent_memory`, `my_profile_basics`.
+ *
+ * NOT populated by this builder (per amendment 2026-05-09):
+ * `connection_inbox` and `verification_status` are surface-scoped —
+ * published per-page in WU8 (only on the inbox / verification pages),
+ * not by always-on.
+ *
+ * Default: true. Server-only flag.
+ */
+export const KATIE_ALWAYS_ON_CONTEXT_ENABLED = parseBool(
+  process.env.KATIE_ALWAYS_ON_CONTEXT_ENABLED,
+  true,
+);
+
+/**
  * Typewriter spoof on the streaming path. When true, Katie's deck
  * smooths the SSE delta stream into a steady char-by-char visible
  * trickle (V1.1 side fix 2b). Defensive UX layer that addresses the
@@ -117,10 +185,27 @@ export const KATIE_STREAM_DIAGNOSTICS = parseBool(
 );
 
 /**
- * Summary of flags — useful for admin debugging and health endpoints.
- * Never exposed to user-facing APIs.
+ * Aggregate of every flag's resolved boolean / numeric value. Useful
+ * for admin debugging + health endpoints. Never exposed to user-facing
+ * APIs (would leak internal kill-switch state).
+ *
+ * Explicit return type so call sites get a typed contract without
+ * having to read the body — consumed by the admin Katie inspection
+ * surface and a future health endpoint.
  */
-export function getKatieFlags() {
+export interface KatieFlags {
+  KATIE_ENABLED: boolean;
+  PROACTIVE_ENABLED: boolean;
+  KATIE_DAILY_LIMIT_USD: number;
+  KATIE_IMAGE_MARKER_ENABLED: boolean;
+  KATIE_STREAM_DIAGNOSTICS: boolean;
+  KATIE_TYPEWRITER_ENABLED: boolean;
+  KATIE_PARALLEL_TOOLS_ENABLED: boolean;
+  KATIE_PRELOAD_PASSTHROUGH_ENABLED: boolean;
+  KATIE_ALWAYS_ON_CONTEXT_ENABLED: boolean;
+}
+
+export function getKatieFlags(): KatieFlags {
   return {
     KATIE_ENABLED,
     PROACTIVE_ENABLED,
@@ -128,5 +213,8 @@ export function getKatieFlags() {
     KATIE_IMAGE_MARKER_ENABLED,
     KATIE_STREAM_DIAGNOSTICS,
     KATIE_TYPEWRITER_ENABLED,
+    KATIE_PARALLEL_TOOLS_ENABLED,
+    KATIE_PRELOAD_PASSTHROUGH_ENABLED,
+    KATIE_ALWAYS_ON_CONTEXT_ENABLED,
   };
 }
