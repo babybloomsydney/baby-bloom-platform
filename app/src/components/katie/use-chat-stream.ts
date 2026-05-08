@@ -9,6 +9,7 @@ import { useCallback, useState } from "react";
 import type { KatieMessage } from "./messages/types";
 import type { CurrentSurface } from "@/contexts/KatieContext";
 import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
+import { KATIE_STREAM_DIAGNOSTICS } from "@/lib/chat/flags";
 
 export interface SendResult {
   ok: boolean;
@@ -88,6 +89,16 @@ export function useChatStream() {
                   | { type: "done" };
 
                 if (evt.type === "text") {
+                  if (KATIE_STREAM_DIAGNOSTICS) {
+                    // V1.1 side fix 2 diagnostic — pair with the
+                    // server-side line in /api/chat/route.ts so the
+                    // delta-vs-arrival lag (HTTP buffering) can be
+                    // measured. Length here matches the server's
+                    // `len=` value when buffering is absent.
+                    console.log(
+                      `[stream-diag][client] t=${Date.now()} len=${evt.content.length} preview=${JSON.stringify(evt.content.slice(0, 24))}`,
+                    );
+                  }
                   fullText += evt.content;
                   setStreamingText(fullText);
                 } else if (evt.type === "tile") {

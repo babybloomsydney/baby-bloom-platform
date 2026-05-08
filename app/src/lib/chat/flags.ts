@@ -80,6 +80,26 @@ export const KATIE_IMAGE_MARKER_ENABLED = parseBool(
 );
 
 /**
+ * Diagnostic instrumentation for the streaming path. When true, both
+ * the server SSE encode boundary and the client SSE parse boundary
+ * log per-chunk timestamps + length so we can attribute the
+ * "3-dots → block of text" symptom to one of: (a) Gemini emitting
+ * large chunks, (b) HTTP buffering between Gemini and the client,
+ * (c) React render batching the deltas. Default: false.
+ *
+ * Server-side: reads KATIE_STREAM_DIAGNOSTICS.
+ * Client-side: reads NEXT_PUBLIC_KATIE_STREAM_DIAGNOSTICS.
+ *
+ * Logs are intentionally noisy (one line per text chunk) — only
+ * enable for short diagnostic windows, never as a steady state.
+ */
+export const KATIE_STREAM_DIAGNOSTICS = parseBool(
+  process.env.KATIE_STREAM_DIAGNOSTICS ??
+    process.env.NEXT_PUBLIC_KATIE_STREAM_DIAGNOSTICS,
+  false,
+);
+
+/**
  * Summary of flags — useful for admin debugging and health endpoints.
  * Never exposed to user-facing APIs.
  */
@@ -89,5 +109,6 @@ export function getKatieFlags() {
     PROACTIVE_ENABLED,
     KATIE_DAILY_LIMIT_USD,
     KATIE_IMAGE_MARKER_ENABLED,
+    KATIE_STREAM_DIAGNOSTICS,
   };
 }

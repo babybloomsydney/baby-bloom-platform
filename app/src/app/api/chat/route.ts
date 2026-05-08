@@ -27,7 +27,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { KATIE_ENABLED } from "@/lib/chat/flags";
+import { KATIE_ENABLED, KATIE_STREAM_DIAGNOSTICS } from "@/lib/chat/flags";
 import {
   selectGeminiModel,
   resolveEffectiveRole,
@@ -572,6 +572,18 @@ export async function POST(req: NextRequest) {
             const delta = chunk.text;
             if (typeof delta === "string" && delta.length > 0) {
               roundText += delta;
+              if (KATIE_STREAM_DIAGNOSTICS) {
+                // V1.1 side fix 2 diagnostic instrumentation. Logs
+                // each SSE text chunk's wall-clock timestamp + delta
+                // length. Compare against the client-side line in
+                // use-chat-stream.ts to attribute "3 dots → block"
+                // to Gemini chunking vs HTTP buffering vs React
+                // batching. NEVER leave on in production — one line
+                // per token is loud.
+                console.log(
+                  `[stream-diag][server] t=${Date.now()} len=${delta.length} preview=${JSON.stringify(delta.slice(0, 24))}`,
+                );
+              }
               controller.enqueue(encodeSSE({ type: "text", content: delta }));
             }
             // Function calls can arrive in any chunk; accumulate them.
