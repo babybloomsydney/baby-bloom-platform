@@ -11,6 +11,7 @@ vi.mock("@/lib/chat/proactive/action-triggered", () => ({
 import {
   recordCelebrationTile,
   dispatchChildCreated,
+  dispatchParentConnectedToChild,
   isUserSubsequentChild,
 } from "./child-onboarding-dispatch";
 
@@ -178,6 +179,47 @@ describe("dispatchChildCreated", () => {
         childFirstName: "Theo",
         userFirstName: "Jess",
         isSubsequent: false,
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("dispatchParentConnectedToChild", () => {
+  it("calls the dispatcher with triggerId='parent.connected_to_child' + the right payload shape", () => {
+    dispatchParentConnectedToChild({
+      recipientUserId: "parent-1",
+      childId: "child-1",
+      childFirstName: "Oliver",
+      parentFirstName: "Sarah",
+      nannyFirstName: "Emma",
+    });
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    const arg = dispatchSpy.mock.calls[0][0] as {
+      triggerId: string;
+      recipientUserId: string;
+      payload: Record<string, unknown>;
+    };
+    expect(arg.triggerId).toBe("parent.connected_to_child");
+    expect(arg.recipientUserId).toBe("parent-1");
+    expect(arg.payload).toMatchObject({
+      child_id: "child-1",
+      child_first_name: "Oliver",
+      parent_first_name: "Sarah",
+      nanny_first_name: "Emma",
+    });
+  });
+
+  it("never throws when the dispatcher does (synchronous catch)", () => {
+    dispatchSpy.mockImplementationOnce(() => {
+      throw new Error("registry imploded");
+    });
+    expect(() =>
+      dispatchParentConnectedToChild({
+        recipientUserId: "parent-1",
+        childId: "child-1",
+        childFirstName: "Oliver",
+        parentFirstName: "Sarah",
+        nannyFirstName: "Emma",
       }),
     ).not.toThrow();
   });

@@ -151,6 +151,50 @@ export function dispatchChildCreated(input: ChildCreatedDispatchInput): void {
   }
 }
 
+interface ParentConnectedDispatchInput {
+  /** The parent's user_id — recipient of the welcome on their bot. */
+  recipientUserId: string;
+  /** The newly-linked child's id (returned by connect_child_invite). */
+  childId: string;
+  /** Display name for the child. */
+  childFirstName: string;
+  /** Parent's first name (substituted into "Hi {parent_first_name}"). */
+  parentFirstName: string;
+  /** Linked nanny's first name (substituted into the trust + benefit
+   *  lines — "{nanny_first_name} has added {child_first_name}…"). */
+  nannyFirstName: string;
+}
+
+/**
+ * Fire-and-forget dispatch of the `parent.connected_to_child` proactive
+ * trigger. Same isolation strategy as `dispatchChildCreated` — the
+ * inner dispatcher attaches its own `.catch`, so this top-level
+ * try/catch only guards against a synchronous throw before the inner
+ * promise is created.
+ */
+export function dispatchParentConnectedToChild(
+  input: ParentConnectedDispatchInput,
+): void {
+  try {
+    dispatchActionTriggeredInBackground({
+      triggerId: "parent.connected_to_child",
+      recipientUserId: input.recipientUserId,
+      payload: {
+        child_id: input.childId,
+        child_first_name: input.childFirstName,
+        parent_first_name: input.parentFirstName,
+        nanny_first_name: input.nannyFirstName,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[child-onboarding] dispatchParentConnectedToChild threw synchronously:",
+      message,
+    );
+  }
+}
+
 interface PriorChildCountInput {
   admin: SupabaseClient;
   /** The user whose prior children we're counting. */

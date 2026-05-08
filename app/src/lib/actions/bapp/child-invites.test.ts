@@ -26,12 +26,15 @@ const state = vi.hoisted(() => ({
   // Per-table fixtures.
   userRoles: [] as Array<{ user_id: string; role: string }>,
   childById: null as Record<string, unknown> | null,
+  userProfilesById: new Map<string, { first_name: string | null }>(),
   // Counters / capture for behaviour assertions.
   childInsertCalled: 0,
   inviteInsertCalled: 0,
   consentCalls: 0,
   rpcCalls: [] as Array<{ name: string; args: Record<string, unknown> }>,
   rpcResponse: { data: null as unknown, error: null as unknown },
+  // Captures for the parent.connected_to_child dispatch (T8).
+  parentConnectedDispatches: [] as Array<Record<string, unknown>>,
   // Multi-children placement-end fixture state.
   childUpdates: [] as Array<{ id: string; nanny_user_id: null | string }>,
   childCountForPair: 0,
@@ -60,6 +63,8 @@ beforeEach(() => {
   state.nannyRow = null;
   state.parentRow = null;
   state.activityLogs = [];
+  state.userProfilesById = new Map();
+  state.parentConnectedDispatches = [];
   delete process.env.INVITE_LINKS_ENABLED;
 });
 
@@ -75,6 +80,17 @@ vi.mock("@/lib/legal/record-consent", () => ({
     state.consentCalls += 1;
     return { success: true };
   }),
+}));
+
+// Mock the proactive dispatch helpers — we want to assert the call
+// shape for parent.connected_to_child without firing real triggers.
+vi.mock("./child-onboarding-dispatch", () => ({
+  recordCelebrationTile: vi.fn(async () => ({ ok: true })),
+  dispatchChildCreated: vi.fn(),
+  dispatchParentConnectedToChild: (input: Record<string, unknown>) => {
+    state.parentConnectedDispatches.push(input);
+  },
+  isUserSubsequentChild: vi.fn(async () => false),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -164,6 +180,17 @@ vi.mock("@/lib/supabase/admin", () => ({
         case "child_client_events":
           return {
             insert: async () => ({ error: null }),
+          };
+        case "user_profiles":
+          return {
+            select: () => ({
+              eq: (_col: string, value: string) => ({
+                maybeSingle: async () => ({
+                  data: state.userProfilesById.get(value) ?? null,
+                  error: null,
+                }),
+              }),
+            }),
           };
         case "child_invites":
           return {
@@ -329,6 +356,54 @@ describe("connectChildInvite", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe("role_mismatch");
     expect(result.data).toBeNull();
+  });
+
+  it("dispatches parent.connected_to_child with the parent as recipient (resolved from child row, not caller)", async () => {
+    // Caller is the nanny in this test (state.authUser default), but
+    // the dispatched recipient must be the PARENT — sourced from the
+    // committed child_client.parent_user_id, not from user.id.
+    state.rpcResponse = {
+      data: [{ child_id: "child-claimed-1" }],
+      error: null,
+    };
+    state.childById = {
+      first_name: "Oliver",
+      parent_user_id: "parent-99",
+      nanny_user_id: "nanny-99",
+    };
+    state.userProfilesById.set("parent-99", { first_name: "Sarah" });
+    state.userProfilesById.set("nanny-99", { first_name: "Emma" });
+    const { connectChildInvite } = await import("./child-invites");
+    const result = await connectChildInvite("ABCD-2345");
+    expect(result.success).toBe(true);
+    expect(state.parentConnectedDispatches).toHaveLength(1);
+    expect(state.parentConnectedDispatches[0]).toMatchObject({
+      recipientUserId: "parent-99",
+      childId: "child-claimed-1",
+      childFirstName: "Oliver",
+      parentFirstName: "Sarah",
+      nannyFirstName: "Emma",
+    });
+  });
+
+  it("does NOT propagate failure to the caller when post-RPC name lookup fails (linkage already committed)", async () => {
+    // RPC succeeds — but the post-claim child row has null pointers
+    // (theoretically impossible). Action must still return success
+    // because the linkage itself committed.
+    state.rpcResponse = {
+      data: [{ child_id: "child-claimed-2" }],
+      error: null,
+    };
+    state.childById = {
+      first_name: "Casey",
+      parent_user_id: null,
+      nanny_user_id: null,
+    };
+    const { connectChildInvite } = await import("./child-invites");
+    const result = await connectChildInvite("ABCD-2345");
+    expect(result.success).toBe(true);
+    expect(result.error).toBeNull();
+    expect(state.parentConnectedDispatches).toHaveLength(0);
   });
 });
 

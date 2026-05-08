@@ -26,6 +26,7 @@ import crypto from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { dispatchParentConnectedToChild } from "./child-onboarding-dispatch";
 import type {
   ChildInviteDirection,
   ChildInvitePreview,
@@ -420,6 +421,124 @@ export async function signupViaInvite(params: {
   }
 }
 
+/**
+ * Best-effort A-08 parent welcome dispatch. Runs after
+ * `connect_child_invite` commits the linkage — the RPC has already
+ * succeeded, so NOTHING in here may surface as a caller-facing error.
+ *
+ * - Reads `child_client` to resolve parent_user_id (the recipient)
+ *   and the linked nanny_user_id (for the welcome's nanny_first_name).
+ * - Reads both user_profiles in parallel for first names.
+ * - Dispatches the proactive trigger fire-and-forget.
+ *
+ * Every read here is wrapped in `.catch` so a transport-layer throw
+ * cannot escape this function and contaminate the outer try/catch
+ * (which would otherwise return success:false to the client and
+ * cause a confusing retry against an already-claimed invite).
+ */
+async function dispatchParentWelcomeBestEffort(input: {
+  admin: ReturnType<typeof createAdminClient>;
+  childId: string;
+}): Promise<void> {
+  const { admin, childId } = input;
+  try {
+    const { data: childRow, error: childRowError } = await admin
+      .from("child_client")
+      .select("first_name, parent_user_id, nanny_user_id")
+      .eq("id", childId)
+      .maybeSingle<{
+        first_name: string | null;
+        parent_user_id: string | null;
+        nanny_user_id: string | null;
+      }>();
+    if (childRowError) {
+      console.error(
+        "[connectChildInvite] post-claim child_client read failed; skipping welcome dispatch:",
+        childRowError.code,
+      );
+      return;
+    }
+    if (!childRow) {
+      console.warn(
+        "[connectChildInvite] post-claim child row not found; skipping welcome dispatch",
+        { childId },
+      );
+      return;
+    }
+    if (!childRow.parent_user_id || !childRow.nanny_user_id) {
+      // Theoretically impossible post-claim — RPC populates both
+      // pointers in a single transaction. Log enough detail to
+      // diagnose if it ever fires.
+      console.warn(
+        "[connectChildInvite] post-claim child row has null pointer; skipping welcome dispatch",
+        {
+          childId,
+          parentUserId: childRow.parent_user_id,
+          nannyUserId: childRow.nanny_user_id,
+        },
+      );
+      return;
+    }
+
+    type ProfileResult = {
+      data: { first_name: string | null } | null;
+      error: { code?: string; message?: string } | null;
+    };
+    const profileFallback: ProfileResult = { data: null, error: null };
+    const fetchProfile = async (
+      userId: string,
+      label: string,
+    ): Promise<ProfileResult> => {
+      try {
+        return await admin
+          .from("user_profiles")
+          .select("first_name")
+          .eq("user_id", userId)
+          .maybeSingle<{ first_name: string | null }>();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(
+          `[connectChildInvite] ${label} profile fetch threw:`,
+          message,
+        );
+        return profileFallback;
+      }
+    };
+    const [parentProfileRes, nannyProfileRes] = await Promise.all([
+      fetchProfile(childRow.parent_user_id, "parent"),
+      fetchProfile(childRow.nanny_user_id, "nanny"),
+    ]);
+    if (parentProfileRes.error) {
+      console.warn(
+        "[connectChildInvite] parent profile read error; dispatching with empty parent_first_name:",
+        parentProfileRes.error.code,
+      );
+    }
+    if (nannyProfileRes.error) {
+      console.warn(
+        "[connectChildInvite] nanny profile read error; dispatching with empty nanny_first_name:",
+        nannyProfileRes.error.code,
+      );
+    }
+
+    dispatchParentConnectedToChild({
+      recipientUserId: childRow.parent_user_id,
+      childId,
+      childFirstName: (childRow.first_name ?? "").trim(),
+      parentFirstName: parentProfileRes.data?.first_name?.trim() ?? "",
+      nannyFirstName: nannyProfileRes.data?.first_name?.trim() ?? "",
+    });
+  } catch (err) {
+    // Belt-and-braces: any exception that escapes the inner branches
+    // (which we don't expect) MUST NOT propagate back to the action.
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(
+      "[connectChildInvite] unexpected error in best-effort welcome dispatch:",
+      message,
+    );
+  }
+}
+
 // ── 8. connectChildInvite (the atomic claim transaction) ───────────────
 
 /**
@@ -492,6 +611,24 @@ export async function connectChildInvite(token: string): Promise<{
     }
 
     const row = data[0] as { child_id: string };
+
+    // A-08 cascade: dispatch the parent.connected_to_child welcome onto
+    // the parent's bot. ALL post-RPC work below is best-effort —
+    // the linkage already committed inside the RPC, so no failure
+    // here may flip the action's success envelope. The resume banner
+    // recovers any missed welcome.
+    //
+    // The connect_child_invite RPC works in both directions
+    // (nanny→parent and parent→nanny). The dispatched recipient is
+    // ALWAYS the parent. We resolve who the parent is from the child
+    // row's parent_user_id (set by the RPC) rather than assuming the
+    // caller is the parent — that assumption breaks under
+    // parent_to_nanny direction.
+    await dispatchParentWelcomeBestEffort({
+      admin,
+      childId: row.child_id,
+    });
+
     revalidatePath("/parent");
     revalidatePath("/nanny");
     revalidateTag("pending-invites");
