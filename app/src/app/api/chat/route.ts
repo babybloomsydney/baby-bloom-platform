@@ -27,7 +27,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { KATIE_ENABLED, KATIE_STREAM_DIAGNOSTICS } from "@/lib/chat/flags";
+import {
+  KATIE_ENABLED,
+  KATIE_PARALLEL_TOOLS_ENABLED,
+  KATIE_STREAM_DIAGNOSTICS,
+} from "@/lib/chat/flags";
+import { runRoundTools } from "./run-round-tools";
 import {
   selectGeminiModel,
   resolveEffectiveRole,
@@ -58,7 +63,7 @@ import {
 } from "@/lib/chat/cost-tracker";
 import { collectTools, findToolHandler } from "@/lib/chat/modules/registry";
 import type { ToolResult } from "@/lib/chat/modules/types";
-import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
+import type { ChatTile } from "@/lib/chat/tiles";
 import {
   getOrCreateBot,
   getUserChildren,
@@ -400,6 +405,10 @@ export async function POST(req: NextRequest) {
       // tiles are still streamed to the client via tile events for
       // visibility.
       let persistedTile: ChatTile | null = null;
+      // Tracks whether the parallel-tool path actually fired this
+      // turn (true on the first round that used Promise.all). Sticky
+      // across rounds — once true for the turn, stays true.
+      let parallelToolsUsedThisTurn = false;
       let totalUsage: TokenUsage = {
         inputTokens: 0,
         outputTokens: 0,
@@ -610,34 +619,52 @@ export async function POST(req: NextRequest) {
           const modelParts = lastChunk?.candidates?.[0]?.content?.parts;
           if (!modelParts) break; // defensive — shouldn't happen with tool calls
 
-          const roundResults: ToolResult[] = [];
-          for (const call of roundCalls) {
-            controller.enqueue(
-              encodeSSE({
-                type: "tool_call",
-                name: call.name,
-                args: call.args,
-              }),
-            );
-            const result = await runTool(call);
-            roundResults.push(result);
-            toolCalls.push({ name: call.name!, args: call.args, result });
-            controller.enqueue(
-              encodeSSE({
-                type: "tool_result",
-                name: call.name,
-                result: safeToolResultForClient(result),
-              }),
-            );
-            // If the tool attached an inline tile, stream it and remember
-            // the latest one for persistence with the assistant message.
-            if (result.tile && isChatTile(result.tile)) {
-              persistedTile = result.tile;
-              controller.enqueue(
-                encodeSSE({ type: "tile", tile: result.tile }),
-              );
-            }
+          // Latency:Efficiency build, WU3 (F1) — parallel tool execution
+          // within a round, gated by KATIE_PARALLEL_TOOLS_ENABLED. Helper
+          // preserves SSE event order + "last tile wins" semantics.
+          // The discriminated `RoundEvent` union narrows cleanly on
+          // `evt.type` so no unsafe casts are needed in this adapter.
+          // `safeToolResultForClient` is applied at the emission
+          // boundary so the raw result stays available for the
+          // continuation turn while client events stay sanitized.
+          const roundOutcome = await runRoundTools({
+            roundCalls: roundCalls.map((c) => ({ name: c.name, args: c.args })),
+            parallelEnabled: KATIE_PARALLEL_TOOLS_ENABLED,
+            runTool,
+            enqueue: (evt) => {
+              if (evt.type === "tool_result") {
+                controller.enqueue(
+                  encodeSSE({
+                    type: "tool_result",
+                    name: evt.name,
+                    result: safeToolResultForClient(evt.result),
+                  }),
+                );
+              } else {
+                controller.enqueue(encodeSSE(evt));
+              }
+            },
+          });
+          const roundResults: ToolResult[] = roundOutcome.results;
+          for (let i = 0; i < roundCalls.length; i++) {
+            const call = roundCalls[i];
+            // Defensive: guard the name fall-through. Gemini's
+            // type allows function calls without a name (rare/never
+            // in practice). Pushing `undefined` would corrupt the
+            // toolCalls accumulator that feeds metadata + the
+            // continuation turn's functionResponse mapping below.
+            if (typeof call.name !== "string") continue;
+            toolCalls.push({
+              name: call.name,
+              args: call.args,
+              result: roundResults[i],
+            });
           }
+          if (roundOutcome.persistedTile) {
+            persistedTile = roundOutcome.persistedTile;
+          }
+          parallelToolsUsedThisTurn =
+            parallelToolsUsedThisTurn || roundOutcome.parallelToolsUsed;
 
           // Terminal short-circuit. If any tool in this round returned
           // `terminal: true`, the answer is already known — no need to
@@ -727,6 +754,9 @@ export async function POST(req: NextRequest) {
             cache_hit: cacheName !== null && useCacheForThisTurn,
             cache_name: cacheName,
             prompt_version_hash: versionHash,
+            // Latency:Efficiency build, WU3 (F1) — true when the
+            // parallel-tools path executed at least once this turn.
+            parallel_tools_used: parallelToolsUsedThisTurn,
           },
         });
 
@@ -747,6 +777,7 @@ export async function POST(req: NextRequest) {
             surface: body.currentSurface?.route ?? null,
             cache_hit: cacheName !== null && useCacheForThisTurn,
             prompt_version_hash: versionHash,
+            parallel_tools_used: parallelToolsUsedThisTurn,
           }),
         );
 
