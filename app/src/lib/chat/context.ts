@@ -19,6 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import { getActiveModules } from "@/lib/chat/modules/registry";
 import { buildRouteAllowlistPrompt } from "@/lib/chat/route-allowlist";
+import { renderOnboardingStateBlock } from "@/lib/chat/modules/child-onboarding";
 import type { BotSettings } from "@/types/bapp";
 import { createHash } from "node:crypto";
 import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
@@ -389,6 +390,13 @@ export function buildRuntimeContext(ctx: BotContext): string {
   const parts: string[] = [renderRuntimeHeader(ctx)];
   if (ctx.developmentalSnapshot) parts.push(ctx.developmentalSnapshot);
   if (ctx.memoryTable) parts.push(ctx.memoryTable);
+  // Onboarding state is per-bot + per-turn data — it must live in the
+  // runtime block, not the cached static prompt. The renderer is
+  // conservative: returns null when no cascade is active, so this
+  // line is a no-op for any bot that's already finished onboarding
+  // or never started one.
+  const onboardingBlock = renderOnboardingStateBlock(ctx.botSettings);
+  if (onboardingBlock) parts.push(onboardingBlock);
   return parts.filter(Boolean).join("\n\n");
 }
 
