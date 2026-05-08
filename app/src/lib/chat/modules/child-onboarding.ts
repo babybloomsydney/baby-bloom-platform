@@ -537,6 +537,69 @@ const CHILD_CREATED_TRIGGER: ProactiveTrigger = {
   },
 };
 
+// ── parent.connected_to_child — proactive welcome trigger ──────────────────
+//
+// Fires when `connect_child_invite` succeeds (parent accepts the
+// nanny's invite + the child gets linked to the parent's account).
+// Single variant — parents only experience this once per child link
+// and the per-child cascades are independent on the parent side.
+// Per A-08 § 'Parent post-invite-claim' (lines 470-480).
+
+const PARENT_WELCOME_TEMPLATE = [
+  "✦ Hi {parent_first_name} — I'm Katie.",
+  "",
+  "{nanny_first_name} has added {child_first_name} to Baby Bloom. This is where the two of you stay close to {child_first_name}'s days together — what they did, what they're learning, the small moments that matter — without {nanny_first_name} having to write reports or you having to ask.",
+  "",
+  "Everything we share here is just between you, {nanny_first_name}, and me. It's private to your family.",
+  "",
+  "Want me to show you around? Takes about a minute.",
+  "",
+  "[Show me around]   [I'll explore]",
+].join("\n");
+
+const PARENT_CONNECTED_TRIGGER: ProactiveTrigger = {
+  id: "parent.connected_to_child",
+  description:
+    "A parent accepted a child invite — the child is now linked to their account. Fires Katie's parent-side welcome (brand + trust + benefit framing, guided-tour offer). Pre-stages the message on the parent's bot before they open the app.",
+  event: "parent.connected_to_child",
+  mode: "template",
+  template: "{welcome_text}",
+  resolvePayload: async (event: SiteEvent) => {
+    const payload = event.payload;
+    const parentFirstName = payloadString(
+      payload,
+      "parent_first_name",
+      "there",
+    );
+    const nannyFirstName = payloadString(
+      payload,
+      "nanny_first_name",
+      "your nanny",
+    );
+    const childFirstName = payloadString(
+      payload,
+      "child_first_name",
+      "your child",
+    );
+    if (
+      parentFirstName === "there" &&
+      childFirstName === "your child" &&
+      nannyFirstName === "your nanny"
+    ) {
+      console.warn(
+        "[child-onboarding] parent.connected_to_child resolvePayload: every name field missing/empty — caller bug",
+      );
+    }
+    const welcomeText = PARENT_WELCOME_TEMPLATE.replace(
+      /\{parent_first_name\}/g,
+      parentFirstName,
+    )
+      .replace(/\{nanny_first_name\}/g, nannyFirstName)
+      .replace(/\{child_first_name\}/g, childFirstName);
+    return { welcome_text: welcomeText };
+  },
+};
+
 export const childOnboardingModule: BloomBotModule = {
   id: "child-onboarding",
   name: "Child Onboarding",
@@ -598,7 +661,7 @@ export const childOnboardingModule: BloomBotModule = {
     },
   ],
 
-  proactiveTriggers: [CHILD_CREATED_TRIGGER],
+  proactiveTriggers: [CHILD_CREATED_TRIGGER, PARENT_CONNECTED_TRIGGER],
 
   async execute(toolName, args, ctx) {
     if (toolName === "update_onboarding_state") {

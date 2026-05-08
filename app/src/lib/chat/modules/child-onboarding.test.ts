@@ -489,6 +489,59 @@ describe("child-onboarding module — skeleton (Unit 2)", () => {
     });
   });
 
+  // ── T6: parent.connected_to_child proactive trigger ─────────────────
+  describe("parent.connected_to_child proactive trigger", () => {
+    function getTrigger() {
+      const t = (childOnboardingModule.proactiveTriggers ?? []).find(
+        (x) => x.id === "parent.connected_to_child",
+      );
+      if (!t) throw new Error("parent.connected_to_child trigger missing");
+      return t;
+    }
+
+    it("is declared with mode='template' and the canonical event name", () => {
+      const t = getTrigger();
+      expect(t.mode).toBe("template");
+      expect(t.event).toBe("parent.connected_to_child");
+    });
+
+    it("renders parent + nanny + child names into the welcome text", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            parent_first_name: "Sarah",
+            nanny_first_name: "Emma",
+            child_first_name: "Oliver",
+          },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      expect(text).toContain("Sarah");
+      expect(text).toContain("Emma");
+      expect(text).toContain("Oliver");
+      // Spec invariants from A-08 § 'Parent post-invite-claim'
+      expect(text).toContain("Baby Bloom");
+      expect(text).toMatch(/private to your family/i);
+      expect(text).toMatch(/about a minute/i);
+    });
+
+    it("falls back gracefully when names are missing", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        { source: "event", payload: {} },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      expect(text).not.toContain("undefined");
+      expect(text).not.toMatch(/\{[a-z_]+\}/);
+      expect(text).toMatch(/your nanny/);
+      expect(text).toMatch(/your child/);
+    });
+  });
+
   describe("execute handler — unknown tool routing", () => {
     it("rejects an unknown tool name with a clear error", async () => {
       const result = await childOnboardingModule.execute(
