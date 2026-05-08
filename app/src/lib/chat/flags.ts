@@ -9,13 +9,21 @@
  */
 
 function parseBool(value: string | undefined, defaultValue = false): boolean {
-  if (value === undefined || value === "") return defaultValue;
-  return value.toLowerCase() === "true" || value === "1";
+  if (value === undefined) return defaultValue;
+  // Trim before comparing — env vars added via `echo "true" | vercel env add`
+  // pick up a trailing newline that would otherwise make `=== "true"` fail
+  // and silently disable every Katie gate. Defensive against any env-setup
+  // tool that surrounds the value with whitespace.
+  const trimmed = value.trim();
+  if (trimmed === "") return defaultValue;
+  return trimmed.toLowerCase() === "true" || trimmed === "1";
 }
 
 function parseNumber(value: string | undefined, defaultValue: number): number {
-  if (value === undefined || value === "") return defaultValue;
-  const n = Number(value);
+  if (value === undefined) return defaultValue;
+  const trimmed = value.trim();
+  if (trimmed === "") return defaultValue;
+  const n = Number(trimmed);
   return Number.isFinite(n) ? n : defaultValue;
 }
 
