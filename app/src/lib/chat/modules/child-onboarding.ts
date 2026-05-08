@@ -36,7 +36,13 @@
  *   T10 — registry import + ALL_MODULES entry
  */
 
-import type { BloomBotModule, ModuleContext, ToolResult } from "./types";
+import type {
+  BloomBotModule,
+  ModuleContext,
+  ProactiveTrigger,
+  SiteEvent,
+  ToolResult,
+} from "./types";
 import type {
   BotSettings,
   OnboardingState,
@@ -422,6 +428,115 @@ async function updateOnboardingState(
   };
 }
 
+// ── child.created — proactive welcome trigger ──────────────────────────────
+//
+// Fires when `createChild` (nanny path) or `createChildAsParent` (parent
+// self-add) succeeds. Mode is `template` — instant tier-1 welcome with
+// no AI roundtrip. The same trigger handles both first-child + subsequent-
+// child variants; the dispatching server action passes
+// `is_subsequent: true` in the payload when the user already has at
+// least one prior child, and `resolvePayload` picks the variant text.
+
+/** Pull a string field out of an unknown event payload, falling back
+ *  to a default if the field is missing or the wrong type. Defensive
+ *  because the payload is `Record<string, unknown>` — server actions
+ *  set the values but the type system can't guarantee what arrives. */
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+  fallback: string,
+): string {
+  const v = payload[key];
+  return typeof v === "string" && v.length > 0 ? v : fallback;
+}
+
+/** Variant 1 — full welcome for a user's FIRST child on this account.
+ *  Per A-08 spec § 'Message 1 — Welcome' (lines 200-220). Includes
+ *  the trust + privacy preempt and the deferral-first option for
+ *  on-shift nannies. The template uses `{var}` placeholders that
+ *  `renderTemplate` substitutes from `resolvePayload`'s output. */
+const FIRST_CHILD_WELCOME = [
+  "✦ Hi {user_first_name} — I'm Katie.",
+  "",
+  "Baby Bloom is where you and {child_first_name}'s parent stay close to {child_first_name}'s days together. I make your work easier — you tell me what {child_first_name}'s done, I post it for the parent. You ask me for an activity, I plan one. I track {child_first_name}'s development as you go, so you don't have to write reports.",
+  "",
+  "What you post here, {parent_phrase} sees. It's private to your family.",
+  "",
+  "What works better right now?",
+  "",
+  "[I've got a few minutes]   [I'm with {child_first_name} — later]",
+].join("\n");
+
+/** Variant 2 — short welcome for a returning user (subsequent child).
+ *  Per A-08 spec § 'Subsequent children'. The user already knows the
+ *  system; the welcome is brief + offers the same setup. */
+const SUBSEQUENT_CHILD_WELCOME = [
+  "✦ Hi {user_first_name} — {child_first_name}'s been added. You know the drill — want to set them up the same way? I'll be quick.",
+  "",
+  "[Let's go]   [I'll do it later]",
+].join("\n");
+
+const CHILD_CREATED_TRIGGER: ProactiveTrigger = {
+  id: "child.created",
+  description:
+    "A user added a new child to their account. Fires Katie's introduction-to-the-service welcome — the first message of the A-08 onboarding cascade. Same trigger handles first vs subsequent children; the variant is selected from `event.payload.is_subsequent`.",
+  event: "child.created",
+  mode: "template",
+  // The variant is resolved into a single rendered welcome by
+  // `resolvePayload` and substituted via the `{welcome_text}`
+  // placeholder. Wrapping in a single placeholder keeps the
+  // template a stable string that `renderTemplate` can substitute
+  // from the resolved record.
+  template: "{welcome_text}",
+  resolvePayload: async (event: SiteEvent) => {
+    const payload = event.payload;
+    const userFirstName = payloadString(payload, "user_first_name", "there");
+    const childFirstName = payloadString(
+      payload,
+      "child_first_name",
+      "your child",
+    );
+    // If BOTH names fell back to placeholders the caller almost
+    // certainly sent a broken payload (real createChild always has
+    // user_first_name and child_first_name in scope). Log it so the
+    // server-action bug is loudly observable rather than silently
+    // delivering "Hi there — I'm Katie. ... your child's parent" to
+    // a real user. (silent-failure-hunter MEDIUM.)
+    if (userFirstName === "there" && childFirstName === "your child") {
+      console.warn(
+        "[child-onboarding] child.created resolvePayload: both user_first_name and child_first_name missing/empty — caller bug",
+      );
+    }
+    // Parent-name handling: the trust line reads more naturally as
+    // "{name} sees" when known, "the parent sees" when not.
+    const parentName = payloadString(payload, "parent_first_name_if_known", "");
+    const parentPhrase = parentName.length > 0 ? parentName : "the parent";
+    // is_subsequent variant detection. Accept both `true` (boolean,
+    // expected) and `"true"` (string — defense against JSON-serialised
+    // boolean payloads from older callers or future schema drift).
+    // Anything else is treated as first-child. Both reviewers HIGH:
+    // strict `=== true` would silently pick the wrong variant for
+    // returning users.
+    const isSubsequent =
+      payload.is_subsequent === true || payload.is_subsequent === "true";
+
+    // Render the chosen variant by substituting child + user names
+    // BEFORE returning. The trigger template (above) is just
+    // `{welcome_text}`, so the dispatcher's renderTemplate sees a
+    // single substitution. This keeps name + variant rendering
+    // colocated here rather than splitting it across the dispatcher.
+    const variantTemplate = isSubsequent
+      ? SUBSEQUENT_CHILD_WELCOME
+      : FIRST_CHILD_WELCOME;
+    const welcomeText = variantTemplate
+      .replace(/\{user_first_name\}/g, userFirstName)
+      .replace(/\{child_first_name\}/g, childFirstName)
+      .replace(/\{parent_phrase\}/g, parentPhrase);
+
+    return { welcome_text: welcomeText };
+  },
+};
+
 export const childOnboardingModule: BloomBotModule = {
   id: "child-onboarding",
   name: "Child Onboarding",
@@ -483,9 +598,7 @@ export const childOnboardingModule: BloomBotModule = {
     },
   ],
 
-  // Proactive triggers land in T5 + T6 (`child.created`,
-  // `parent.connected_to_child`).
-  proactiveTriggers: [],
+  proactiveTriggers: [CHILD_CREATED_TRIGGER],
 
   async execute(toolName, args, ctx) {
     if (toolName === "update_onboarding_state") {

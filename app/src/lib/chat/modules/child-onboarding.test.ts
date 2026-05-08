@@ -51,8 +51,11 @@ describe("child-onboarding module — skeleton (Unit 2)", () => {
       expect(toolNames).toContain("update_onboarding_state");
     });
 
-    it("starts with empty proactiveTriggers[] (T5/T6 land triggers)", () => {
-      expect(childOnboardingModule.proactiveTriggers ?? []).toEqual([]);
+    it("declares the child.created proactive trigger (T5)", () => {
+      const ids = (childOnboardingModule.proactiveTriggers ?? []).map(
+        (t) => t.id,
+      );
+      expect(ids).toContain("child.created");
     });
 
     it("update_onboarding_state declares the canonical topic enum + status enum", () => {
@@ -346,6 +349,143 @@ describe("child-onboarding module — skeleton (Unit 2)", () => {
       const numeric = { onboarding_completed: 1 } as unknown as BotSettings;
       expect(childOnboardingModule.enabledForBot?.(stringy)).toBe(true);
       expect(childOnboardingModule.enabledForBot?.(numeric)).toBe(true);
+    });
+  });
+
+  // ── T5: child.created proactive trigger ──────────────────────────────
+  describe("child.created proactive trigger", () => {
+    function getTrigger() {
+      const t = (childOnboardingModule.proactiveTriggers ?? []).find(
+        (x) => x.id === "child.created",
+      );
+      if (!t) throw new Error("child.created trigger missing");
+      return t;
+    }
+
+    it("is declared with mode='template' so the welcome fires instantly with no AI cost", () => {
+      const t = getTrigger();
+      expect(t.mode).toBe("template");
+      expect(t.event).toBe("child.created");
+    });
+
+    it("produces a welcome_text payload that resolves child name + user name (first child)", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            user_first_name: "Emma",
+            child_first_name: "Oliver",
+            parent_first_name_if_known: "Sarah",
+            child_age_months: 18,
+            is_subsequent: false,
+          },
+        },
+        fakeCtx(),
+      );
+      expect(typeof out.welcome_text).toBe("string");
+      const text = out.welcome_text as string;
+      expect(text).toContain("Emma");
+      expect(text).toContain("Oliver");
+      // First-child variant carries the brand-+-trust framing.
+      expect(text).toContain("Baby Bloom");
+      // The trust line names the parent when known.
+      expect(text).toContain("Sarah");
+    });
+
+    it("treats is_subsequent='true' (string) as truthy — defense against JSON-serialised booleans", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            user_first_name: "Emma",
+            child_first_name: "Lily",
+            // String 'true' instead of boolean — this can happen if
+            // a caller serialises the payload through JSON or a
+            // query parameter. Strict ===true would silently fall
+            // through to the long welcome.
+            is_subsequent: "true",
+          },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      expect(text).toMatch(/you know the drill/i);
+    });
+
+    it("uses the lightweight subsequent-child variant when is_subsequent=true", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            user_first_name: "Emma",
+            child_first_name: "Lily",
+            is_subsequent: true,
+          },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      expect(text).toContain("Lily");
+      // Subsequent variant uses the "you know the drill" framing.
+      expect(text).toMatch(/you know the drill/i);
+      // It does NOT include the long brand description.
+      expect(text).not.toContain("Baby Bloom is where");
+    });
+
+    it("falls back to 'the parent' when the parent name isn't known yet", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            user_first_name: "Jess",
+            child_first_name: "Theo",
+            // parent_first_name_if_known intentionally absent
+          },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      expect(text).toContain("the parent");
+      // The fallback string itself MUST NOT leak the placeholder.
+      expect(text).not.toContain("{parent_phrase}");
+    });
+
+    it("never leaks unresolved {placeholders} into the rendered text", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: {
+            user_first_name: "Bailey",
+            child_first_name: "Casey",
+            parent_first_name_if_known: "Sam",
+          },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      // Every {placeholder} should have been substituted.
+      expect(text).not.toMatch(/\{[a-z_]+\}/);
+    });
+
+    it("defaults gracefully when child_first_name is missing", async () => {
+      const t = getTrigger();
+      const out = await t.resolvePayload(
+        {
+          source: "event",
+          payload: { user_first_name: "Robin" },
+        },
+        fakeCtx(),
+      );
+      const text = out.welcome_text as string;
+      // Should not crash, should not include 'undefined', should
+      // use a sensible fallback.
+      expect(text).not.toContain("undefined");
+      expect(text).toMatch(/your child/);
     });
   });
 
