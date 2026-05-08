@@ -26,9 +26,7 @@ import {
   MAIN_TAB_ID,
 } from "./KatieTabs";
 import { DashboardNav } from "@/components/layout/DashboardNav";
-import { useAuth } from "@/contexts/AuthContext";
 import { useKatieRealtime } from "./use-katie-realtime";
-import type { UserRole } from "@/lib/auth/types";
 import {
   useIsDesktop,
   useMarkReadOnVisibility,
@@ -61,18 +59,6 @@ function isTabsHiddenPath(pathname: string): boolean {
   return TABS_HIDDEN_PATHS.some((p) => pathname.startsWith(p));
 }
 
-/** Maps the auth role to the value DashboardNav expects. The DashboardNav
- *  prop only accepts `"nanny" | "parent"`; admin / super_admin currently
- *  see no top-bar swap UI here (admin surfaces have their own chrome).
- *  Returns null when no recognised role is set. */
-function dashboardNavRole(role: UserRole | null): "nanny" | "parent" | null {
-  if (role === "nanny" || role === "parent") return role;
-  return null;
-}
-
-const KATIE_UI_ENABLED =
-  (process.env.NEXT_PUBLIC_KATIE_ENABLED ?? "").toLowerCase() === "true";
-
 // Breakpoint tailored to LAYOUT.md spec. Swapping carousel kicks in below.
 const CAROUSEL_BP = "1280px";
 
@@ -88,13 +74,27 @@ interface KatieShellProps {
   footer?: ReactNode;
 }
 
-export function KatieShell({ children, footer }: KatieShellProps) {
-  const { user, role } = useAuth();
+/** Derive the dashboard role straight from the URL path, so the
+ *  chrome (header + tabs) renders deterministically without waiting
+ *  for client-side auth state to populate. The previous gate
+ *  depended on `useAuth().user && useAuth().role`, which left a
+ *  loading-window where the dashboard chrome was hidden — and on
+ *  Vercel that window could persist indefinitely if the Supabase
+ *  client failed silently. */
+function pathRole(pathname: string): "nanny" | "parent" | null {
+  if (pathname.startsWith("/nanny")) return "nanny";
+  if (pathname.startsWith("/parent")) return "parent";
+  return null;
+}
 
-  // Bail out for logged-out pages and when the flag is off — render children
-  // full-width as before, but still apply the sticky-footer layout so the
-  // footer pins to viewport bottom on short pages.
-  if (!KATIE_UI_ENABLED || !user || !role) {
+export function KatieShell({ children, footer }: KatieShellProps) {
+  const pathname = usePathname();
+  const navRole = pathRole(pathname);
+
+  // Non-dashboard routes (public pages, /admin, /auth, /api) get
+  // a plain layout — no Katie deck, no DashboardNav, no tabs. Those
+  // routes have their own chrome.
+  if (!navRole) {
     return (
       <div className="flex min-h-dvh flex-col">
         <div className="flex flex-1 flex-col">{children}</div>
@@ -105,7 +105,9 @@ export function KatieShell({ children, footer }: KatieShellProps) {
 
   return (
     <KatieProvider>
-      <ShellInner footer={footer}>{children}</ShellInner>
+      <ShellInner footer={footer} navRole={navRole}>
+        {children}
+      </ShellInner>
     </KatieProvider>
   );
 }
@@ -115,13 +117,14 @@ export function KatieShell({ children, footer }: KatieShellProps) {
 function ShellInner({
   children,
   footer,
+  navRole,
 }: {
   children: ReactNode;
   footer?: ReactNode;
+  navRole: "nanny" | "parent";
 }) {
   const { visibleDeck, unreadCount, setUnreadCount } = useKatie();
   const pathname = usePathname();
-  const { role: authRole } = useAuth();
 
   // Realtime unread count + polling fallback
   useKatieRealtime();
@@ -142,7 +145,6 @@ function ShellInner({
   // the avatar dropdown / sign-out.
   const showChrome = !isDistractionFreePath(pathname);
   const showTabs = showChrome && !isTabsHiddenPath(pathname);
-  const navRole = dashboardNavRole(authRole);
 
   // Tailwind's JIT picks up arbitrary values in template strings at build time.
   // We need a fixed CSS custom property for the carousel width switch.
@@ -212,8 +214,8 @@ function ShellInner({
           - Tabs sit directly under the header (no margin / gap)
             per spec §60. Hidden on desktop (xl+) where side-by-side
             renders both decks. */}
-      {showChrome && navRole && <DashboardNav role={navRole} />}
-      {showTabs && navRole && <KatieTabs role={navRole} />}
+      {showChrome && <DashboardNav role={navRole} />}
+      {showTabs && <KatieTabs role={navRole} />}
 
       <div className="flex w-full min-h-0 flex-1 xl:flex-row">
         {/* Katie column — visible side-by-side on wide; full-screen carousel panel on narrow.
