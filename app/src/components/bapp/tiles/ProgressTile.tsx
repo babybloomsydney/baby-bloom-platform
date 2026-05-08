@@ -44,6 +44,13 @@ export function ProgressTile({ item, milestoneMap }: ProgressTileProps) {
             {data.updates.map((update) => {
               const milestone = milestoneMap?.get(update.id);
               const domain = milestone?.domain;
+              // Defensive fallback: NEVER render raw milestone ids
+              // (e.g. `CL_12_18_1`) to the user — regardless of whether
+              // the caller forgot to pass milestoneMap (e.g. DraftTile
+              // rendering a Progress preview without the map). Show a
+              // user-safe placeholder instead. The full breakdown lives
+              // on the Progress tab where the map is always available.
+              const description = milestone?.description ?? "Milestone update";
               return (
                 <div
                   key={update.id}
@@ -51,7 +58,7 @@ export function ProgressTile({ item, milestoneMap }: ProgressTileProps) {
                 >
                   {domain && <DomainBadge domain={domain} />}
                   <span className="flex-1 truncate text-xs text-slate-600">
-                    {milestone?.description ?? update.id}
+                    {description}
                   </span>
                   <MasteryLabel score={update.score} />
                 </div>
