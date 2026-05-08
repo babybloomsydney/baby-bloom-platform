@@ -23,6 +23,7 @@ import { renderOnboardingStateBlock } from "@/lib/chat/modules/child-onboarding"
 import type { BotSettings } from "@/types/bapp";
 import { createHash } from "node:crypto";
 import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
+import type { PreloadedContext } from "@/lib/chat/preload/types";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,20 @@ export interface BotContext {
    * have a bot in scope; they get the static module set.
    */
   botSettings?: BotSettings;
+  /**
+   * Verified pre-loaded data, embedded into the runtime context block
+   * by `buildRuntimeContext`. May come from:
+   *   - Client passthrough (verified by `verifyPreload` at the route
+   *     boundary — Latency:Efficiency build, WU4).
+   *   - Server-side always-on fetch (no verification needed; we read
+   *     it ourselves — WU5).
+   *   - Mixed (some slots client, some server).
+   *
+   * Always undefined for tests / admin tools that don't go through
+   * the chat route. The `buildRuntimeContext` rendering is a no-op
+   * when `preload` is undefined or empty.
+   */
+  preload?: PreloadedContext;
 }
 
 // ── Worker-local cache ───────────────────────────────────────────────────────

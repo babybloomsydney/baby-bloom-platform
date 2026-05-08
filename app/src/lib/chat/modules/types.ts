@@ -12,6 +12,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurrentSurface, ChildSummary } from "@/lib/chat/context";
 import type { ChatTile } from "@/lib/chat/tiles";
 import type { BotSettings } from "@/types/bapp";
+import type { PreloadedContext } from "@/lib/chat/preload/types";
 
 // ── Tool schemas (Gemini function-calling format) ──────────────────────────
 
@@ -19,6 +20,24 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
+
+  /**
+   * Optional predicate — "is the data this tool would return already
+   * in the runtime context?" Returns true → the route short-circuits
+   * and emits a synthetic ToolResult pointing Katie back to the
+   * pre-loaded context, instead of executing the tool.
+   *
+   * Belt-and-braces. The system prompt directive (D-09 in
+   * `Latency:Efficiency/03-design-decisions.md`) is the primary
+   * mechanism; this is the safety net for when Katie ignores the
+   * directive. Wired in WU6.
+   *
+   * Default: undefined (tool always executes when called).
+   */
+  isPrefulfilled?: (
+    args: Record<string, unknown>,
+    preload: PreloadedContext | undefined,
+  ) => boolean;
 }
 
 export interface ToolResult {
@@ -65,6 +84,16 @@ export interface ModuleContext {
   currentSurface?: CurrentSurface | null;
   /** Service-role Supabase client for RLS-bypass cross-table queries. */
   supabase: SupabaseClient;
+  /**
+   * The same pre-loaded context the system prompt sees. Tools may
+   * use it to short-circuit (return "already in context" instead of
+   * re-reading) or to enrich their response. Optional — tests + the
+   * proactive dispatcher pass undefined.
+   *
+   * Wired in WU4 (route threads it from BotContext) and WU6 (tools
+   * read it via `isPrefulfilled`).
+   */
+  preload?: PreloadedContext;
 }
 
 // ── Proactive triggers (declared by modules, fired by dispatcher in Phase 2) ──
