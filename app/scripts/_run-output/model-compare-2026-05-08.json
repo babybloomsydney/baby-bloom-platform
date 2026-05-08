@@ -1,0 +1,121 @@
+{
+  "flash": [
+    {
+      "prompt": "Hi Katie! How are you?",
+      "ttft_ms": 2202,
+      "total_ms": 2205,
+      "output_chars": 16,
+      "input_tokens": 23,
+      "output_tokens": 6,
+      "output_preview": "Hello! I'm doing"
+    },
+    {
+      "prompt": "What do you know about my child?",
+      "ttft_ms": 2133,
+      "total_ms": 2134,
+      "output_chars": 38,
+      "input_tokens": 24,
+      "output_tokens": 7,
+      "output_preview": "I do not have any personal information"
+    },
+    {
+      "prompt": "Suggest a 10-minute activity for an 18-month-old.",
+      "ttft_ms": 1998,
+      "total_ms": 1999,
+      "output_chars": 32,
+      "input_tokens": 34,
+      "output_tokens": 8,
+      "output_preview": "Try a \"rescue the toys\" activity"
+    },
+    {
+      "prompt": "What does my schedule look like this week?",
+      "ttft_ms": 1872,
+      "total_ms": 1873,
+      "output_chars": 23,
+      "input_tokens": 25,
+      "output_tokens": 6,
+      "output_preview": "I do not have access to"
+    },
+    {
+      "prompt": "Remember that my child loves puzzles.",
+      "ttft_ms": 2007,
+      "total_ms": 2009,
+      "output_chars": 42,
+      "input_tokens": 23,
+      "output_tokens": 8,
+      "output_preview": "I have noted that your child loves puzzles"
+    },
+    {
+      "prompt": "What can you help me with?",
+      "ttft_ms": 1627,
+      "total_ms": 1651,
+      "output_chars": 112,
+      "input_tokens": 23,
+      "output_tokens": 25,
+      "output_preview": "I can assist with writing, coding, research, and general problem-solving. Tell me what you need help with today."
+    },
+    {
+      "prompt": "What's my verification level?",
+      "ttft_ms": 1728,
+      "total_ms": 1729,
+      "output_chars": 163,
+      "input_tokens": 23,
+      "output_tokens": 28,
+      "output_preview": "I do not have access to your personal account details or identification status. Please check your account settings or profile page to view your verification level."
+    },
+    {
+      "prompt": "Plan an activity that hits both gross motor and language mil",
+      "ttft_ms": 2025,
+      "total_ms": 2027,
+      "output_chars": 21,
+      "input_tokens": 28,
+      "output_tokens": 6,
+      "output_preview": "Play a game of \"Simon"
+    },
+    {
+      "prompt": "Are there any new jobs near me?",
+      "ttft_ms": 1741,
+      "total_ms": 1742,
+      "output_chars": 28,
+      "input_tokens": 24,
+      "output_tokens": 4,
+      "output_preview": "To provide specific listings"
+    },
+    {
+      "prompt": "Have I got any new connection requests?",
+      "ttft_ms": 2030,
+      "total_ms": 2030,
+      "output_chars": 13,
+      "input_tokens": 24,
+      "output_tokens": 4,
+      "output_preview": "I do not have"
+    }
+  ],
+  "pro": [
+    {
+      "prompt": "Hi Katie! How are you?",
+      "error": "timeout after 30000ms",
+      "ttft_ms": null,
+      "partial_total_ms": 30001,
+      "output_chars": 0,
+      "output_preview": ""
+    },
+    {
+      "prompt": "What do you know about my child?",
+      "error": "timeout after 30000ms",
+      "ttft_ms": null,
+      "partial_total_ms": 30001,
+      "output_chars": 0,
+      "output_preview": ""
+    },
+    {
+      "prompt": "Suggest a 10-minute activity for an 18-month-old.",
+      "error": "timeout after 30000ms",
+      "ttft_ms": null,
+      "partial_total_ms": 30002,
+      "output_chars": 0,
+      "output_preview": ""
+    }
+  ],
+  "summary": {}
+}
