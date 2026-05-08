@@ -36,11 +36,14 @@
  *   T10 — registry import + ALL_MODULES entry
  */
 
-import type { BloomBotModule } from "./types";
+import type { BloomBotModule, ModuleContext, ToolResult } from "./types";
 import type {
   BotSettings,
   OnboardingState,
+  OnboardingTopic,
   OnboardingTopicId,
+  OnboardingTopicStatus,
+  OnboardingTopics,
 } from "@/types/bapp";
 
 // Declared before the module export to avoid TDZ at module init.
@@ -99,6 +102,326 @@ const ONBOARDING_SYSTEM_PROMPT_FRAGMENT = [
   "- Compose a URL containing a child id, user id, or any other UUID in plain text — always route through `create_tile`'s `action` slot",
 ].join("\n");
 
+// ── Module-level constants (ordered before all consumers) ──────────────────
+
+/** Iteration order for the rendered state table + the canonical
+ *  topic enum for `update_onboarding_state`. Tuple-typed against
+ *  every member of `OnboardingTopicId` so adding a new topic to the
+ *  union without updating this list produces a TypeScript error
+ *  rather than a silently-omitted row. */
+const TOPIC_ORDER = [
+  "welcome",
+  "schedule",
+  "routine",
+  "dev_snapshot",
+  "first_post",
+  "activity",
+  "child_photo",
+  "wrap",
+] as const satisfies readonly OnboardingTopicId[];
+// Compile-time exhaustiveness assertion: if a new OnboardingTopicId
+// is added and TOPIC_ORDER doesn't include it, this line errors.
+type _TOPIC_ORDER_EXHAUSTIVE =
+  (typeof TOPIC_ORDER)[number] extends OnboardingTopicId
+    ? OnboardingTopicId extends (typeof TOPIC_ORDER)[number]
+      ? true
+      : never
+    : never;
+const _topicOrderExhaustive: _TOPIC_ORDER_EXHAUSTIVE = true;
+void _topicOrderExhaustive;
+
+/** Friendly first-character-uppercased renderer for status enums.
+ *  Kept as a free function so it can be table-tested. */
+function statusLabel(s: OnboardingTopicStatus): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Truncate-or-pad a cell to a fixed width. Long captured summaries
+ *  would otherwise overflow `padEnd` and break table alignment for
+ *  every row below them — at 22 chars (the column width) this caps
+ *  reasonably while keeping enough signal. The "…" marker tells the
+ *  reader (Katie) that the value was elided so she doesn't quote a
+ *  truncated string back to the user. */
+function fitCell(value: string, width: number): string {
+  if (value.length <= width) return value.padEnd(width);
+  return value.slice(0, width - 1) + "…";
+}
+
+// ── update_onboarding_state — tool handler ──────────────────────────────────
+//
+// Mutates `bot.settings.onboarding_state` via the established
+// read-merge-write JSONB pattern (see katie-scheduling.ts for the
+// canonical reference) and conditionally flips
+// `bot.settings.onboarding_completed` when the wrap topic captures.
+//
+// Idempotency: writing the same {topic, status, summary} twice yields
+// the same final state — there's no append-only log here, just a
+// keyed assignment in `topics[topic]`. Concurrent writes use last-
+// write-wins on the JSONB column (Postgres-level), which is
+// acceptable: the cascade is a single-user single-session flow and
+// concurrent calls would only happen if Katie races two tool calls
+// in the same turn, which would be a model bug worth surfacing.
+
+const VALID_STATUSES: readonly OnboardingTopicStatus[] = [
+  "pending",
+  "captured",
+  "skipped",
+  "deferred",
+];
+
+/** Build the initial OnboardingState (welcome captured, everything
+ *  else pending). The proactive trigger that opens the cascade
+ *  (T5/T6) initialises this on first fire; the tool also
+ *  initialises defensively in case the trigger has not yet run or
+ *  failed to write — without this fallback, the very first
+ *  `update_onboarding_state` call would lose the implicit welcome
+ *  capture. Each topic is a fresh literal (no shared reference) so
+ *  any future per-topic mutation is structurally local — matches
+ *  the project's immutable-updates convention. */
+function freshInitialState(now: string): OnboardingState {
+  const topics: OnboardingTopics = {
+    welcome: { status: "captured", summary: "(greeted)" },
+    schedule: { status: "pending" },
+    routine: { status: "pending" },
+    dev_snapshot: { status: "pending" },
+    first_post: { status: "pending" },
+    activity: { status: "pending" },
+    child_photo: { status: "pending" },
+    wrap: { status: "pending" },
+  };
+  return {
+    started_at: now,
+    last_active_at: now,
+    current_step: "schedule",
+    topics,
+  };
+}
+
+/** Pick the next pending topic in canonical order. If everything is
+ *  resolved (captured/skipped/deferred), return `wrap` so Katie
+ *  knows to close the cascade. */
+function nextPendingStep(topics: OnboardingTopics): OnboardingTopicId {
+  for (const id of TOPIC_ORDER) {
+    if (topics[id]?.status === "pending") return id;
+  }
+  return "wrap";
+}
+
+/** Discriminated-union args type — `captured` requires `summary`,
+ *  other statuses forbid it. Encoding the invariant here lets
+ *  `buildTopicRecord` narrow without an `as string` cast. */
+type UpdateOnboardingStateArgs =
+  | {
+      topic: OnboardingTopicId;
+      status: "captured";
+      summary: string;
+      count?: number;
+    }
+  | {
+      topic: OnboardingTopicId;
+      status: "pending" | "skipped" | "deferred";
+      count?: number;
+    };
+
+/** Argument validation. Returns a discriminated success or a
+ *  ToolResult-shaped failure with a user-facing error string. Hand-
+ *  rolled rather than Zod because (a) every other module in this
+ *  codebase validates inline, (b) the schema is small and stable,
+ *  (c) the failure messages must be Katie-readable so she can
+ *  recover. The success type narrows `summary` to required-on-
+ *  captured / absent-otherwise so downstream code does not need
+ *  unsafe casts. */
+function parseUpdateArgs(
+  raw: Record<string, unknown>,
+):
+  | { ok: true; args: UpdateOnboardingStateArgs }
+  | { ok: false; error: string } {
+  const topic = raw.topic;
+  if (
+    typeof topic !== "string" ||
+    !TOPIC_ORDER.includes(topic as OnboardingTopicId)
+  ) {
+    return {
+      ok: false,
+      error: `topic must be one of ${TOPIC_ORDER.join(", ")} (got ${JSON.stringify(topic)})`,
+    };
+  }
+  const status = raw.status;
+  if (
+    typeof status !== "string" ||
+    !VALID_STATUSES.includes(status as OnboardingTopicStatus)
+  ) {
+    return {
+      ok: false,
+      error: `status must be one of ${VALID_STATUSES.join(", ")} (got ${JSON.stringify(status)})`,
+    };
+  }
+  // Semantic invariant: status='pending' on the wrap topic has no
+  // valid use case (wrap captured is the completion signal; reverting
+  // wrap to pending would re-open a finished cascade for no purpose).
+  // Reject explicitly so a hallucinated tool call is a loud error
+  // rather than a silent bad write — silent-failure-hunter HIGH.
+  if (topic === "wrap" && status === "pending") {
+    return {
+      ok: false,
+      error:
+        "status='pending' is not valid for the wrap topic — wrap is the terminal step of the cascade.",
+    };
+  }
+  const countRaw = raw.count;
+  const count =
+    typeof countRaw === "number" && Number.isFinite(countRaw) && countRaw >= 0
+      ? Math.floor(countRaw)
+      : undefined;
+  if (status === "captured") {
+    const summary = typeof raw.summary === "string" ? raw.summary : "";
+    if (!summary) {
+      return {
+        ok: false,
+        error:
+          "summary is required when status='captured' — pass a short user-facing summary of what was captured.",
+      };
+    }
+    return {
+      ok: true,
+      args: {
+        topic: topic as OnboardingTopicId,
+        status: "captured",
+        summary,
+        ...(count !== undefined ? { count } : {}),
+      },
+    };
+  }
+  return {
+    ok: true,
+    args: {
+      topic: topic as OnboardingTopicId,
+      status: status as "pending" | "skipped" | "deferred",
+      ...(count !== undefined ? { count } : {}),
+    },
+  };
+}
+
+/** Build the new topic record from validated args. The discriminated
+ *  union on `args.status` means TypeScript narrows `summary` cleanly
+ *  inside the `captured` branch — no cast needed. */
+function buildTopicRecord(args: UpdateOnboardingStateArgs): OnboardingTopic {
+  if (args.status === "captured") {
+    return {
+      status: "captured",
+      summary: args.summary,
+      ...(args.count !== undefined ? { count: args.count } : {}),
+    };
+  }
+  return { status: args.status };
+}
+
+async function updateOnboardingState(
+  rawArgs: Record<string, unknown>,
+  ctx: ModuleContext,
+): Promise<ToolResult> {
+  const parsed = parseUpdateArgs(rawArgs);
+  if (!parsed.ok) {
+    return { success: false, error: parsed.error };
+  }
+  const { args } = parsed;
+
+  // Read current settings (read-merge-write — see file header).
+  // The `eq("user_id", ctx.userId)` predicate is defense-in-depth:
+  // `bloombot` has UNIQUE(user_id) so under normal operation it's a
+  // no-op (the row matched by id already belongs to the user), but
+  // if `ctx.botId` were ever wrong (stale tab, cross-tab pollution,
+  // a bug in the context-building layer) the join would miss → no
+  // row → readErr → tool fails loudly instead of silently
+  // overwriting another user's onboarding state. Per silent-
+  // failure-hunter HIGH on cross-bot leakage.
+  const { data: current, error: readErr } = await ctx.supabase
+    .from("bloombot")
+    .select("settings")
+    .eq("id", ctx.botId)
+    .eq("user_id", ctx.userId)
+    .single();
+  if (readErr) {
+    return {
+      success: false,
+      error: `Failed to read current settings: ${readErr.message}`,
+    };
+  }
+  // Phantom-null guard: `.single()` should error when no row matches,
+  // but defend explicitly so a future Supabase client behaviour
+  // change can't silently bootstrap onto a non-existent bot.
+  if (!current) {
+    return {
+      success: false,
+      error: `No bloombot row matched id=${ctx.botId} for user — refusing to write.`,
+    };
+  }
+
+  const existingSettings: BotSettings =
+    (current as { settings: BotSettings | null }).settings ?? {};
+
+  const now = new Date().toISOString();
+  const baseState: OnboardingState =
+    existingSettings.onboarding_state ?? freshInitialState(now);
+
+  // Apply the topic update.
+  const nextTopics: OnboardingTopics = {
+    ...baseState.topics,
+    [args.topic]: buildTopicRecord(args),
+  };
+  const nextState: OnboardingState = {
+    ...baseState,
+    last_active_at: now,
+    current_step: nextPendingStep(nextTopics),
+    topics: nextTopics,
+  };
+
+  // Wrap-captured is the one call that flips the completed flag.
+  // Spread `existingSettings` first so other keys (waking_hours,
+  // effective_role, etc.) survive — the merge MUST NOT replace the
+  // settings object wholesale.
+  const completedFlip =
+    args.topic === "wrap" && args.status === "captured"
+      ? { onboarding_completed: true as const }
+      : {};
+
+  const mergedSettings: BotSettings = {
+    ...existingSettings,
+    ...completedFlip,
+    onboarding_state: nextState,
+  };
+
+  // The trailing `.select().single()` is load-bearing: PostgREST's
+  // `.update()` is a no-op (no error) when zero rows match, but
+  // `.single()` then fails with PGRST116, which surfaces here as
+  // `writeErr`. Removing it would let a wrong-id update succeed
+  // silently. Same `eq("user_id", ctx.userId)` defense-in-depth.
+  const { error: writeErr } = await ctx.supabase
+    .from("bloombot")
+    .update({ settings: mergedSettings })
+    .eq("id", ctx.botId)
+    .eq("user_id", ctx.userId)
+    .select()
+    .single();
+
+  if (writeErr) {
+    return {
+      success: false,
+      error: `Failed to update onboarding state: ${writeErr.message}`,
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      topic: args.topic,
+      status: args.status,
+      current_step: nextState.current_step,
+      onboarding_completed: mergedSettings.onboarding_completed === true,
+    },
+  };
+}
+
 export const childOnboardingModule: BloomBotModule = {
   id: "child-onboarding",
   name: "Child Onboarding",
@@ -124,23 +447,53 @@ export const childOnboardingModule: BloomBotModule = {
   // explicit `true` — which only the wrap step writes.
   enabledForBot: (settings) => settings.onboarding_completed !== true,
 
-  // Tools land in T4 (`update_onboarding_state`). Empty array is a
-  // valid module shape per BloomBotModule — the registry's collectTools
-  // skips modules with no tools naturally.
-  tools: [],
+  tools: [
+    {
+      name: "update_onboarding_state",
+      description:
+        "Update one topic in the onboarding cascade state. Call this after each topic resolves (capture / skip / defer). The wrap topic with status='captured' is the only call that flips bot.settings.onboarding_completed=true and removes the onboarding context from your future prompts.",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: {
+            type: "string",
+            enum: TOPIC_ORDER as unknown as string[],
+            description:
+              "Which topic to update. The valid set comes from the **Onboarding state** table in your runtime header.",
+          },
+          status: {
+            type: "string",
+            enum: ["pending", "captured", "skipped", "deferred"],
+            description:
+              "captured — the user gave input. skipped — the user actively declined (don't re-offer). deferred — the user said 'later' (re-offer in subsequent sessions). pending — usually only used when reverting a write you just made.",
+          },
+          summary: {
+            type: "string",
+            description:
+              "REQUIRED when status='captured' — short user-facing summary of what was captured (e.g. 'Mon-Fri 8-4'). For other statuses, omit.",
+          },
+          count: {
+            type: "integer",
+            description:
+              "Optional, only for first_post which can produce 1-3 tiles. Tracks how many were created.",
+          },
+        },
+        required: ["topic", "status"],
+      },
+    },
+  ],
 
   // Proactive triggers land in T5 + T6 (`child.created`,
   // `parent.connected_to_child`).
   proactiveTriggers: [],
 
-  // Until T4 lands a tool, this handler is unreachable from the chat
-  // route (no tool definitions = no Gemini function calls routed
-  // here). Defensive return for the unreachable case so a future
-  // misroute fails loudly instead of silently.
-  async execute(toolName) {
+  async execute(toolName, args, ctx) {
+    if (toolName === "update_onboarding_state") {
+      return updateOnboardingState(args, ctx);
+    }
     return {
       success: false,
-      error: `Unknown tool '${toolName}' on child-onboarding (no tools registered yet — T4 lands update_onboarding_state).`,
+      error: `Unknown tool '${toolName}' on child-onboarding`,
     };
   },
 
@@ -160,50 +513,6 @@ export const childOnboardingModule: BloomBotModule = {
 // (no settings, no state, or onboarding already completed). Wired
 // into `buildRuntimeContext` so Katie reads it alongside the date
 // header, developmental snapshot, and memory table.
-
-/** Friendly first-character-uppercased renderer for status enums.
- *  Kept outside the renderer so it can be table-tested. */
-function statusLabel(
-  s: "pending" | "captured" | "skipped" | "deferred",
-): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-/** Iteration order for the rendered state table. Tuple-typed against
- *  every member of `OnboardingTopicId` so adding a new topic to the
- *  union without updating this list produces a TypeScript error
- *  rather than a silently-omitted row. */
-const TOPIC_ORDER = [
-  "welcome",
-  "schedule",
-  "routine",
-  "dev_snapshot",
-  "first_post",
-  "activity",
-  "child_photo",
-  "wrap",
-] as const satisfies readonly OnboardingTopicId[];
-// Compile-time exhaustiveness assertion: if a new OnboardingTopicId
-// is added and TOPIC_ORDER doesn't include it, this line errors.
-type _TOPIC_ORDER_EXHAUSTIVE =
-  (typeof TOPIC_ORDER)[number] extends OnboardingTopicId
-    ? OnboardingTopicId extends (typeof TOPIC_ORDER)[number]
-      ? true
-      : never
-    : never;
-const _topicOrderExhaustive: _TOPIC_ORDER_EXHAUSTIVE = true;
-void _topicOrderExhaustive;
-
-/** Truncate-or-pad a cell to a fixed width. Long captured summaries
- *  would otherwise overflow `padEnd` and break table alignment for
- *  every row below them — at 22 chars (the column width) this caps
- *  reasonably while keeping enough signal. The "…" marker tells the
- *  reader (Katie) that the value was elided so she doesn't quote a
- *  truncated string back to the user. */
-function fitCell(value: string, width: number): string {
-  if (value.length <= width) return value.padEnd(width);
-  return value.slice(0, width - 1) + "…";
-}
 
 /** Render the per-topic onboarding state block as a markdown section
  *  Katie reads at the top of every onboarding-mode response.
