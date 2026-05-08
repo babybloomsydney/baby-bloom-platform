@@ -422,6 +422,25 @@ describe("verifyPreload", () => {
     expect(out.dropped[0].slot).toBe("recent_agent_memory");
   });
 
+  it("carries verified as_of into accepted (so renderer can stamp per-slot timestamps)", async () => {
+    const ts = now();
+    const out = await verifyPreload({
+      preload: {
+        as_of: ts,
+        my_profile_basics: {
+          first_name: "Test",
+          last_name: null,
+          role: "nanny",
+        },
+      },
+      userId: "00000000-0000-4000-8000-000000000001",
+      role: "nanny",
+      childrenScope: [],
+      supabase: makeSupabase(),
+    });
+    expect(out.accepted.as_of).toBe(ts);
+  });
+
   it("connection_inbox, verification_status, my_profile_basics (matching role) — always accepted", async () => {
     const out = await verifyPreload({
       preload: {

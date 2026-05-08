@@ -30,9 +30,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import {
   KATIE_ENABLED,
   KATIE_PARALLEL_TOOLS_ENABLED,
+  KATIE_PRELOAD_PASSTHROUGH_ENABLED,
   KATIE_STREAM_DIAGNOSTICS,
 } from "@/lib/chat/flags";
 import { runRoundTools } from "./run-round-tools";
+import { verifyPreload } from "@/lib/chat/preload/verify";
+import type { PreloadedContext } from "@/lib/chat/preload/types";
 import {
   selectGeminiModel,
   resolveEffectiveRole,
@@ -109,10 +112,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  // 1. Parse body — synchronous so the JSON 400 path stays clean
+  // 1. Parse body — synchronous so the JSON 400 path stays clean.
+  // `preload` is optional; verified per-slot at the trust boundary
+  // below before being embedded into the runtime context. Invalid
+  // shapes drop slots, never reject the request.
   let body: {
     message: string;
     currentSurface?: CurrentSurface | null;
+    preload?: PreloadedContext;
   };
   try {
     body = await req.json();
@@ -292,6 +299,63 @@ export async function POST(req: NextRequest) {
       // the runtime portion (header + snapshot + memory) is injected as
       // a synthetic priming turn at position 0 of `contents` when caching
       // is active.
+      // Latency:Efficiency build, WU4 — verify client-supplied preload
+      // (when feature-flagged on). Per D-07, failed slots are DROPPED
+      // (recorded in telemetry), never the whole request. When the
+      // flag is off, we silently ignore body.preload — kill-switch
+      // behaviour, no logging to avoid noise during a deliberate
+      // rollback. The verifier itself is documented to never throw,
+      // but the call is wrapped in try/catch as defense-in-depth: a
+      // hypothetical future bug in the verifier shouldn't convert a
+      // fail-open enrichment into a hard turn abort.
+      let acceptedPreload: PreloadedContext | undefined = undefined;
+      let droppedSlots: Array<
+        Awaited<ReturnType<typeof verifyPreload>>["dropped"][number]
+      > = [];
+      if (KATIE_PRELOAD_PASSTHROUGH_ENABLED) {
+        try {
+          const v = await verifyPreload({
+            preload: body.preload,
+            userId,
+            role: bot.role,
+            childrenScope: children,
+            supabase: admin,
+          });
+          // Strip the `VerifiedContext` brand at this layer —
+          // `BotContext.preload: PreloadedContext` doesn't carry it,
+          // and the brand is intentionally scoped to the verification
+          // module so no consumer downstream can be retro-fitted to
+          // require already-verified input.
+          acceptedPreload = v.accepted as PreloadedContext;
+          droppedSlots = [...v.dropped];
+        } catch (err) {
+          // Verifier never throws by design (see verify.ts header).
+          // If something does, fail-open: skip preload for this turn.
+          console.error(
+            "[api/chat] verifyPreload threw unexpectedly (continuing without preload):",
+            err,
+          );
+        }
+      }
+      // Telemetry — names of accepted slots (excluding the as_of
+      // bookkeeping field). Always populated; an empty list means
+      // either the flag is off, no slots were sent, or every slot
+      // failed verification.
+      const acceptedSlotNames: string[] = acceptedPreload
+        ? Object.keys(acceptedPreload).filter((k) => k !== "as_of")
+        : [];
+      // Log dropped slots once per turn — don't fire per-slot logs
+      // (would be noisy at scale). Telemetry captures the full list.
+      // We deliberately exclude `child_id` from this log line — slot
+      // names + reasons are operational metadata; child UUIDs would
+      // be PII we don't need in stdout.
+      if (droppedSlots.length > 0) {
+        console.warn(
+          "[api/chat] dropped preload slots:",
+          droppedSlots.map((d) => `${d.slot}:${d.reason}`).join(","),
+        );
+      }
+
       const ctxForPrompt = {
         botId: bot.id,
         userId,
@@ -306,6 +370,9 @@ export async function POST(req: NextRequest) {
         developmentalSnapshot,
         lastInteractionAt,
         botSettings: bot.settings,
+        // WU4 — verified preload threads into runtime context block.
+        // undefined when the flag is off OR no slots passed verification.
+        preload: acceptedPreload,
       };
       // Per-bot module filtering — pass `bot.settings` to both
       // `buildStaticPrompt` and `collectTools` so a module gated by
@@ -757,6 +824,19 @@ export async function POST(req: NextRequest) {
             // Latency:Efficiency build, WU3 (F1) — true when the
             // parallel-tools path executed at least once this turn.
             parallel_tools_used: parallelToolsUsedThisTurn,
+            // WU4 (F2) — preload telemetry. `received` lists slot
+            // names that survived verification; `rejected` lists
+            // dropped slots with their reasons. We deliberately
+            // STRIP the per-entry `child_id` field from rejected
+            // entries before persisting — a child UUID the user
+            // does NOT own should not be persisted to a row owned
+            // by them (low-sensitivity PII pattern). Drop reasons
+            // + slot names are sufficient for telemetry attribution.
+            preload_slots_received: acceptedSlotNames,
+            preload_slots_rejected: droppedSlots.map((d) => ({
+              slot: d.slot,
+              reason: d.reason,
+            })),
           },
         });
 
@@ -778,6 +858,12 @@ export async function POST(req: NextRequest) {
             cache_hit: cacheName !== null && useCacheForThisTurn,
             prompt_version_hash: versionHash,
             parallel_tools_used: parallelToolsUsedThisTurn,
+            preload_slots_received: acceptedSlotNames,
+            // Asymmetric with `metadata.preload_slots_rejected` (full
+            // array) by design — JSON log feeds dashboards that count
+            // rejection rates; the metadata column is the canonical
+            // per-row record for audits.
+            preload_slots_rejected_count: droppedSlots.length,
           }),
         );
 

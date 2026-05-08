@@ -24,6 +24,7 @@ import type { BotSettings } from "@/types/bapp";
 import { createHash } from "node:crypto";
 import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
 import type { PreloadedContext } from "@/lib/chat/preload/types";
+import { renderPreloadBlock } from "@/lib/chat/preload/render";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -405,6 +406,13 @@ export function buildRuntimeContext(ctx: BotContext): string {
   const parts: string[] = [renderRuntimeHeader(ctx)];
   if (ctx.developmentalSnapshot) parts.push(ctx.developmentalSnapshot);
   if (ctx.memoryTable) parts.push(ctx.memoryTable);
+  // Latency:Efficiency build, WU4 — "Already loaded for you" block.
+  // Verified pre-loaded data from the route's body parser + the WU5
+  // always-on builder lands here. Renderer returns null when no
+  // slots are populated, so this is a no-op for callers that don't
+  // populate `ctx.preload`.
+  const preloadBlock = renderPreloadBlock(ctx.preload);
+  if (preloadBlock) parts.push(preloadBlock);
   // Onboarding state is per-bot + per-turn data — it must live in the
   // runtime block, not the cached static prompt. The renderer is
   // conservative: returns null when no cascade is active, so this

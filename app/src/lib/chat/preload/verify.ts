@@ -130,6 +130,12 @@ export async function verifyPreload(
     return { accepted: brandAccepted(accepted), dropped };
   }
 
+  // Carry verified `as_of` into `accepted` so the renderer can stamp
+  // it into per-slot headings. Only after staleness check passes —
+  // wouldn't want a stale timestamp in the accepted payload even if
+  // every slot dropped (defense-in-depth).
+  accepted.as_of = p.as_of;
+
   const childIdsInScope = new Set(input.childrenScope.map((c) => c.id));
 
   // ── children_profiles — per-entry verification ──
@@ -342,7 +348,12 @@ async function verifyPlacement(
       .maybeSingle<{ id: string }>();
     if (!data) return false;
     return data.id === placementId;
-  } catch {
+  } catch (err) {
+    // Log so a transient DB failure is distinguishable from a genuine
+    // mismatch in operator triage. Telemetry still records the slot
+    // as `placement_id_mismatch` (we treat DB failure as "we cannot
+    // confirm — drop"); the log line tells the operator WHY.
+    console.warn("[verifyPlacement] DB error (slot will be dropped):", err);
     return false;
   }
 }
@@ -374,7 +385,11 @@ async function verifyConnectionOwnership(
       }>();
     if (!data) return false;
     return data.parent_user_id === userId || data.nanny_user_id === userId;
-  } catch {
+  } catch (err) {
+    console.warn(
+      "[verifyConnectionOwnership] DB error (slot will be dropped):",
+      err,
+    );
     return false;
   }
 }
