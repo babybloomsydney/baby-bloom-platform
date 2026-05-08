@@ -52,11 +52,17 @@ interface CelebrationTileResult {
 export async function recordCelebrationTile(
   input: CelebrationTileInput,
 ): Promise<CelebrationTileResult> {
-  const heading = `${input.childFirstName.trim()} has been added to BabyBloom`;
-  const text = "Ready to start their journey.";
+  const title = `${input.childFirstName.trim()} has been added to BabyBloom`;
+  const body = "Ready to start their journey.";
   // `is_active: true` is explicit (defends against future default-value
   // changes — a silent flip to `false` would render new tiles invisible
   // and the celebration tile is load-bearing for the A-08 contract).
+  //
+  // `data.title` + `data.body` matches the contract `CustomTile`
+  // (the renderer) reads from. The earlier `heading` + `text` field
+  // names did NOT match the renderer and produced a tile with the
+  // generic "Note" badge fallback and no body — caught by the live
+  // smoke against /nanny/development/{childId}.
   const { error } = await input.admin.from("bapp_logs").insert({
     child_client_id: input.childClientId,
     author_id: input.authorId,
@@ -65,8 +71,8 @@ export async function recordCelebrationTile(
     context: "adhoc",
     is_active: true,
     data: {
-      heading,
-      text,
+      title,
+      body,
       icon: "sparkles",
       color: "violet",
     },

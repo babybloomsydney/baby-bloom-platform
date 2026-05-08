@@ -44,12 +44,16 @@ describe("recordCelebrationTile", () => {
     // Defends against future default-value changes on bapp_logs.is_active.
     expect(payload.is_active).toBe(true);
     const data = payload.data as Record<string, unknown>;
-    expect(data.heading).toContain("Oliver");
+    // Field names MUST match what CustomTile reads — title + body.
+    // (Earlier prototype used heading/text and rendered as a blank
+    // "Note" tile because the renderer ignored those fields.)
+    expect(data.title).toContain("Oliver");
+    expect(data.body).toBeTruthy();
     expect(data.icon).toBe("sparkles");
     expect(data.color).toBe("violet");
   });
 
-  it("trims whitespace from the child name in the heading", async () => {
+  it("trims whitespace from the child name in the title", async () => {
     const insertSpy = vi.fn().mockResolvedValue({ error: null });
     const admin = {
       from: () => ({ insert: insertSpy }),
@@ -62,8 +66,8 @@ describe("recordCelebrationTile", () => {
     });
     const payload = insertSpy.mock.calls[0][0] as Record<string, unknown>;
     const data = payload.data as Record<string, unknown>;
-    expect(data.heading).toContain("Lily has been added");
-    expect(data.heading).not.toContain(" Lily");
+    expect(data.title).toContain("Lily has been added");
+    expect(data.title).not.toContain(" Lily");
   });
 
   it("returns ok:false with an opaque code on insert failure (does not leak Postgres error to caller)", async () => {

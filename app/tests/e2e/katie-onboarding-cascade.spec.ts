@@ -81,14 +81,22 @@ test.describe("A-08 — Katie onboarding cascade (nanny side)", () => {
     const page = await context.newPage();
     await page.goto("/nanny");
 
-    // ── 1. Open Education tab if needed.
-    const educationTab = page.getByRole("button", { name: /education/i });
-    if (await educationTab.isVisible().catch(() => false)) {
-      await educationTab.click();
-    }
+    // ── 1. Switch to the "Children" tab. Renamed from "Education"
+    //       in V1.1 amendment A-02 — Nannying / Children / Babysitting
+    //       are the three top-level tabs on the nanny dashboard.
+    await page
+      .getByRole("button", { name: /^children$/i })
+      .first()
+      .click();
 
     // ── 2. Add child via the chooser → AddChildSheet.
-    await page.getByRole("button", { name: /add a child/i }).click();
+    // Empty-state button label is "Add Child" (aria-label "Add Child"),
+    // not "Add a child" — that string is the modal title only. Match
+    // both forms with /add\s*(a\s+)?child/i to be resilient to either.
+    await page
+      .getByRole("button", { name: /^\+?\s*add\s*(a\s+)?child$/i })
+      .first()
+      .click();
     await page.getByRole("button", { name: /add new child/i }).click();
 
     const childFirstName = `KatieE2E${Date.now()}`;
@@ -135,10 +143,12 @@ test.describe("A-08 — Katie onboarding cascade (nanny side)", () => {
     const data = tileRow!.data as Record<string, unknown>;
     expect(data.icon).toBe("sparkles");
     expect(data.color).toBe("violet");
-    expect(String(data.heading)).toContain(childFirstName);
+    // CustomTile renders `data.title` as the badge text.
+    expect(String(data.title)).toContain(childFirstName);
 
     // ── 5. Navigate to the child's development feed. The
-    //       celebration tile should render via CustomTile.
+    //       celebration tile renders via CustomTile — the badge
+    //       (header label) is the title from `data.title`.
     await page.goto(`/nanny/development/${childId}`);
     await expect(
       page.getByText(`${childFirstName} has been added to BabyBloom`),
