@@ -28,6 +28,8 @@ import type { KatieMessage } from "./messages/types";
 import { useKatie } from "@/contexts/KatieContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChatStream } from "./use-chat-stream";
+import { useTypewriter } from "./use-typewriter";
+import { KATIE_TYPEWRITER_ENABLED } from "@/lib/chat/flags";
 import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
 
 interface EmptyStateProps {
@@ -66,6 +68,17 @@ export function KatieDeck() {
 
   const { send, isStreaming, streamingText, streamingTile } = useChatStream();
 
+  // V1.1 side fix 2b: smooth the streaming text into a steady
+  // char-by-char trickle so the user never sees "3 dots → block of
+  // text". The hook is a no-op (returns the target unchanged) when
+  // prefers-reduced-motion is set OR when the flag is disabled.
+  const typewriterText = useTypewriter(streamingText, {
+    reducedMotion: !KATIE_TYPEWRITER_ENABLED || undefined,
+  });
+  const visibleStreamingText = KATIE_TYPEWRITER_ENABLED
+    ? typewriterText
+    : streamingText;
+
   // Fetch history on mount
   useEffect(() => {
     let cancelled = false;
@@ -100,7 +113,11 @@ export function KatieDeck() {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages, streamingText, isHydrating]);
+    // We watch `visibleStreamingText` (not `streamingText`) so the
+    // scroll keeps pace with what's actually rendered. With the
+    // typewriter spoof on, those diverge mid-stream and watching
+    // the raw stream would scroll past content not yet visible.
+  }, [messages, visibleStreamingText, isHydrating]);
 
   // Re-scroll to bottom when the user switches the carousel back to
   // Katie. Without this, swapping main → Katie leaves the deck at
@@ -310,7 +327,7 @@ export function KatieDeck() {
 
               {isStreaming && (streamingText.length > 0 || streamingTile) ? (
                 <AssistantMessage
-                  content={streamingText}
+                  content={visibleStreamingText}
                   tile={streamingTile}
                   // Streaming bubble always shows the icon — it IS
                   // the live "Katie is responding" surface.

@@ -80,6 +80,23 @@ export const KATIE_IMAGE_MARKER_ENABLED = parseBool(
 );
 
 /**
+ * Typewriter spoof on the streaming path. When true, Katie's deck
+ * smooths the SSE delta stream into a steady char-by-char visible
+ * trickle (V1.1 side fix 2b). Defensive UX layer that addresses the
+ * "3-dots → block of text" symptom regardless of root cause (Gemini
+ * chunking vs HTTP buffering vs React batching). Default: true since
+ * V1.1 ships the spoof as the chosen outcome of the side-fix-2 fork.
+ *
+ * Set NEXT_PUBLIC_KATIE_TYPEWRITER_ENABLED=false to disable from the
+ * client side (e.g. once a real streaming fix lands and the spoof
+ * is no longer needed).
+ */
+export const KATIE_TYPEWRITER_ENABLED = parseBool(
+  process.env.NEXT_PUBLIC_KATIE_TYPEWRITER_ENABLED,
+  true,
+);
+
+/**
  * Diagnostic instrumentation for the streaming path. When true, both
  * the server SSE encode boundary and the client SSE parse boundary
  * log per-chunk timestamps + length so we can attribute the
@@ -110,5 +127,6 @@ export function getKatieFlags() {
     KATIE_DAILY_LIMIT_USD,
     KATIE_IMAGE_MARKER_ENABLED,
     KATIE_STREAM_DIAGNOSTICS,
+    KATIE_TYPEWRITER_ENABLED,
   };
 }
