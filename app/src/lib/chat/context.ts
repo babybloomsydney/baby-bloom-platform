@@ -18,6 +18,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import { getActiveModules } from "@/lib/chat/modules/registry";
+import { buildRouteAllowlistPrompt } from "@/lib/chat/route-allowlist";
 import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -294,6 +295,17 @@ export async function buildStaticPrompt(
   for (const [, content] of ordered) {
     parts.push(content);
   }
+
+  // Anti-hallucination guardrail — appended after module fragments so
+  // it reads as the final word on what URLs Katie may emit. Driven
+  // from public/katie-manifest.json so the list is always current
+  // (the manifest is regenerated on every build). Capability listing
+  // is intentionally NOT duplicated here: that lives in the
+  // "What You Can Do" section seeded from SYSTEM-PROMPT.md plus each
+  // module's `systemPromptFragment` "Not yet wired" notes — the
+  // anti-hallucination rule below references those by name so the
+  // single source of truth stays in one place.
+  parts.push(buildRouteAllowlistPrompt(ctx.effectiveRole));
 
   return {
     staticPrompt: parts.filter(Boolean).join("\n\n"),

@@ -352,7 +352,7 @@ describe("profile module — tile emission (WU 8.18)", () => {
     expect(td.badge).toBe("Your Profile");
     expect(td.title).toMatch(/Jess/);
     expect(td.body).toMatch(/\$45\/hour/);
-    expect(td.action?.href).toBe("/nanny/edit-profile");
+    expect(td.action?.href).toBe("/nanny/profile");
   });
 
   it("read_my_profile (parent) emits a katie_note tile with the account snapshot", async () => {
