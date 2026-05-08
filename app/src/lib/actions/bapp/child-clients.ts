@@ -7,6 +7,11 @@ import type { ChildClient, ChildClientEvents } from "@/types/bapp";
 import { mintChildInvite } from "@/lib/invite/mint";
 import { invitesDisabled } from "@/lib/invite/flags";
 import { recordConsent } from "@/lib/legal/record-consent";
+import {
+  recordCelebrationTile,
+  dispatchChildCreated,
+  isUserSubsequentChild,
+} from "./child-onboarding-dispatch";
 
 export async function getChildrenForUser(): Promise<{
   success: boolean;
@@ -203,11 +208,45 @@ export async function createChild(data: {
       return { success: false, error: "insert_failed", data: null };
     }
 
-    // 4. Insert child_client_events.
-    await admin.from("child_client_events").insert({
-      child_client_id: child.id,
-      created_manual_at: new Date().toISOString(),
+    // 3.5. Celebration tile — A-08 spec § 'Architecture' requires
+    //      the user never to see an empty feed after creating a
+    //      child. NOT a true DB transaction: child + tile are two
+    //      sequential awaits in this server action, so a process
+    //      crash between them can leave a child without a tile.
+    //      A tile-insert *error* fails the whole action so the user
+    //      knows to retry; the (rare) crash gap is mopped up by the
+    //      remediation script described in spec 04 §1.
+    const trimmedFirstName = data.first_name.trim();
+    const celebration = await recordCelebrationTile({
+      admin,
+      childClientId: child.id,
+      authorId: user.id,
+      childFirstName: trimmedFirstName,
     });
+    if (!celebration.ok) {
+      // Server-side log already happened inside recordCelebrationTile.
+      return {
+        success: false,
+        error: celebration.error ?? "celebration_tile_failed",
+        data: null,
+      };
+    }
+
+    // 4. Insert child_client_events. Tolerable failure: missing
+    //    events row is non-blocking for the user (audit gap only),
+    //    so we log + continue rather than failing the action.
+    const { error: eventsErr } = await admin
+      .from("child_client_events")
+      .insert({
+        child_client_id: child.id,
+        created_manual_at: new Date().toISOString(),
+      });
+    if (eventsErr) {
+      console.warn(
+        "[createChild] child_client_events insert failed:",
+        eventsErr.code,
+      );
+    }
 
     // 5. Record consent (AGR-14). Acceptable risk: if this fails after
     //    the child is inserted, we have a child without consent. The
@@ -245,14 +284,58 @@ export async function createChild(data: {
       };
     }
 
-    // 7. Audit log.
-    await admin.from("activity_logs").insert({
+    // 7. Audit log. Tolerable failure: log + continue (audit gap only).
+    const { error: activityErr } = await admin.from("activity_logs").insert({
       action_type: "invite_created",
       user_id: user.id,
       action_details: {
         child_id: child.id,
         direction: "nanny_to_parent",
       },
+    });
+    if (activityErr) {
+      console.warn(
+        "[createChild] activity_logs insert failed:",
+        activityErr.code,
+      );
+    }
+
+    // 8. Dispatch the A-08 child.created proactive trigger (Katie's
+    //    welcome). Fire-and-forget — the dispatcher itself catches
+    //    its own errors and the resume banner handles the case
+    //    where the welcome message fails to land. We pass the
+    //    nanny's first name + the child's first name + age so the
+    //    template renders correctly without a second DB roundtrip
+    //    in the trigger. Subsequent-child detection counts the
+    //    nanny's prior children excluding the row we just inserted.
+    const isSubsequent = await isUserSubsequentChild({
+      admin,
+      userId: user.id,
+      side: "nanny",
+      excludeChildId: child.id,
+    });
+    const { data: nannyProfile, error: profileErr } = await admin
+      .from("user_profiles")
+      .select("first_name")
+      .eq("user_id", user.id)
+      .maybeSingle<{ first_name: string | null }>();
+    if (profileErr) {
+      // Soft-fail: missing nanny first name renders Katie's welcome
+      // with an empty {user_first_name}. Better than skipping the
+      // whole cascade.
+      console.warn(
+        "[createChild] nanny profile fetch failed:",
+        profileErr.code,
+      );
+    }
+    const ageMonths = monthsBetween(dobAtCreate, new Date());
+    dispatchChildCreated({
+      recipientUserId: user.id,
+      childId: child.id,
+      childFirstName: trimmedFirstName,
+      userFirstName: nannyProfile?.first_name ?? "",
+      childAgeMonths: ageMonths,
+      isSubsequent,
     });
 
     revalidatePath("/nanny");
@@ -271,6 +354,19 @@ export async function createChild(data: {
     console.error("createChild unexpected error:", err);
     return { success: false, error: "Failed to create child", data: null };
   }
+}
+
+/** Months between two dates, floored. Used for {{child_age_months}}
+ *  context in onboarding triggers. Computes whole calendar months
+ *  (rather than dividing by avg-day-count) so a child born on Jan 5
+ *  rendered against a current date of Jan 4 a year later still counts
+ *  as 11 months, not 12. */
+function monthsBetween(earlier: Date, later: Date): number {
+  const yearsDiff = later.getFullYear() - earlier.getFullYear();
+  const monthsDiff = later.getMonth() - earlier.getMonth();
+  let total = yearsDiff * 12 + monthsDiff;
+  if (later.getDate() < earlier.getDate()) total -= 1;
+  return Math.max(0, total);
 }
 
 // ── createChildAsParent (Path B) ─────────────────────────────────────
@@ -351,10 +447,37 @@ export async function createChildAsParent(data: {
       return { success: false, error: "insert_failed", data: null };
     }
 
-    await admin.from("child_client_events").insert({
-      child_client_id: child.id,
-      created_manual_at: new Date().toISOString(),
+    // Celebration tile — A-08 spec § 'Architecture'. Same fail-fast
+    // (not true-transactional) story as createChild — see the
+    // matching comment block there. Server-side log happens inside
+    // recordCelebrationTile.
+    const trimmedParentFirstName = data.first_name.trim();
+    const celebration = await recordCelebrationTile({
+      admin,
+      childClientId: child.id,
+      authorId: user.id,
+      childFirstName: trimmedParentFirstName,
     });
+    if (!celebration.ok) {
+      return {
+        success: false,
+        error: celebration.error ?? "celebration_tile_failed",
+        data: null,
+      };
+    }
+
+    const { error: parentEventsErr } = await admin
+      .from("child_client_events")
+      .insert({
+        child_client_id: child.id,
+        created_manual_at: new Date().toISOString(),
+      });
+    if (parentEventsErr) {
+      console.warn(
+        "[createChildAsParent] child_client_events insert failed:",
+        parentEventsErr.code,
+      );
+    }
 
     let mintResult: { token: string; url: string };
     try {
@@ -373,14 +496,35 @@ export async function createChildAsParent(data: {
       };
     }
 
-    await admin.from("activity_logs").insert({
-      action_type: "invite_created",
-      user_id: user.id,
-      action_details: {
-        child_id: child.id,
-        direction: "parent_to_nanny",
-      },
-    });
+    const { error: parentActivityErr } = await admin
+      .from("activity_logs")
+      .insert({
+        action_type: "invite_created",
+        user_id: user.id,
+        action_details: {
+          child_id: child.id,
+          direction: "parent_to_nanny",
+        },
+      });
+    if (parentActivityErr) {
+      console.warn(
+        "[createChildAsParent] activity_logs insert failed:",
+        parentActivityErr.code,
+      );
+    }
+
+    // NOTE: A-08 child.created trigger is NOT dispatched on the
+    // parent self-create path. The trigger's welcome text
+    // (`FIRST_CHILD_WELCOME` in the child-onboarding module)
+    // addresses the user as the nanny — phrases like "you and
+    // {child}'s parent stay close" do not fit a parent who IS the
+    // parent. The parent-side onboarding flow runs via
+    // `parent.connected_to_child` when a nanny accepts/sends an
+    // invite — that path covers the spec § 'Parent post-invite-
+    // claim' welcome. A dedicated parent-self-create welcome
+    // variant is a follow-up (separate amendment) and not in scope
+    // for A-08 v1. The celebration tile inserted above still
+    // ensures the parent's feed is not empty on first visit.
 
     revalidatePath("/parent");
     revalidateTag("pending-invites");
