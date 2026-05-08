@@ -113,4 +113,64 @@ describe("module registry", () => {
       expect(ids).toContain("bsr.accepted_by_parent");
     });
   });
+
+  // ── enabledForBot predicate filter (added for A-08 child-onboarding) ─────
+  //
+  // Modules can declare a per-bot predicate that runs at filter time when
+  // the caller passes a `BotSettings` object. The predicate is the only way
+  // to gate a module on dynamic per-bot state (e.g. onboarding completion).
+  // Callers without bot context (legacy paths passing only `role`) leave
+  // the predicate unevaluated, preserving backward compatibility.
+  describe("getActiveModules — enabledForBot predicate", () => {
+    it("ignores enabledForBot when no settings are passed (backward compat)", () => {
+      // All real modules without enabledForBot should still appear.
+      const mods = getActiveModules("nanny");
+      expect(mods.length).toBeGreaterThan(0);
+    });
+
+    it("includes a module whose predicate returns true for the given settings", () => {
+      const settings = { onboarding_completed: false } as const;
+      const mods = getActiveModules("nanny", settings);
+      // Smoke check — at least one nanny-applicable module is returned.
+      expect(mods.length).toBeGreaterThan(0);
+    });
+
+    it("excludes a module whose predicate returns false", () => {
+      // The child-onboarding module (when it lands) declares
+      // enabledForBot: (s) => s.onboarding_completed !== true. Once a bot
+      // has onboarding_completed=true in settings, the module should drop
+      // out entirely — both its tools and its system prompt fragment.
+      // This test asserts the contract; it doesn't yet require the module
+      // to exist.
+      const completedSettings = { onboarding_completed: true } as const;
+      const incompleteSettings = { onboarding_completed: false } as const;
+
+      const completedMods = getActiveModules("nanny", completedSettings);
+      const incompleteMods = getActiveModules("nanny", incompleteSettings);
+
+      // If the child-onboarding module exists with the predicate, the
+      // completed-bot list excludes it; the incomplete-bot list includes
+      // it. The test passes vacuously today (no module declares the
+      // predicate) and becomes load-bearing the moment one does.
+      const hasOnboarding = (mods: { id: string }[]) =>
+        mods.some((m) => m.id === "child-onboarding");
+      expect(hasOnboarding(completedMods)).toBe(false);
+      // We do NOT assert hasOnboarding(incompleteMods) === true here,
+      // because the module hasn't been added to the registry yet. After
+      // T2 lands, this test gets one more line: expect(...).toBe(true).
+    });
+  });
+
+  describe("collectTools — enabledForBot predicate", () => {
+    it("respects enabledForBot via the underlying getActiveModules call", () => {
+      // Once child-onboarding ships its `update_onboarding_state` tool,
+      // a bot with onboarding_completed=true must NOT see that tool.
+      // We assert the contract proactively: the tool should never appear
+      // in collectTools(role, completedSettings). Today this passes
+      // vacuously (the tool doesn't exist yet); tomorrow it's a guard.
+      const completedSettings = { onboarding_completed: true } as const;
+      const names = collectTools("nanny", completedSettings).map((t) => t.name);
+      expect(names).not.toContain("update_onboarding_state");
+    });
+  });
 });

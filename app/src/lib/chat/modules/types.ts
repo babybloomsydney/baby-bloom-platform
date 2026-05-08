@@ -11,6 +11,7 @@ import type { BotRole } from "@/lib/ai/model-selector";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurrentSurface, ChildSummary } from "@/lib/chat/context";
 import type { ChatTile } from "@/lib/chat/tiles";
+import type { BotSettings } from "@/types/bapp";
 
 // ── Tool schemas (Gemini function-calling format) ──────────────────────────
 
@@ -130,6 +131,18 @@ export interface BloomBotModule {
   rolesAllowed?: BotRole[];
   /** Disabled modules are skipped entirely (default: enabled) */
   enabled?: boolean;
+  /** Optional per-bot predicate. When provided AND bot settings are
+   *  available at filter time (chat route, dispatcher), the module is
+   *  excluded entirely if this returns false — both its tools and its
+   *  system prompt fragment drop out. Used by `child-onboarding` to
+   *  remove itself once `settings.onboarding_completed = true`, so
+   *  Katie cannot call `update_onboarding_state` post-completion and
+   *  the onboarding fragment stops contributing tokens to the cached
+   *  static prompt. Callers without bot context (e.g. legacy paths
+   *  that pass only `role`) leave this predicate unevaluated, which
+   *  keeps backward compatibility — pre-existing modules behave
+   *  exactly as before. */
+  enabledForBot?: (settings: BotSettings) => boolean;
 }
 
 // Re-exports for convenience

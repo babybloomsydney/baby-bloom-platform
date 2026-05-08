@@ -19,6 +19,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import { getActiveModules } from "@/lib/chat/modules/registry";
 import { buildRouteAllowlistPrompt } from "@/lib/chat/route-allowlist";
+import type { BotSettings } from "@/types/bapp";
+import { createHash } from "node:crypto";
 import { formatRelativeTime, classifyGap } from "@/lib/chat/relative-time";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -85,6 +87,13 @@ export interface BotContext {
    * Null when this is the user's first chat ever.
    */
   lastInteractionAt?: string | null;
+  /**
+   * The bot's `settings` JSONB — flowed in so per-bot module gating
+   * (`enabledForBot`) is consistent across every prompt-building path.
+   * Optional because some legacy callers (tests, admin tools) don't
+   * have a bot in scope; they get the static module set.
+   */
+  botSettings?: BotSettings;
 }
 
 // ── Worker-local cache ───────────────────────────────────────────────────────
@@ -205,7 +214,19 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
   // any caller that's not the cached chat path). The cached path in
   // `route.ts` calls buildStaticPrompt + buildRuntimeContext directly
   // so the static half can be cached on the Gemini side.
-  const { staticPrompt } = await buildStaticPrompt(ctx);
+  //
+  // `botSettings` is forwarded so per-bot module gating
+  // (`enabledForBot`) applies in dispatcher / non-cached callers
+  // identically to the cached chat route. Without this thread,
+  // a proactive message dispatched by `dispatcher.ts` for a
+  // post-onboarding bot would still receive the onboarding fragment
+  // because the static prompt would be assembled with the static
+  // module set rather than the bot-filtered one.
+  const { staticPrompt } = await buildStaticPrompt({
+    effectiveRole: ctx.effectiveRole,
+    role: ctx.role,
+    botSettings: ctx.botSettings,
+  });
   const runtime = buildRuntimeContext(ctx);
   return [staticPrompt, runtime].filter(Boolean).join("\n\n");
 }
@@ -229,8 +250,28 @@ export async function buildSystemPrompt(ctx: BotContext): Promise<string> {
  * "the user". The runtime block then provides the real name in the
  * runtime header so Katie can address them properly.
  */
+/**
+ * Builds the cacheable half of Katie's system prompt.
+ *
+ * Cache-key correctness:
+ *   The Gemini cache key composites `versionHash` with a hash of the tool
+ *   list (see gemini-cache-manager.ts compositeHash). When `botSettings`
+ *   shrinks the active-module set via `enabledForBot`, the tools change
+ *   automatically — but the static prompt text ALSO changes (a module's
+ *   systemPromptFragment drops out) and `versionHash` from the
+ *   `katie_prompt_version` table doesn't reflect that. Without an
+ *   augmentation we'd serve a cached prompt baked for one bot to
+ *   another bot in a different onboarding state.
+ *
+ *   Fix: append a stable fingerprint of the per-bot active-module set
+ *   to `versionHash`. The fingerprint is identity for a fixed module
+ *   list (which is the common case — only `child-onboarding` toggles
+ *   today), so cache reuse across bots in the same state is preserved.
+ */
 export async function buildStaticPrompt(
-  ctx: Pick<BotContext, "effectiveRole" | "role">,
+  ctx: Pick<BotContext, "effectiveRole" | "role"> & {
+    botSettings?: BotSettings;
+  },
 ): Promise<{ staticPrompt: string; versionHash: string }> {
   const isAdmin = ctx.effectiveRole === "admin";
   const sectionIds: PromptSectionId[] = [
@@ -283,7 +324,12 @@ export async function buildStaticPrompt(
     const modId = id.slice("module.".length);
     byModuleId.set(modId, interpolate(s.content, staticVars));
   }
-  for (const mod of getActiveModules(ctx.effectiveRole)) {
+  // Per-bot module filtering — when `botSettings` is supplied, modules
+  // whose `enabledForBot` predicate returns false are excluded entirely
+  // (no fragment, no tools, no triggers). See registry.ts for the two-pass
+  // filter contract.
+  const activeModules = getActiveModules(ctx.effectiveRole, ctx.botSettings);
+  for (const mod of activeModules) {
     if (byModuleId.has(mod.id)) continue;
     if (mod.systemPromptFragment) {
       byModuleId.set(mod.id, mod.systemPromptFragment);
@@ -307,9 +353,28 @@ export async function buildStaticPrompt(
   // single source of truth stays in one place.
   parts.push(buildRouteAllowlistPrompt(ctx.effectiveRole));
 
+  // Cache-key augmentation. Two bots in different per-bot states
+  // (e.g. one mid-onboarding, one post-onboarding) produce different
+  // assembled prompts because their active-module sets differ — but
+  // `versionHash` from `katie_prompt_version` doesn't reflect that. We
+  // append a short hash of the active-module-id set so the composite
+  // cache key (built downstream by gemini-cache-manager.compositeHash)
+  // changes whenever the per-bot module set changes. When all modules
+  // are static (no `enabledForBot`), the fingerprint is identical for
+  // every bot — cache reuse is preserved exactly as before.
+  const moduleFingerprint = createHash("sha256")
+    .update(
+      activeModules
+        .map((m) => m.id)
+        .sort()
+        .join(","),
+    )
+    .digest("hex")
+    .slice(0, 8);
+
   return {
     staticPrompt: parts.filter(Boolean).join("\n\n"),
-    versionHash,
+    versionHash: `${versionHash}::m${moduleFingerprint}`,
   };
 }
 

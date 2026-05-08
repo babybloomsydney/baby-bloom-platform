@@ -5,13 +5,19 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { BotRole } from "@/lib/ai/model-selector";
 import type { ChildSummary } from "@/lib/chat/context";
+import type { BotSettings } from "@/types/bapp";
 import { seedDefaultSchedules } from "@/lib/chat/proactive/seed-defaults";
 
 export interface BotRecord {
   id: string;
   user_id: string;
   role: BotRole;
-  settings: Record<string, unknown>;
+  /** JSONB column typed as `BotSettings` so every caller (chat route,
+   *  proactive dispatcher, modules) can read typed fields directly
+   *  without per-callsite casts or `as any`. The forward-compat index
+   *  signature on BotSettings preserves the read-merge-write JSONB
+   *  pattern that other modules rely on. */
+  settings: BotSettings;
   is_active: boolean;
   created_at: string;
 }

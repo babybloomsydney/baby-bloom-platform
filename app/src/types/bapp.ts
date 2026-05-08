@@ -189,6 +189,130 @@ export interface FeedItem extends BAppLog {
 }
 
 // ---------------------------------------------------------------------------
+// Bloombot settings (JSONB column on the `bloombot` table)
+// ---------------------------------------------------------------------------
+//
+// The `bloombot.settings` JSONB column accumulates per-bot preferences and
+// state. Keys are flat siblings (NOT nested) — every write goes through a
+// read-merge-write pattern (see katie-scheduling.ts) and a flat shape keeps
+// the spread one-level: `{ ...existing, onboarding_completed: true }`.
+//
+// New keys added here MUST also be added to BotSettings; otherwise the merge
+// pattern will type-check the spread but lose runtime safety on access.
+
+/** Per-topic onboarding status for the A-08 child-onboarding cascade.
+ *
+ *  `pending`  — not yet offered.
+ *  `captured` — user gave input; `summary` is required.
+ *  `skipped`  — user actively declined ("no thanks" / "skip"). Katie
+ *               must NOT re-offer. Permanent.
+ *  `deferred` — user said "later" / "I'll do it later". Re-offered
+ *               in subsequent sessions (banner / natural re-trigger).
+ *               Distinct from `skipped`: deferred is a delay, skipped
+ *               is a refusal.
+ */
+export type OnboardingTopicStatus =
+  | "pending"
+  | "captured"
+  | "skipped"
+  | "deferred";
+
+/** One topic within the onboarding state. Discriminated by `status` so
+ *  `summary` is required when (and only when) the topic was captured —
+ *  every read site can narrow on `status === 'captured'` and skip the
+ *  null-check on `summary` that would otherwise be needed across the
+ *  prompt renderer, the resume banner, and the trigger payload.
+ *  `count` only ever appears on multi-instance captured topics
+ *  (currently `first_post`, which can produce 1-3 tiles). */
+export type OnboardingTopic =
+  | { status: "pending" | "skipped" | "deferred" }
+  | { status: "captured"; summary: string; count?: number };
+
+/** Topic id literal — restricted to the canonical set in A-08 § 'What
+ *  Katie covers'. Any string outside this set indicates a Katie
+ *  hallucination or a future-spec drift. The `update_onboarding_state`
+ *  tool validates against this list at the write boundary. */
+export type OnboardingTopicId =
+  | "welcome"
+  | "schedule"
+  | "routine"
+  | "dev_snapshot"
+  | "first_post"
+  | "activity"
+  | "child_photo"
+  | "wrap";
+
+/** Per-topic state — exactly one entry per OnboardingTopicId. */
+export type OnboardingTopics = Record<OnboardingTopicId, OnboardingTopic>;
+
+/** The on-disk state object for the A-08 cascade. Lives at
+ *  `bloombot.settings.onboarding_state`. Two invariants are enforced
+ *  at the write boundary (Zod in the `update_onboarding_state` tool),
+ *  not in the type:
+ *   1. `current_step` must point to a topic where `topics[current_step]
+ *      .status === 'pending'` (or be `'wrap'` once everything else
+ *      resolved).
+ *   2. `topics.wrap` is the terminal step — when its status flips to
+ *      `'captured'`, `BotSettings.onboarding_completed` flips to true. */
+export interface OnboardingState {
+  /** ISO 8601 UTC. First time the cascade fired for this user. */
+  started_at: string;
+  /** ISO 8601 UTC. Updated on every onboarding-mode message in either
+   *  direction — used to detect stale-session scenarios in the resume
+   *  banner copy. */
+  last_active_at: string;
+  /** The step Katie was on when the conversation last paused. Resume
+   *  picks up here. Constrained at the tool boundary; the type can't
+   *  express "must point to a pending topic". */
+  current_step: OnboardingTopicId;
+  topics: OnboardingTopics;
+}
+
+/** The full shape of the JSONB column on `bloombot.settings`. All fields
+ *  are optional — older bots may not have any of them set. Code that reads
+ *  this MUST guard each field individually rather than assuming presence.
+ *
+ *  This shape mixes two categories that share a JSONB column:
+ *    - settings (preferences) — `effective_role`, `waking_hours`
+ *    - state (mutating session data) — `onboarding_completed`,
+ *      `onboarding_dismissed`, `onboarding_state`
+ *
+ *  They live together because the column does, not because they belong
+ *  together conceptually. A future refactor may split them into
+ *  separate columns; this type stays the source of truth for both
+ *  shapes until then. */
+export interface BotSettings {
+  /** Cross-role admin testing flag (admin can speak as nanny/parent). */
+  effective_role?: "nanny" | "parent" | "admin";
+  /** Daily quiet-hours window for proactive messages. Mirrors the
+   *  `WakingHours` interface in `src/lib/chat/proactive/dispatcher.ts`
+   *  — timezone is required there (IANA) so the shape here matches. */
+  waking_hours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  };
+  /** True once `topics.wrap.status === 'captured'` in `onboarding_state`.
+   *  Stored explicitly (not derived) so modules with `enabledForBot`
+   *  predicates can do an O(1) check without parsing the state object.
+   *  Coupling: must be kept in sync with `onboarding_state.topics.wrap
+   *  .status` by the `update_onboarding_state` tool — every flip writes
+   *  both. */
+  onboarding_completed?: boolean;
+  /** True if the user actively dismissed the resume banner. Independent
+   *  from `onboarding_completed` — a user can dismiss without finishing
+   *  the cascade. */
+  onboarding_dismissed?: boolean;
+  /** Per-topic state for conversation continuity across sessions. */
+  onboarding_state?: OnboardingState;
+  /** Forward-compatible escape hatch — preserves keys we haven't typed
+   *  yet during merge writes. Always read typed fields above first; this
+   *  index signature is the reason a typo on a typed field returns
+   *  `unknown` rather than a compile error, so spell carefully. */
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
 // Type-Specific Data Shapes (stored in bapp_logs.data JSONB)
 // ---------------------------------------------------------------------------
 

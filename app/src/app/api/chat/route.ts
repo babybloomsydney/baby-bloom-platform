@@ -168,8 +168,7 @@ export async function POST(req: NextRequest) {
 
       const effectiveRole = resolveEffectiveRole(
         bot.role,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (bot.settings as any)?.effective_role ?? null,
+        bot.settings?.effective_role ?? null,
       );
       const model = selectGeminiModel(effectiveRole);
 
@@ -301,10 +300,19 @@ export async function POST(req: NextRequest) {
         memoryTable,
         developmentalSnapshot,
         lastInteractionAt,
+        botSettings: bot.settings,
       };
+      // Per-bot module filtering — pass `bot.settings` to both
+      // `buildStaticPrompt` and `collectTools` so a module gated by
+      // `enabledForBot` (e.g. `child-onboarding` once
+      // `onboarding_completed` flips true) is excluded consistently
+      // from BOTH the cached static prompt AND the tools list. `bot`
+      // is typed via `BotRecord` whose `settings: BotSettings` already
+      // covers the typed fields — no cast needed.
       const { staticPrompt, versionHash } = await buildStaticPrompt({
         effectiveRole,
         role: bot.role,
+        botSettings: bot.settings,
       });
       const runtimeContext = buildRuntimeContext(ctxForPrompt);
 
@@ -312,7 +320,7 @@ export async function POST(req: NextRequest) {
       // uncached generateStream calls. Gemini rejects requests that set
       // both `cachedContent` and `tools`, so when a cache is in use the
       // tools live inside the cache and we omit them on the call.
-      const toolDefs = collectTools(effectiveRole);
+      const toolDefs = collectTools(effectiveRole, bot.settings);
       const tools: GeminiTool[] | undefined =
         toolDefs.length > 0
           ? [
@@ -423,7 +431,11 @@ export async function POST(req: NextRequest) {
         name?: string;
         args?: unknown;
       }): Promise<ToolResult> {
-        const handlerModule = findToolHandler(call.name!, effectiveRole);
+        const handlerModule = findToolHandler(
+          call.name!,
+          effectiveRole,
+          bot.settings,
+        );
         if (!handlerModule) {
           return { success: false, error: `Unknown tool: ${call.name}` };
         }

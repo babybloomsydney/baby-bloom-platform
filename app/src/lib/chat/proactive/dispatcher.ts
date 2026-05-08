@@ -35,6 +35,7 @@ import { buildMemoryTable } from "@/lib/chat/memory/context-builder";
 import { updateDailyCost } from "@/lib/chat/cost-tracker";
 import { getUserChildren } from "@/lib/chat/bot";
 import { runScheduledAgenticLoop } from "./agentic-loop";
+import type { BotSettings } from "@/types/bapp";
 
 export interface WakingHours {
   start: string; // HH:MM
@@ -110,7 +111,11 @@ interface BotRow {
   id: string;
   user_id: string;
   role: BotRole;
-  settings: { waking_hours?: WakingHours } | null;
+  /** Typed off canonical `BotSettings`. The chat route + the dispatcher
+   *  must agree on which modules are active for the same bot — if they
+   *  diverge, a proactive message could fire with a tool that the
+   *  synchronous chat path has already removed via `enabledForBot`. */
+  settings: BotSettings | null;
 }
 
 interface ChildRow {
@@ -269,7 +274,7 @@ async function fireAiFull(
     row.prompt_fragment ?? row.description,
   ].join("\n\n");
 
-  const toolDefs = collectTools(bot.role);
+  const toolDefs = collectTools(bot.role, bot.settings ?? undefined);
   const tools: GeminiTool[] | undefined =
     toolDefs.length > 0
       ? [
@@ -295,7 +300,11 @@ async function fireAiFull(
       if (!call.name) {
         return { success: false, error: "tool call missing name" };
       }
-      const handlerModule = findToolHandler(call.name, bot.role);
+      const handlerModule = findToolHandler(
+        call.name,
+        bot.role,
+        bot.settings ?? undefined,
+      );
       if (!handlerModule) {
         return { success: false, error: `Unknown tool: ${call.name}` };
       }

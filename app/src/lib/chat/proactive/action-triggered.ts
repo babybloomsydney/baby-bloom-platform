@@ -31,7 +31,8 @@ import type {
   ProactiveTrigger,
   SiteEvent,
 } from "@/lib/chat/modules/types";
-import { inWakingHours, renderTemplate, type WakingHours } from "./dispatcher";
+import { inWakingHours, renderTemplate } from "./dispatcher";
+import type { BotSettings } from "@/types/bapp";
 
 export interface DispatchActionTriggeredInput {
   /** Trigger id as declared on a module's proactiveTriggers array. */
@@ -55,7 +56,13 @@ interface BotRow {
   id: string;
   user_id: string;
   role: BotRole;
-  settings: { waking_hours?: WakingHours } | null;
+  /** Typed off canonical `BotSettings` so per-bot module gating
+   *  (`enabledForBot`) reads consistently with the chat route + the
+   *  cron dispatcher. The chat route, cron dispatcher, and action-
+   *  triggered dispatcher must all agree on which modules are active
+   *  for the same bot — divergence means a proactive message could
+   *  fire with a tool the user never sees in Katie's main path. */
+  settings: BotSettings | null;
 }
 
 /**
@@ -98,7 +105,11 @@ async function loadContext(input: DispatchActionTriggeredInput): Promise<
   }
   const bot = botRow as BotRow;
 
-  const resolved = findProactiveTrigger(input.triggerId, bot.role);
+  const resolved = findProactiveTrigger(
+    input.triggerId,
+    bot.role,
+    bot.settings ?? undefined,
+  );
   if (!resolved) {
     return { kind: "skip", status: "skipped_unknown_trigger" };
   }
