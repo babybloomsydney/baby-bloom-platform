@@ -27,6 +27,22 @@
     {
       "path": "/api/cron/snapshot-pipeline",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-past-due",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-cancelled-subscriptions",
+      "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/cron/soft-lock-stale-children",
+      "schedule": "15 3 * * *"
     }
   ]
 }
