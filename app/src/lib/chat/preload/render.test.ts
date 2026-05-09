@@ -118,7 +118,6 @@ describe("renderPreloadBlock", () => {
         pending_count: 3,
         recent: [
           {
-            id: "r1",
             partner_name: "Sarah",
             received_at: "2026-05-09T09:00:00Z",
           },

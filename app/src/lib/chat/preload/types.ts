@@ -110,10 +110,19 @@ export interface PreloadedContext {
    * `recent` is optional because some surface-scoped publishers may
    * ship just the count (cheaper) while others ship the full detail.
    * Consumers must handle both shapes.
+   *
+   * Per code-reviewer HIGH on WU8, `recent[]` carries DISPLAY-only
+   * fields — partner_name + received_at. Connection request IDs are
+   * intentionally NOT in the wire format: the verifier doesn't
+   * server-check connection ownership for this slot (it accepts the
+   * publish on the assumption the page already filtered to the
+   * user's own requests), so shipping IDs would create a latent
+   * IDOR vector if a future tool consumed them to skip an ownership
+   * check. Keep this slot data NARRATIVE-ONLY.
    */
   connection_inbox?: {
     pending_count: number;
-    recent?: Array<{ id: string; partner_name: string; received_at: string }>;
+    recent?: Array<{ partner_name: string; received_at: string }>;
   };
 
   /**
