@@ -20,6 +20,10 @@ import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/client";
 import { scheduleCommissionFor } from "@/lib/payments/commission-scheduler";
+import {
+  freezeInFlightCommissionForSubscription,
+  unfreezeEarningsOnResubscribe,
+} from "@/lib/payments/commission-freeze";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -131,6 +135,26 @@ export async function handleCheckoutCompleted(
     .eq("parent_user_id", userId)
     .maybeSingle<{ id: string }>();
   if (subRow) {
+    // Phase 10.5 — if the parent had previously cancelled and is now
+    // resubscribing, unfreeze any frozen commission rows so the
+    // nanny gets their earnings on the next cycle.
+    try {
+      const { unfrozen } = await unfreezeEarningsOnResubscribe(subRow.id);
+      if (unfrozen > 0) {
+        await logActivity(admin, {
+          action_type: "commission_released",
+          user_id: userId,
+          action_details: {
+            parent_subscription_id: subRow.id,
+            unfrozen_count: unfrozen,
+            reason: "parent_resubscribed",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("[stripe-webhook] unfreeze on resub failed", err);
+    }
+
     const result = await scheduleCommissionFor({
       parentSubscriptionId: subRow.id,
       trigger: "subscription_started",
@@ -265,8 +289,8 @@ export async function handleSubscriptionDeleted(
     .from("parent_subscriptions")
     .update({ status: "cancelled", cancelled_at: nowIso })
     .eq("stripe_subscription_id", sub.id)
-    .select("parent_user_id")
-    .maybeSingle();
+    .select("id, parent_user_id")
+    .maybeSingle<{ id: string; parent_user_id: string | null }>();
   if (error) {
     throw new Error(
       `parent_subscriptions update (sub.deleted) failed: ${error.message}`,
@@ -278,6 +302,29 @@ export async function handleSubscriptionDeleted(
       user_id: row.parent_user_id,
       action_details: { stripe_subscription_id: sub.id },
     });
+
+    // Phase 10.5 — freeze in-flight commission rows. Past `paid` rows
+    // are NEVER touched (those are the nanny's). Reclaimable on
+    // resubscription via unfreezeEarningsOnResubscribe.
+    try {
+      const { frozen } = await freezeInFlightCommissionForSubscription(
+        row.id,
+        "parent_cancelled",
+      );
+      if (frozen > 0) {
+        await logActivity(admin, {
+          action_type: "commission_held",
+          user_id: row.parent_user_id,
+          action_details: {
+            parent_subscription_id: row.id,
+            frozen_count: frozen,
+            reason: "parent_cancelled",
+          },
+        });
+      }
+    } catch (err) {
+      console.error("[stripe-webhook] freeze on cancel failed", err);
+    }
   }
 }
 
