@@ -17,6 +17,7 @@
 import { type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { KatieProvider, useKatie } from "@/contexts/KatieContext";
+import { PreloadProvider } from "@/contexts/PreloadContext";
 import { KatieDeck } from "./KatieDeck";
 import {
   KatieTabs,
@@ -103,12 +104,17 @@ export function KatieShell({ children, footer }: KatieShellProps) {
     );
   }
 
+  // PreloadProvider wraps KatieProvider so KatieDeck (rendered inside
+  // the shell) and any future page publisher can both reach
+  // `usePreloadOptional()`. Latency:Efficiency build, WU7 (F2 client).
   return (
-    <KatieProvider>
-      <ShellInner footer={footer} navRole={navRole}>
-        {children}
-      </ShellInner>
-    </KatieProvider>
+    <PreloadProvider>
+      <KatieProvider>
+        <ShellInner footer={footer} navRole={navRole}>
+          {children}
+        </ShellInner>
+      </KatieProvider>
+    </PreloadProvider>
   );
 }
 

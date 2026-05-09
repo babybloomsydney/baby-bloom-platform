@@ -9,7 +9,11 @@ import { useCallback, useState } from "react";
 import type { KatieMessage } from "./messages/types";
 import type { CurrentSurface } from "@/contexts/KatieContext";
 import { isChatTile, type ChatTile } from "@/lib/chat/tiles";
-import { KATIE_STREAM_DIAGNOSTICS } from "@/lib/chat/flags";
+import {
+  KATIE_PRELOAD_PASSTHROUGH_ENABLED,
+  KATIE_STREAM_DIAGNOSTICS,
+} from "@/lib/chat/flags";
+import type { PreloadedContext } from "@/lib/chat/preload/types";
 
 export interface SendResult {
   ok: boolean;
@@ -26,6 +30,7 @@ export function useChatStream() {
       message: string,
       currentSurface: CurrentSurface,
       onAppend: (msg: KatieMessage) => void,
+      preload?: PreloadedContext,
     ): Promise<SendResult> => {
       setIsStreaming(true);
       setStreamingText("");
@@ -43,10 +48,31 @@ export function useChatStream() {
       onAppend(userMsg);
 
       try {
+        // Latency:Efficiency build, WU7 (F2 client) — ship the
+        // verified-by-server, client-published preload alongside
+        // every turn. Skipped when the F2 client kill-switch flag
+        // is off (kill-switch defaults to TRUE per WU1) OR when
+        // the caller didn't supply preload (legacy callers + the
+        // dispatcher continue to work unchanged).
+        //
+        // The empty-preload guard (`preload.as_of` truthy) avoids
+        // sending `preload: {}` on every turn before any publisher
+        // has fired. `as_of` is auto-stamped on the first
+        // setPreloadSlots call, so its presence is the canonical
+        // "anything published yet?" check. Per typescript-reviewer
+        // + code-reviewer MEDIUM on WU7 — keeps telemetry clean.
+        //
+        // The route's verifyPreload re-checks ownership/freshness
+        // on every slot before any of it touches the LLM context —
+        // we ship lightly here, the heavy gate is server-side.
+        const payload: Record<string, unknown> = { message, currentSurface };
+        if (preload?.as_of && KATIE_PRELOAD_PASSTHROUGH_ENABLED) {
+          payload.preload = preload;
+        }
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message, currentSurface }),
+          body: JSON.stringify(payload),
         });
 
         if (!res.ok) {

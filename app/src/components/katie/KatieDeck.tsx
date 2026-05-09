@@ -26,6 +26,7 @@ import { TypingIndicator } from "./messages/TypingIndicator";
 import { SparkleIcon } from "./messages/SparkleIcon";
 import type { KatieMessage } from "./messages/types";
 import { useKatie } from "@/contexts/KatieContext";
+import { usePreloadOptional } from "@/contexts/PreloadContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChatStream } from "./use-chat-stream";
 import { useTypewriter } from "./use-typewriter";
@@ -67,6 +68,11 @@ export function KatieDeck() {
   const sendingRef = useRef(false);
 
   const { send, isStreaming, streamingText, streamingTile } = useChatStream();
+  // WU7 (F2 client) — read the publisher-provided preload from
+  // context. Optional: returns null when the provider isn't mounted
+  // (e.g. legacy code paths or test environments) so the deck still
+  // works unchanged. Threading happens at send() time.
+  const preloadCtx = usePreloadOptional();
 
   // V1.1 side fix 2b: smooth the streaming text into a steady
   // char-by-char trickle so the user never sees "3 dots → block of
@@ -149,7 +155,16 @@ export function KatieDeck() {
       sendingRef.current = true;
       setLoadError(null);
       try {
-        const result = await send(message, currentSurface, append);
+        // WU7 — pass the publisher-stamped preload through. send()
+        // checks the F2 client kill-switch flag internally; we
+        // unconditionally pass whatever the context has (might be
+        // an empty object if no publisher has fired yet).
+        const result = await send(
+          message,
+          currentSurface,
+          append,
+          preloadCtx?.preload,
+        );
         if (!result.ok && result.error) {
           setLoadError(result.error);
         }
@@ -157,7 +172,7 @@ export function KatieDeck() {
         sendingRef.current = false;
       }
     },
-    [send, currentSurface, append],
+    [send, currentSurface, append, preloadCtx?.preload],
   );
 
   // Draft action handlers. Accept POSTs to the apply endpoint and
