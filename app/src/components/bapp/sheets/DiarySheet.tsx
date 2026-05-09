@@ -96,6 +96,11 @@ export function DiarySheet({
 
   // Image state — shared by all subtypes.
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // F-001 sub-task 3: while a photo is mid-upload, every Save button
+  // is disabled so the form can't post with image_url: null while the
+  // URL is still in flight. ImageUpload fires the boolean via
+  // `onUploadingChange`.
+  const [imageUploading, setImageUploading] = useState(false);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -123,6 +128,7 @@ export function DiarySheet({
         setSleepNotes("");
         setUpdateNote("");
         setImageUrl(null);
+        setImageUploading(false);
         setLoading(false);
         setSuccess(false);
         setError(null);
@@ -152,12 +158,22 @@ export function DiarySheet({
       image_url: imageUrl,
     };
 
-    const result = await logDiaryEntry(childId, data);
-    if (result.success) {
-      setSuccess(true);
-      setTimeout(() => onOpenChange(false), 800);
-    } else {
-      setError(result.error);
+    try {
+      const result = await logDiaryEntry(childId, data);
+      if (result.success) {
+        setSuccess(true);
+        setTimeout(() => onOpenChange(false), 800);
+      } else {
+        setError(result.error ?? "Couldn't save your food log.");
+        setLoading(false);
+      }
+    } catch (err) {
+      // Server-action transport failure (network drop / edge crash).
+      // Without this catch, `loading` stays true forever and the
+      // sheet sticks on the spinner. Per silent-failure-hunter HIGH
+      // on F-001 sub-task 3.
+      console.error("[DiarySheet submitFood] transport error:", err);
+      setError("Something went wrong. Please try again.");
       setLoading(false);
     }
   }
@@ -210,12 +226,18 @@ export function DiarySheet({
       image_url: imageUrl,
     };
 
-    const result = await logDiaryEntry(childId, data);
-    if (result.success) {
-      setSuccess(true);
-      setTimeout(() => onOpenChange(false), 800);
-    } else {
-      setError(result.error);
+    try {
+      const result = await logDiaryEntry(childId, data);
+      if (result.success) {
+        setSuccess(true);
+        setTimeout(() => onOpenChange(false), 800);
+      } else {
+        setError(result.error ?? "Couldn't save your sleep log.");
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("[DiarySheet submitSleep] transport error:", err);
+      setError("Something went wrong. Please try again.");
       setLoading(false);
     }
   }
@@ -331,7 +353,11 @@ export function DiarySheet({
                 the note). */}
             {step === "form" && diaryType === "update" && (
               <div className="space-y-4">
-                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                <ImageUpload
+                  childId={childId}
+                  onUploaded={setImageUrl}
+                  onUploadingChange={setImageUploading}
+                />
                 <div>
                   <Label className="text-xs text-slate-500">Note</Label>
                   <textarea
@@ -346,7 +372,7 @@ export function DiarySheet({
                 </div>
                 <Button
                   onClick={submitUpdate}
-                  disabled={loading || !updateNote.trim()}
+                  disabled={loading || imageUploading || !updateNote.trim()}
                   className="w-full bg-violet-500 hover:bg-violet-600"
                 >
                   {loading ? (
@@ -420,11 +446,15 @@ export function DiarySheet({
                   />
                 </div>
 
-                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                <ImageUpload
+                  childId={childId}
+                  onUploaded={setImageUrl}
+                  onUploadingChange={setImageUploading}
+                />
 
                 <Button
                   onClick={submitFood}
-                  disabled={loading || !foodValid}
+                  disabled={loading || imageUploading || !foodValid}
                   className="w-full bg-orange-500 hover:bg-orange-600"
                 >
                   {loading ? (
@@ -486,11 +516,15 @@ export function DiarySheet({
                   />
                 </div>
 
-                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                <ImageUpload
+                  childId={childId}
+                  onUploaded={setImageUrl}
+                  onUploadingChange={setImageUploading}
+                />
 
                 <Button
                   onClick={submitSleep}
-                  disabled={loading || !sleepValid}
+                  disabled={loading || imageUploading || !sleepValid}
                   className="w-full bg-indigo-500 hover:bg-indigo-600"
                 >
                   {loading ? (

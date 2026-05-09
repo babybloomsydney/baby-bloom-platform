@@ -52,6 +52,11 @@ export function ObservationSheet({
   // General + Focused state
   const [note, setNote] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // F-001 sub-task 3 — disable Save buttons while a photo is mid-upload
+  // so the form can't post with `image_url: null` while the URL is in
+  // flight. Two independent flows (General/Focused vs Progress) so two
+  // independent uploading flags.
+  const [imageUploading, setImageUploading] = useState(false);
   const [selectedDomains, setSelectedDomains] = useState<string[]>([]);
   const [domainDropdown, setDomainDropdown] = useState("");
 
@@ -65,6 +70,7 @@ export function ObservationSheet({
   );
   const [progressNote, setProgressNote] = useState("");
   const [progressImageUrl, setProgressImageUrl] = useState<string | null>(null);
+  const [progressImageUploading, setProgressImageUploading] = useState(false);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -79,11 +85,13 @@ export function ObservationSheet({
         setObsType(null);
         setNote("");
         setImageUrl(null);
+        setImageUploading(false);
         setSelectedDomains([]);
         setDomainDropdown("");
         setSelectedProgress(new Map());
         setProgressNote("");
         setProgressImageUrl(null);
+        setProgressImageUploading(false);
         setLoading(false);
         setSuccess(false);
         setError(null);
@@ -287,7 +295,11 @@ export function ObservationSheet({
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
                   General
                 </span>
-                <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                <ImageUpload
+                  childId={childId}
+                  onUploaded={setImageUrl}
+                  onUploadingChange={setImageUploading}
+                />
                 <div>
                   <Label className="text-xs text-slate-500">Note</Label>
                   <textarea
@@ -300,7 +312,7 @@ export function ObservationSheet({
                 </div>
                 <Button
                   onClick={submitGeneral}
-                  disabled={loading || (!note && !imageUrl)}
+                  disabled={loading || imageUploading || (!note && !imageUrl)}
                   className="w-full bg-emerald-500 hover:bg-emerald-600"
                 >
                   {loading ? (
@@ -367,7 +379,11 @@ export function ObservationSheet({
                 {/* Input area (only when domains selected) */}
                 {selectedDomains.length > 0 && (
                   <>
-                    <ImageUpload childId={childId} onUploaded={setImageUrl} />
+                    <ImageUpload
+                      childId={childId}
+                      onUploaded={setImageUrl}
+                      onUploadingChange={setImageUploading}
+                    />
                     <div>
                       <Label className="text-xs text-slate-500">Note</Label>
                       <textarea
@@ -380,7 +396,9 @@ export function ObservationSheet({
                     </div>
                     <Button
                       onClick={submitFocused}
-                      disabled={loading || (!note && !imageUrl)}
+                      disabled={
+                        loading || imageUploading || (!note && !imageUrl)
+                      }
                       className="w-full bg-emerald-500 hover:bg-emerald-600"
                     >
                       {loading ? (
@@ -461,7 +479,7 @@ export function ObservationSheet({
                   <button
                     type="button"
                     onClick={submitProgress}
-                    disabled={loading}
+                    disabled={loading || progressImageUploading}
                     className="text-xs text-slate-400 hover:text-slate-600"
                   >
                     Skip Note
@@ -471,6 +489,7 @@ export function ObservationSheet({
                 <ImageUpload
                   childId={childId}
                   onUploaded={setProgressImageUrl}
+                  onUploadingChange={setProgressImageUploading}
                 />
 
                 <div>
@@ -488,7 +507,7 @@ export function ObservationSheet({
 
                 <Button
                   onClick={submitProgress}
-                  disabled={loading}
+                  disabled={loading || progressImageUploading}
                   className="w-full bg-blue-500 hover:bg-blue-600"
                 >
                   {loading ? (

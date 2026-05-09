@@ -38,6 +38,8 @@ export function ReviewSheet({
   const [ratings, setRatings] = useState<Map<string, number>>(new Map());
   const [feedback, setFeedback] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  // F-001 sub-task 3 — disable Save while a photo is mid-upload.
+  const [imageUploading, setImageUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function ReviewSheet({
         setRatings(new Map());
         setFeedback("");
         setImageUrl(null);
+        setImageUploading(false);
         setLoading(false);
         setSuccess(false);
         setError(null);
@@ -158,7 +161,11 @@ export function ReviewSheet({
               </div>
 
               {/* Image upload */}
-              <ImageUpload childId={childId} onUploaded={setImageUrl} />
+              <ImageUpload
+                childId={childId}
+                onUploaded={setImageUrl}
+                onUploadingChange={setImageUploading}
+              />
             </div>
           </div>
         )}
@@ -168,7 +175,7 @@ export function ReviewSheet({
           <div className="mt-3">
             <Button
               onClick={handleSubmit}
-              disabled={loading || !allRated}
+              disabled={loading || imageUploading || !allRated}
               className="w-full bg-emerald-500 hover:bg-emerald-600"
             >
               {loading ? (
