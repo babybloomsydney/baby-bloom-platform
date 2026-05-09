@@ -92,3 +92,48 @@
     opacity: 0;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Universal mobile input zoom guard (F-001 / 04-mobile-input-autozoom)
+
+   iOS Safari (and every other iOS browser — they all use WebKit) zooms
+   the viewport on focus when an input/textarea/select has computed
+   font-size < 16px. This rule pins all focusable text controls to
+   16px on mobile breakpoints so the zoom never triggers.
+
+   We deliberately do NOT use `<meta name="viewport" maximum-scale=1>`
+   or `user-scalable=no`. Those globally disable user pinch-zoom and
+   fail WCAG 2.1 SC 1.4.4 Resize Text. This rule fixes the auto-zoom
+   without taking pinch-zoom away from low-vision users.
+
+   `font-size: max(16px, 1rem) !important`:
+   - `max(...)` so a user who's enlarged their browser default beyond
+     16px keeps the larger size — we only enforce the 16-px FLOOR,
+     never a ceiling. (a11y-architect MEDIUM on F-001 sub-task 1.)
+   - `!important` because Tailwind utility classes (`.text-sm` etc.)
+     have class-level specificity (0,1,0) and would otherwise beat
+     the naked `input` element selector (0,0,1), silently
+     re-triggering iOS zoom on any input that picks up a Tailwind
+     text-size class. (code-reviewer HIGH on F-001 sub-task 1.) The
+     rule fires only under `pointer: coarse` and only sets
+     font-size, so the !important blast radius is bounded.
+
+   The selector matches every input variant we use plus a few we
+   don't (so future inputs are pre-emptively covered). `[type="file"]`
+   is excluded because it doesn't trip the zoom and we don't want to
+   force a 16-px label on a hidden control.
+
+   Scoped to coarse pointers to leave desktop / mouse-driven UI
+   untouched — text inputs there often want 14px to match dense
+   admin layouts. `@media (pointer: coarse)` is the canonical iOS /
+   touch-device guard.
+   ────────────────────────────────────────────────────────────────── */
+@media (pointer: coarse) {
+  input:not([type="file"]):not([type="checkbox"]):not([type="radio"]):not(
+      [type="range"]
+    ),
+  textarea,
+  select {
+    font-size: max(16px, 1rem) !important;
+  }
+}
