@@ -153,12 +153,16 @@ type ChildFeedEntry = NonNullable<
  * `select("*")` which would transfer wide JSONB / metadata columns
  * unnecessarily and silently inflate the wire payload as schema
  * grows.
+ *
+ * `author_name` is intentionally NOT here — it's NOT a column on
+ * `bapp_logs` (verified by the prior 42703 error). It's derived by
+ * joining `user_profiles.first_name` on `author_id`, matching how
+ * `lib/actions/bapp/feed.ts` assembles its FeedItem[].
  */
 const FEED_ITEM_COLUMNS = [
   "id",
   "child_client_id",
   "author_id",
-  "author_name",
   "type",
   "status",
   "context",
@@ -184,7 +188,20 @@ async function fetchChildRecentFeeds(
   // Typical user has 1-3 children; edge case 5-7. At worst 7
   // parallel requests is well within Supabase's pgBouncer pool.
   // Net latency is bounded by the slowest single fetch.
-  const results = await Promise.all(
+  type FeedRow = {
+    id: string;
+    child_client_id: string;
+    author_id: string | null;
+    type: string;
+    status: string;
+    context: string | null;
+    data: Record<string, unknown> | null;
+    created_at: string;
+    updated_at: string;
+    is_active: boolean;
+    parent_log_id: string | null;
+  };
+  const perChildResults = await Promise.all(
     childIds.map(async (childId) => {
       const { data, error } = await supabase
         .from("bapp_logs")
@@ -194,18 +211,48 @@ async function fetchChildRecentFeeds(
         .order("created_at", { ascending: false })
         .limit(RECENT_FEED_CAP);
       if (error) throw error;
-      // Supabase's parsed return type for an explicit-columns select
-      // doesn't always cleanly overlap with our wire FeedItem type.
-      // Cast through unknown — the renderer reads only known fields,
-      // and the shape is verified-by-construction (we just selected
-      // those exact columns).
       return {
         child_id: childId,
-        items: (data ?? []) as unknown as FeedItem[],
+        rows: (data ?? []) as unknown as FeedRow[],
       };
     }),
   );
-  return results;
+
+  // Batch author-name lookup — collect every distinct author_id
+  // across all children's rows and resolve to user_profiles.first_name
+  // in ONE query. Mirrors the pattern in lib/actions/bapp/feed.ts so
+  // wire shape matches what consumers (renderer + downstream) expect.
+  const allAuthorIds = Array.from(
+    new Set(
+      perChildResults
+        .flatMap((r) => r.rows.map((row) => row.author_id))
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const authorNameById = new Map<string, string>();
+  if (allAuthorIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabase
+      .from("user_profiles")
+      .select("user_id, first_name")
+      .in("user_id", allAuthorIds);
+    if (profilesError) throw profilesError;
+    for (const p of (profiles ?? []) as Array<{
+      user_id: string;
+      first_name: string | null;
+    }>) {
+      authorNameById.set(p.user_id, p.first_name ?? "User");
+    }
+  }
+
+  return perChildResults.map(({ child_id, rows }) => ({
+    child_id,
+    items: rows.map((row) => ({
+      ...row,
+      author_name: row.author_id
+        ? (authorNameById.get(row.author_id) ?? "User")
+        : "User",
+    })) as unknown as FeedItem[],
+  }));
 }
 
 async function fetchRecentAgentMemory(

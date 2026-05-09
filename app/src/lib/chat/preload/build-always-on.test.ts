@@ -163,6 +163,9 @@ function makeSupabase(): SupabaseClient {
         };
       }
       if (table === "user_profiles") {
+        // Two consumers:
+        //   - fetchMyProfileBasics: select("first_name, last_name").eq("user_id", id).maybeSingle()
+        //   - fetchChildRecentFeeds (author-name lookup): select("user_id, first_name").in("user_id", [...])
         return {
           select: () => ({
             eq: () => ({
@@ -172,6 +175,14 @@ function makeSupabase(): SupabaseClient {
                   error: null,
                 }),
             }),
+            // Author-name batch lookup. Tests don't seed any author
+            // profile rows, so return an empty array — items still
+            // populate, just with author_name fallback "User".
+            in: () =>
+              maybeReject("user_profiles_authors", {
+                data: [],
+                error: null,
+              }),
           }),
         };
       }
