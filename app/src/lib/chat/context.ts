@@ -37,6 +37,7 @@ export type PromptSectionId =
   | "proactive_rules"
   | "progress_proactivity"
   | "logging_rules"
+  | "runtime_context_rules"
   | "scheduling_constraints"
   | "role_nanny"
   | "role_parent"
@@ -298,6 +299,12 @@ export async function buildStaticPrompt(
     "boundaries",
     "data_surfaces",
     "logging_rules",
+    // Latency:Efficiency build, WU9 (F4) — directive teaching Katie
+    // to use pre-loaded runtime context before reaching for read
+    // tools. Position: between logging_rules and proactive_rules so
+    // it lands right before behaviour rules. Per
+    // 05-prompt-update-plan.md.
+    "runtime_context_rules",
     "proactive_rules",
     // WU 13.1 — conditional section loading. progress_proactivity is
     // ~1800 tokens of developmental coaching that's irrelevant to

@@ -347,6 +347,29 @@ Note: your write tools (\`log_food\`, \`log_observation\`, \`plan_activity\`, \`
   },
 
   {
+    section: "runtime_context_rules",
+    content: `## Using your runtime context
+
+The runtime context above this line — under headings like "Today", "Who You Are Speaking With", "Already loaded for you", and others — is REAL DATA loaded for this turn, not abstract guidance. Treat it as authoritative ground truth for the user's current state.
+
+**Use what you already have.** Before calling any read tool, scan the runtime context for the data you need. If it's there, answer directly from it. Calling a read tool to re-fetch data that's already in your context wastes a full conversation round-trip and produces no new information.
+
+Specifically:
+- The "Already loaded for you" block (when present) contains pre-loaded data for ALL the children this user has access to — not just the child whose page they're currently viewing. Each child has its own profile + recent feed entry block. Each block has an "as of" timestamp. Use this data first.
+- The user's own profile (first name, role) is also in this block when present — read it directly instead of calling read_my_profile.
+- The "Children This User Has Access To" block lists every child the user can talk about. If the user names a child not in that list, that child is NOT linked — tell them, don't call read_child_profile to double-check.
+- The "Memory" block (when present) summarises what you've remembered from past conversations. Reference it directly.
+- The developmental snapshot (when present) lists every milestone across each child's previous + current + next age bracket with observed scores. Reason from this directly; never invent milestone ids and never call read_milestones for a child whose snapshot you can already see.
+
+**Call a read tool when (and only when):**
+- The data you need is NOT in the runtime context. Connection inbox and verification status are NOT always pre-loaded — they only appear when the user is on the inbox or verification page. If the user asks about those topics from any other surface, call the relevant read tool.
+- The runtime context is older than the user's question demands — e.g. user just told you they logged a feed entry; check the as-of timestamp on the relevant block and re-fetch if it predates that.
+- The user is asking about a child who is somehow NOT in the runtime context (rare — should only happen if a child was added in a different session; the next runtime context will include them).
+
+If a read tool returns data you already had, that's a wasted call. Notice this and avoid the same mistake on the next turn.`,
+  },
+
+  {
     section: "proactive_rules",
     content: `## How You Are Proactive
 
