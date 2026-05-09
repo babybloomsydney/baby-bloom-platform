@@ -28,6 +28,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  KATIE_ALWAYS_ON_CONTEXT_ENABLED,
   KATIE_ENABLED,
   KATIE_PARALLEL_TOOLS_ENABLED,
   KATIE_PRELOAD_PASSTHROUGH_ENABLED,
@@ -35,6 +36,8 @@ import {
 } from "@/lib/chat/flags";
 import { runRoundTools } from "./run-round-tools";
 import { verifyPreload } from "@/lib/chat/preload/verify";
+import { buildAlwaysOnContext } from "@/lib/chat/preload/build-always-on";
+import { mergePreloads } from "@/lib/chat/preload/merge";
 import type { PreloadedContext } from "@/lib/chat/preload/types";
 import {
   selectGeminiModel,
@@ -235,31 +238,24 @@ export async function POST(req: NextRequest) {
         return;
       }
 
-      const memoryTable = await buildMemoryTable({
+      // Latency:Efficiency build, WU5 (perf-reviewer HIGH): combine
+      // every independent pre-flight read into ONE Promise.allSettled.
+      // Previously memoryTable + developmentalSnapshot were sequential
+      // awaits, adding ~200-500ms serial overhead. Now they parallelise
+      // with the verifier + always-on builder; total wall time = max of
+      // all four, not sum.
+      //
+      // WU 10.4 dev-snapshot fail-open semantics preserved — handled
+      // via Promise.allSettled status check below.
+      const memoryTablePromise = buildMemoryTable({
         botId: bot.id,
         childIds: children.map((c) => c.id),
         supabase: admin,
       });
-
-      // WU 10.4: developmental snapshot — full milestone landscape per
-      // child so Katie reasons from real data, can never invent a
-      // milestone id, and can apply the implicit-mastery inference
-      // rule from `progress_proactivity`. Fail-open on errors: the
-      // snapshot is informational enrichment, not a reliability
-      // dependency. If the queries throw (DB outage, transient blip),
-      // the turn proceeds without the snapshot rather than aborting.
-      // Katie falls back to read_milestones mid-conversation if she
-      // needs grounding.
-      const developmentalSnapshot = await buildDevelopmentalSnapshots(
+      const developmentalSnapshotPromise = buildDevelopmentalSnapshots(
         children,
         admin,
-      ).catch((err) => {
-        console.error(
-          "[api/chat] developmental snapshot failed (continuing without it):",
-          err,
-        );
-        return null;
-      });
+      );
 
       // Load last 20 messages BEFORE buildSystemPrompt so the
       // gap-aware continuity header gets the most-recent timestamp.
@@ -299,56 +295,101 @@ export async function POST(req: NextRequest) {
       // the runtime portion (header + snapshot + memory) is injected as
       // a synthetic priming turn at position 0 of `contents` when caching
       // is active.
-      // Latency:Efficiency build, WU4 — verify client-supplied preload
-      // (when feature-flagged on). Per D-07, failed slots are DROPPED
-      // (recorded in telemetry), never the whole request. When the
-      // flag is off, we silently ignore body.preload — kill-switch
-      // behaviour, no logging to avoid noise during a deliberate
-      // rollback. The verifier itself is documented to never throw,
-      // but the call is wrapped in try/catch as defense-in-depth: a
-      // hypothetical future bug in the verifier shouldn't convert a
-      // fail-open enrichment into a hard turn abort.
-      let acceptedPreload: PreloadedContext | undefined = undefined;
+      // Latency:Efficiency build:
+      //   WU4 (F2) — verify client-supplied preload (when flagged on).
+      //   WU5 (F3) — fetch server-side always-on context.
+      //   Plus: memoryTable + developmentalSnapshot pulled into the
+      //   same parallel batch (perf-reviewer HIGH on WU5 — these were
+      //   serial awaits before, costing 200-500ms of wall time outside
+      //   the parallel window).
+      //
+      // All four legs run in parallel via Promise.allSettled so the
+      // slowest bounds wall time, not the sum. Client and server
+      // preloads merge per the WU5 merge rule (client wins per-child
+      // on array slots; server wins on singletons).
+      let clientPreload: PreloadedContext | undefined = undefined;
       let droppedSlots: Array<
         Awaited<ReturnType<typeof verifyPreload>>["dropped"][number]
       > = [];
-      if (KATIE_PRELOAD_PASSTHROUGH_ENABLED) {
-        try {
-          const v = await verifyPreload({
-            preload: body.preload,
-            userId,
-            role: bot.role,
-            childrenScope: children,
-            supabase: admin,
-          });
-          // Strip the `VerifiedContext` brand at this layer —
-          // `BotContext.preload: PreloadedContext` doesn't carry it,
-          // and the brand is intentionally scoped to the verification
-          // module so no consumer downstream can be retro-fitted to
-          // require already-verified input.
-          acceptedPreload = v.accepted as PreloadedContext;
-          droppedSlots = [...v.dropped];
-        } catch (err) {
-          // Verifier never throws by design (see verify.ts header).
-          // If something does, fail-open: skip preload for this turn.
-          console.error(
-            "[api/chat] verifyPreload threw unexpectedly (continuing without preload):",
-            err,
-          );
-        }
+      let serverAlwaysOn: PreloadedContext | undefined = undefined;
+      const [verifyResult, alwaysOnResult, memoryResult, snapshotResult] =
+        await Promise.allSettled([
+          KATIE_PRELOAD_PASSTHROUGH_ENABLED
+            ? verifyPreload({
+                preload: body.preload,
+                userId,
+                role: bot.role,
+                childrenScope: children,
+                supabase: admin,
+              })
+            : Promise.resolve({ accepted: undefined, dropped: [] as const }),
+          KATIE_ALWAYS_ON_CONTEXT_ENABLED
+            ? buildAlwaysOnContext({
+                userId,
+                botId: bot.id,
+                role: bot.role,
+                children,
+                supabase: admin,
+              })
+            : Promise.resolve(undefined),
+          memoryTablePromise,
+          developmentalSnapshotPromise,
+        ]);
+      // WU 10.4 dev-snapshot fail-open semantics: rejection → null,
+      // route continues without the block. Same for memoryTable.
+      const memoryTable =
+        memoryResult.status === "fulfilled" ? memoryResult.value : null;
+      if (memoryResult.status === "rejected") {
+        console.error(
+          "[api/chat] memoryTable build failed (continuing without it):",
+          memoryResult.reason,
+        );
       }
-      // Telemetry — names of accepted slots (excluding the as_of
-      // bookkeeping field). Always populated; an empty list means
-      // either the flag is off, no slots were sent, or every slot
-      // failed verification.
-      const acceptedSlotNames: string[] = acceptedPreload
-        ? Object.keys(acceptedPreload).filter((k) => k !== "as_of")
+      const developmentalSnapshot =
+        snapshotResult.status === "fulfilled" ? snapshotResult.value : null;
+      if (snapshotResult.status === "rejected") {
+        console.error(
+          "[api/chat] developmental snapshot failed (continuing without it):",
+          snapshotResult.reason,
+        );
+      }
+      if (verifyResult.status === "fulfilled") {
+        const v = verifyResult.value;
+        // Strip the `VerifiedContext` brand at this layer — BotContext
+        // doesn't carry it; the brand is scoped to the verifier.
+        clientPreload = (v.accepted as PreloadedContext) ?? undefined;
+        droppedSlots = [...v.dropped];
+      } else {
+        // Verifier never throws by design — but fail-open if it does.
+        console.error(
+          "[api/chat] verifyPreload threw unexpectedly (continuing without client preload):",
+          verifyResult.reason,
+        );
+      }
+      if (alwaysOnResult.status === "fulfilled") {
+        serverAlwaysOn = alwaysOnResult.value;
+      } else {
+        // Always-on builder never throws (per-slot fail-open) but
+        // belt-and-braces.
+        console.error(
+          "[api/chat] buildAlwaysOnContext threw unexpectedly (continuing without server preload):",
+          alwaysOnResult.reason,
+        );
+      }
+      const mergedPreload = mergePreloads({
+        client: clientPreload,
+        server: serverAlwaysOn,
+      });
+      // Telemetry — slot names that landed in the merged preload.
+      const acceptedSlotNames: string[] = mergedPreload
+        ? Object.keys(mergedPreload).filter((k) => k !== "as_of")
         : [];
-      // Log dropped slots once per turn — don't fire per-slot logs
-      // (would be noisy at scale). Telemetry captures the full list.
-      // We deliberately exclude `child_id` from this log line — slot
-      // names + reasons are operational metadata; child UUIDs would
-      // be PII we don't need in stdout.
+      // Slot names that came from the server (always-on builder).
+      // Useful for distinguishing "client passthrough" turns from
+      // "always-on" turns in audits.
+      const alwaysOnBlockNames: string[] = serverAlwaysOn
+        ? Object.keys(serverAlwaysOn).filter((k) => k !== "as_of")
+        : [];
       if (droppedSlots.length > 0) {
         console.warn(
           "[api/chat] dropped preload slots:",
@@ -370,9 +411,11 @@ export async function POST(req: NextRequest) {
         developmentalSnapshot,
         lastInteractionAt,
         botSettings: bot.settings,
-        // WU4 — verified preload threads into runtime context block.
-        // undefined when the flag is off OR no slots passed verification.
-        preload: acceptedPreload,
+        // WU4 + WU5 — merged preload threads into the runtime context
+        // block. Combines verified client passthrough (per-child wins)
+        // with server-side always-on data (single-slot wins). Undefined
+        // when both legs are empty / flag-off.
+        preload: mergedPreload,
       };
       // Per-bot module filtering — pass `bot.settings` to both
       // `buildStaticPrompt` and `collectTools` so a module gated by
@@ -837,6 +880,11 @@ export async function POST(req: NextRequest) {
               slot: d.slot,
               reason: d.reason,
             })),
+            // WU5 (F3) — slot names populated by the server-side
+            // always-on builder (subset of `preload_slots_received`).
+            // Distinguishes always-on turns from client-only turns
+            // for audit attribution.
+            always_on_blocks: alwaysOnBlockNames,
           },
         });
 
@@ -864,6 +912,7 @@ export async function POST(req: NextRequest) {
             // rejection rates; the metadata column is the canonical
             // per-row record for audits.
             preload_slots_rejected_count: droppedSlots.length,
+            always_on_blocks: alwaysOnBlockNames,
           }),
         );
 
