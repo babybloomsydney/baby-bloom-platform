@@ -593,6 +593,11 @@ export const diaryModule: BloomBotModule = {
             description:
               "Optional notes (e.g. 'wouldn't eat the yogurt', 'new food').",
           },
+          image_url: {
+            type: "string",
+            description:
+              "Optional image URL if the user attached a photo (e.g. via `[Image attached: <url>]` in the user's message). Pass the URL verbatim.",
+          },
         },
         required: ["meal_type", "items"],
       },
@@ -656,6 +661,11 @@ export const diaryModule: BloomBotModule = {
           notes: {
             type: "string",
             description: "Optional notes.",
+          },
+          image_url: {
+            type: "string",
+            description:
+              "Optional image URL if the user attached a photo (e.g. via `[Image attached: <url>]` in the user's message). Pass the URL verbatim.",
           },
         },
         required: ["duration_minutes"],
