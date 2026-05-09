@@ -43,6 +43,10 @@
     {
       "path": "/api/cron/soft-lock-stale-children",
       "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/schedule-upfront-cycles",
+      "schedule": "0 4 * * *"
     }
   ]
 }
