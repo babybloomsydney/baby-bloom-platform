@@ -47,6 +47,7 @@ import {
 import { getPosition } from "@/lib/actions/parent";
 import { getParentPlacement } from "@/lib/actions/position-funnel";
 import { asUserFacingRole, type UserFacingRole } from "./utils";
+import { isMyProfilePresent } from "@/lib/chat/preload/predicates";
 
 type ProfileRole = UserFacingRole;
 
@@ -649,6 +650,7 @@ export const profileModule: BloomBotModule = {
       description:
         "Return a plain-English snapshot of the signed-in user's profile. For nannies: first name, suburb, hourly rate, age range, role types, availability days, photo count, and a visibility line (are parents currently able to see them, in plain English). For parents: home suburb, whether they have an active position, whether they have a placed nanny. Never leaks internal field names.",
       parameters: { type: "object", properties: {}, required: [] },
+      isPrefulfilled: isMyProfilePresent,
     },
     {
       name: "read_my_position",

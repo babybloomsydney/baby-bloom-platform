@@ -6,6 +6,7 @@
 
 import type { BloomBotModule, ToolResult } from "./types";
 import { resolveChild } from "./utils";
+import { isChildNameInPreloadProfiles } from "@/lib/chat/preload/predicates";
 
 async function readChildProfile(
   args: Record<string, unknown>,
@@ -67,6 +68,7 @@ export const childProfileModule: BloomBotModule = {
         },
         required: [],
       },
+      isPrefulfilled: isChildNameInPreloadProfiles,
     },
   ],
 

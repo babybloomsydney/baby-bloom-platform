@@ -650,3 +650,50 @@ describe("verification module — rolesAllowed gate", () => {
     expect(verificationModule.rolesAllowed).toEqual(["nanny", "parent"]);
   });
 });
+
+describe("read_verification_status.isPrefulfilled", () => {
+  const tool = verificationModule.tools.find(
+    (t) => t.name === "read_verification_status",
+  )!;
+
+  it("returns true when verification_status slot is present", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        {
+          as_of: "2026-05-09T00:00:00Z",
+          verification_status: {
+            level: 3,
+            status_code: 30,
+            label: "Provisionally verified",
+            blocking_issues: [],
+          },
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when verification_status slot is absent (typical case)", () => {
+    expect(tool.isPrefulfilled?.({}, { as_of: "2026-05-09T00:00:00Z" })).toBe(
+      false,
+    );
+    expect(tool.isPrefulfilled?.({}, undefined)).toBe(false);
+  });
+
+  it("returns true even for an unverified summary (the summary itself is the answer)", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        {
+          as_of: "2026-05-09T00:00:00Z",
+          verification_status: {
+            level: 0,
+            status_code: 0,
+            label: "Just signed up",
+            blocking_issues: ["Submit ID + selfie"],
+          },
+        },
+      ),
+    ).toBe(true);
+  });
+});

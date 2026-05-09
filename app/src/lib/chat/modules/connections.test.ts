@@ -1559,3 +1559,40 @@ describe("connections module — propose_send_connection_request", () => {
     }
   });
 });
+
+describe("read_connection_inbox.isPrefulfilled", () => {
+  const tool = connectionsModule.tools.find(
+    (t) => t.name === "read_connection_inbox",
+  )!;
+
+  it("returns true when connection_inbox slot is present", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        {
+          as_of: "2026-05-09T00:00:00Z",
+          connection_inbox: { pending_count: 3 },
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when connection_inbox slot is absent (typical case post-amendment)", () => {
+    expect(tool.isPrefulfilled?.({}, { as_of: "2026-05-09T00:00:00Z" })).toBe(
+      false,
+    );
+    expect(tool.isPrefulfilled?.({}, undefined)).toBe(false);
+  });
+
+  it("returns true when pending_count is 0 (zero is still fulfilled — answer is `0 pending`)", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        {
+          as_of: "2026-05-09T00:00:00Z",
+          connection_inbox: { pending_count: 0 },
+        },
+      ),
+    ).toBe(true);
+  });
+});

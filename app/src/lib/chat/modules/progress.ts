@@ -16,6 +16,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ProgressChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { isChildNameInPreloadProfiles } from "@/lib/chat/preload/predicates";
 import {
   recalculateProgress,
   writeHistorySnapshot,
@@ -505,6 +506,7 @@ export const progressModule: BloomBotModule = {
         },
         required: [],
       },
+      isPrefulfilled: isChildNameInPreloadProfiles,
     },
     {
       name: "read_progress_history",

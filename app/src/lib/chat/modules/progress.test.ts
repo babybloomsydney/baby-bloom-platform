@@ -443,3 +443,49 @@ describe("progress apply — update_progress", () => {
     expect(mocks.insertMock).not.toHaveBeenCalled();
   });
 });
+
+describe("read_milestones.isPrefulfilled", () => {
+  const tool = progressModule.tools.find((t) => t.name === "read_milestones")!;
+
+  const oliverProfile = {
+    child_id: "c1",
+    profile: {
+      id: "c1",
+      first_name: "Oliver",
+      date_of_birth: "2024-11-08",
+      gender: "male" as const,
+      under_three: true,
+      status: "active" as const,
+    },
+  };
+
+  it("returns true when the child appears in preload.children_profiles", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        { child_name: "Oliver" },
+        { as_of: "2026-05-09T00:00:00Z", children_profiles: [oliverProfile] },
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when children_profiles is empty / undefined", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        { child_name: "Oliver" },
+        { as_of: "2026-05-09T00:00:00Z" },
+      ),
+    ).toBe(false);
+    expect(tool.isPrefulfilled?.({ child_name: "Oliver" }, undefined)).toBe(
+      false,
+    );
+  });
+
+  it("returns false when the child name is NOT in the array", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        { child_name: "Lily" },
+        { as_of: "2026-05-09T00:00:00Z", children_profiles: [oliverProfile] },
+      ),
+    ).toBe(false);
+  });
+});

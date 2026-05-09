@@ -35,6 +35,7 @@ import {
   KATIE_STREAM_DIAGNOSTICS,
 } from "@/lib/chat/flags";
 import { runRoundTools } from "./run-round-tools";
+import { checkPrefulfilled } from "./check-prefulfilled";
 import { verifyPreload } from "@/lib/chat/preload/verify";
 import { buildAlwaysOnContext } from "@/lib/chat/preload/build-always-on";
 import { mergePreloads } from "@/lib/chat/preload/merge";
@@ -545,6 +546,28 @@ export async function POST(req: NextRequest) {
         };
       }
 
+      // Latency:Efficiency build, WU6 (F4 belt-and-braces) — names of
+      // tools whose `isPrefulfilled` predicate fired this turn. The
+      // route short-circuits before the handler runs and emits a
+      // synthetic ToolResult pointing Katie back at the runtime
+      // context block. Persisted to metadata + JSON log so we can
+      // measure how often the directive (D-09) is bypassed.
+      //
+      // Accumulates across rounds; deduplicated at metadata write
+      // time. Same tool short-circuited in two rounds counts once.
+      const skippedToolNames: string[] = [];
+
+      // WU6 — admin impersonation guard. When effective_role differs
+      // from bot.role (admin testing a parent / nanny role via
+      // settings.effective_role), the always-on builder ran with
+      // bot.role's perspective but the handler dispatches on
+      // effectiveRole. Pre-fulfilled short-circuits would surface
+      // wrong-role data via the synthetic "see runtime context"
+      // hint (code-reviewer MEDIUM-2 on WU6). Skip the optimization
+      // entirely — admin sessions are rare; correctness trumps the
+      // saved DB hit.
+      const prefulfilledSafe = bot.role === effectiveRole;
+
       /** Executes a single function call via module registry. */
       async function runTool(call: {
         name?: string;
@@ -558,20 +581,50 @@ export async function POST(req: NextRequest) {
         if (!handlerModule) {
           return { success: false, error: `Unknown tool: ${call.name}` };
         }
+        const args = (call.args ?? {}) as Record<string, unknown>;
+        // WU6 — pre-fulfilled short-circuit. If the tool's predicate
+        // fires, skip the handler + emit a synthetic "see runtime
+        // context" result. The `tool_call` SSE event still fires
+        // upstream in `run-round-tools.ts` so Katie sees what she
+        // asked for.
+        //
+        // Wrapped in try/catch — a buggy predicate (e.g. throwing on
+        // unexpected preload shape) MUST fail-open to running the
+        // real handler, not abort the turn. silent-failure-hunter
+        // HIGH-1 on WU6.
+        if (prefulfilledSafe) {
+          const tool = handlerModule.tools.find((t) => t.name === call.name);
+          let outcome: ReturnType<typeof checkPrefulfilled>;
+          try {
+            outcome = checkPrefulfilled(tool, args, mergedPreload);
+          } catch (err) {
+            console.error(
+              "[api/chat] isPrefulfilled threw; falling through to handler:",
+              { tool: call.name, err },
+            );
+            outcome = { skip: false };
+          }
+          if (outcome.skip) {
+            if (typeof call.name === "string") {
+              skippedToolNames.push(call.name);
+            }
+            return outcome.result;
+          }
+        }
         try {
-          return await handlerModule.execute(
-            call.name!,
-            (call.args ?? {}) as Record<string, unknown>,
-            {
-              botId: bot.id,
-              userId,
-              userRole: bot.role,
-              effectiveRole,
-              children,
-              currentSurface: body.currentSurface ?? null,
-              supabase: admin,
-            },
-          );
+          return await handlerModule.execute(call.name!, args, {
+            botId: bot.id,
+            userId,
+            userRole: bot.role,
+            effectiveRole,
+            children,
+            currentSurface: body.currentSurface ?? null,
+            supabase: admin,
+            // WU6 — modules that want to enrich responses can read
+            // the merged preload directly (e.g. a future write tool
+            // that pre-validates against pre-loaded child profiles).
+            preload: mergedPreload,
+          });
         } catch (err) {
           return {
             success: false,
@@ -885,6 +938,14 @@ export async function POST(req: NextRequest) {
             // Distinguishes always-on turns from client-only turns
             // for audit attribution.
             always_on_blocks: alwaysOnBlockNames,
+            // WU6 (F4 belt-and-braces) — tool names short-circuited
+            // by `isPrefulfilled` this turn. Deduplicated — same
+            // tool fired twice across rounds counts once. Empty
+            // array = Katie either didn't call any read tools, or
+            // called tools whose data wasn't in pre-load.
+            tool_calls_skipped_by_prefulfilled: Array.from(
+              new Set(skippedToolNames),
+            ),
           },
         });
 
@@ -913,6 +974,16 @@ export async function POST(req: NextRequest) {
             // per-row record for audits.
             preload_slots_rejected_count: droppedSlots.length,
             always_on_blocks: alwaysOnBlockNames,
+            // WU6 — count + names. Names are deduplicated (same
+            // tool short-circuited twice across rounds counts once).
+            // Names are short and bounded (max ~8 read tools);
+            // persisting both gives audits a per-row picture without
+            // a join.
+            tool_calls_skipped_by_prefulfilled_count: new Set(skippedToolNames)
+              .size,
+            tool_calls_skipped_by_prefulfilled: Array.from(
+              new Set(skippedToolNames),
+            ),
           }),
         );
 

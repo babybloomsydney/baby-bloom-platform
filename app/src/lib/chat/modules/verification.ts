@@ -23,6 +23,7 @@
  */
 
 import type { BloomBotModule, ToolResult } from "./types";
+import { makeSlotPresentPredicate } from "@/lib/chat/preload/predicates";
 import type { ChatTile } from "@/lib/chat/tiles";
 
 // ── Internal row shapes (what we query from DB) ────────────────────────────
@@ -622,6 +623,7 @@ export const verificationModule: BloomBotModule = {
       description:
         "Get the current verification summary for the signed-in user — what's done, what's in progress, what's still needed, what they can and can't do yet, and a link if there's a next action. All fields are already phrased in natural language; surface them directly to the user without paraphrasing more than necessary.",
       parameters: { type: "object", properties: {}, required: [] },
+      isPrefulfilled: makeSlotPresentPredicate("verification_status"),
     },
     {
       name: "read_verification_next_steps",

@@ -630,3 +630,42 @@ describe("profile module — propose_/apply_update_age_range", () => {
     });
   });
 });
+
+describe("read_my_profile.isPrefulfilled", () => {
+  const tool = profileModule.tools.find((t) => t.name === "read_my_profile")!;
+
+  it("returns true when my_profile_basics is present", () => {
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        {
+          as_of: "2026-05-09T00:00:00Z",
+          my_profile_basics: {
+            first_name: "Emma",
+            last_name: "Smith",
+            role: "nanny",
+          },
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false when my_profile_basics is absent", () => {
+    expect(tool.isPrefulfilled?.({}, { as_of: "2026-05-09T00:00:00Z" })).toBe(
+      false,
+    );
+    expect(tool.isPrefulfilled?.({}, undefined)).toBe(false);
+  });
+
+  it("returns false when partial / null my_profile_basics is supplied", () => {
+    // Defensive — verifier should reject malformed slots, but the predicate
+    // still treats falsy presence as "not loaded". null is the realistic
+    // edge case (a publisher could in theory set `my_profile_basics: null`).
+    expect(
+      tool.isPrefulfilled?.(
+        {},
+        { as_of: "2026-05-09T00:00:00Z", my_profile_basics: null as never },
+      ),
+    ).toBe(false);
+  });
+});

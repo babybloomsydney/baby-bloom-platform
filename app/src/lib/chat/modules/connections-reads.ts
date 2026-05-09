@@ -16,6 +16,7 @@
 import type { BloomBotModule, ToolDefinition, ToolResult } from "./types";
 import type { ConnectionRequestWithDetails } from "@/lib/actions/connection";
 import { isTerminal, isActionRequired } from "./connections-translator";
+import { makeSlotPresentPredicate } from "@/lib/chat/preload/predicates";
 import {
   loadConnections,
   summarise,
@@ -222,6 +223,7 @@ export const readTools: ToolDefinition[] = [
       properties: {},
       required: [],
     },
+    isPrefulfilled: makeSlotPresentPredicate("connection_inbox"),
   },
   {
     name: "read_connection_by_name",

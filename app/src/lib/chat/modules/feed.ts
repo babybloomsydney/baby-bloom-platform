@@ -6,6 +6,7 @@
 
 import type { BloomBotModule, ToolResult } from "./types";
 import { resolveChild } from "./utils";
+import { isRecentFeedFulfilled } from "@/lib/chat/preload/predicates";
 
 type FeedType =
   | "activity"
@@ -110,6 +111,7 @@ export const feedModule: BloomBotModule = {
         },
         required: [],
       },
+      isPrefulfilled: isRecentFeedFulfilled,
     },
   ],
 
