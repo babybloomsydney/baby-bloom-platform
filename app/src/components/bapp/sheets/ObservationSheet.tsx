@@ -20,7 +20,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DOMAINS, MASTERY_LABELS, type DomainCode } from "@/lib/bapp-constants";
-import { logObservation, logBulkProgress } from "@/lib/actions/bapp/observations";
+import {
+  logObservation,
+  logBulkProgress,
+} from "@/lib/actions/bapp/observations";
 import { getMilestones } from "@/lib/actions/bapp/milestones";
 import { getProgressMatrix } from "@/lib/actions/bapp/progress";
 import { ImageUpload } from "../shared/ImageUpload";
@@ -54,8 +57,12 @@ export function ObservationSheet({
 
   // Progress state
   const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [progressMatrix, setProgressMatrix] = useState<Record<string, number>>({});
-  const [selectedProgress, setSelectedProgress] = useState<Map<string, number>>(new Map());
+  const [progressMatrix, setProgressMatrix] = useState<Record<string, number>>(
+    {},
+  );
+  const [selectedProgress, setSelectedProgress] = useState<Map<string, number>>(
+    new Map(),
+  );
   const [progressNote, setProgressNote] = useState("");
   const [progressImageUrl, setProgressImageUrl] = useState<string | null>(null);
 
@@ -174,15 +181,17 @@ export function ObservationSheet({
   async function submitProgress() {
     setLoading(true);
     setError(null);
-    const updates = Array.from(selectedProgress.entries()).map(([id, score]) => ({
-      id,
-      score,
-    }));
+    const updates = Array.from(selectedProgress.entries()).map(
+      ([id, score]) => ({
+        id,
+        score,
+      }),
+    );
     const result = await logBulkProgress(
       childId,
       updates,
       progressNote || null,
-      progressImageUrl
+      progressImageUrl,
     );
     if (result.success) {
       setSuccess(true);
@@ -199,10 +208,7 @@ export function ObservationSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[85vh] rounded-t-2xl px-4 pb-6"
-      >
+      <SheetContent side="bottom" className="h-[85dvh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
           <div className="flex items-center gap-2">
             {step !== "type" && (
@@ -216,8 +222,12 @@ export function ObservationSheet({
             )}
             <SheetTitle className="text-base">
               {step === "type" && "New Observation"}
-              {step === "form" && obsType === "general" && "General Observation"}
-              {step === "form" && obsType === "focused" && "Focused Observation"}
+              {step === "form" &&
+                obsType === "general" &&
+                "General Observation"}
+              {step === "form" &&
+                obsType === "focused" &&
+                "Focused Observation"}
               {step === "form" && obsType === "progress" && "Progress Update"}
               {step === "note" && "Add Note"}
             </SheetTitle>
@@ -240,7 +250,10 @@ export function ObservationSheet({
         )}
 
         {!success && (
-          <div className="mt-2 overflow-y-auto" style={{ maxHeight: "calc(85vh - 120px)" }}>
+          <div
+            className="mt-2 overflow-y-auto"
+            style={{ maxHeight: "calc(85dvh - 120px)" }}
+          >
             {/* Step 1: Type Selection */}
             {step === "type" && (
               <div className="space-y-2">
@@ -438,7 +451,7 @@ export function ObservationSheet({
                             <MasteryLabel score={score} />
                           </div>
                         );
-                      }
+                      },
                     )}
                   </div>
                 </div>
@@ -519,7 +532,7 @@ function TypeCard({
       <div
         className={cn(
           "flex h-10 w-10 items-center justify-center rounded-full",
-          color
+          color,
         )}
       >
         <Icon className="h-5 w-5" />

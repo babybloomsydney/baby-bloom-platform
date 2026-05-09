@@ -230,7 +230,7 @@ export function DiarySheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[85vh] rounded-t-2xl px-4 pb-6">
+      <SheetContent side="bottom" className="h-[85dvh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
           <div className="flex items-center gap-2">
             {step !== "type" && (

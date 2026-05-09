@@ -89,14 +89,14 @@ export function PlanSheet({ open, onOpenChange, childId }: PlanSheetProps) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-[90vh] rounded-t-2xl px-4 pb-6">
+      <SheetContent side="bottom" className="h-[90dvh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
           <SheetTitle className="text-base">Design Activity</SheetTitle>
         </SheetHeader>
 
         <div
           className="mt-2 overflow-y-auto"
-          style={{ maxHeight: "calc(90vh - 140px)" }}
+          style={{ maxHeight: "calc(90dvh - 140px)" }}
         >
           {/* Selected objectives tags */}
           {selected.size > 0 && (

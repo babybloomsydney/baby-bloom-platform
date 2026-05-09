@@ -52,7 +52,7 @@ export function ActivityDetailSheet({
 
   // Resolve milestone details for ReviewSheet
   const targetMilestones = milestones.filter((m) =>
-    data.milestone_ids?.includes(m.id)
+    data.milestone_ids?.includes(m.id),
   );
 
   function handleReportComplete() {
@@ -65,7 +65,7 @@ export function ActivityDetailSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="bottom"
-          className="h-[95vh] rounded-t-2xl bg-white px-4 pb-24"
+          className="h-[95dvh] rounded-t-2xl bg-white px-4 pb-24"
         >
           <SheetHeader className="pb-2">
             <SheetTitle className="text-left text-lg font-semibold text-slate-900">
@@ -76,7 +76,7 @@ export function ActivityDetailSheet({
 
           <div
             className="mt-3 overflow-y-auto"
-            style={{ maxHeight: "calc(95vh - 160px)" }}
+            style={{ maxHeight: "calc(95dvh - 160px)" }}
           >
             {/* Description card */}
             <div className="mb-4 rounded-lg bg-slate-50 p-3">
@@ -88,7 +88,10 @@ export function ActivityDetailSheet({
             {/* 6 Accordion sections */}
             <Accordion type="multiple" className="space-y-1">
               {/* 1. Objectives */}
-              <AccordionItem value="objectives" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="objectives"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <Target className="h-4 w-4 text-indigo-500" />
@@ -108,7 +111,10 @@ export function ActivityDetailSheet({
               </AccordionItem>
 
               {/* 2. Intention */}
-              <AccordionItem value="intention" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="intention"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <Heart className="h-4 w-4 text-rose-400" />
@@ -123,7 +129,10 @@ export function ActivityDetailSheet({
               </AccordionItem>
 
               {/* 3. Supplies */}
-              <AccordionItem value="supplies" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="supplies"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <ShoppingBasket className="h-4 w-4 text-amber-500" />
@@ -154,7 +163,10 @@ export function ActivityDetailSheet({
               </AccordionItem>
 
               {/* 4. Step-by-Step */}
-              <AccordionItem value="steps" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="steps"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <Footprints className="h-4 w-4 text-emerald-500" />
@@ -176,7 +188,10 @@ export function ActivityDetailSheet({
               </AccordionItem>
 
               {/* 5. Encouragement */}
-              <AccordionItem value="encouragement" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="encouragement"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <MessageSquare className="h-4 w-4 text-indigo-500" />
@@ -198,7 +213,10 @@ export function ActivityDetailSheet({
               </AccordionItem>
 
               {/* 6. What to Look For */}
-              <AccordionItem value="observations" className="rounded-lg border border-slate-200 px-3">
+              <AccordionItem
+                value="observations"
+                className="rounded-lg border border-slate-200 px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
                   <span className="flex items-center gap-2">
                     <Search className="h-4 w-4 text-purple-500" />
@@ -224,10 +242,7 @@ export function ActivityDetailSheet({
                             label="Assisted"
                             text={obs.levels.assisted}
                           />
-                          <LevelCard
-                            label="Guided"
-                            text={obs.levels.guided}
-                          />
+                          <LevelCard label="Guided" text={obs.levels.guided} />
                           <LevelCard
                             label="Independent"
                             text={obs.levels.independent}

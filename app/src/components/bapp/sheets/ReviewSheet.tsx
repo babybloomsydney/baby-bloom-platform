@@ -80,7 +80,7 @@ export function ReviewSheet({
       childId,
       ratingsArray,
       feedback || null,
-      imageUrl
+      imageUrl,
     );
 
     if (result.success) {
@@ -97,10 +97,7 @@ export function ReviewSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="bottom"
-        className="h-[85vh] rounded-t-2xl px-4 pb-6"
-      >
+      <SheetContent side="bottom" className="h-[85dvh] rounded-t-2xl px-4 pb-6">
         <SheetHeader className="pb-2">
           <SheetTitle className="text-base">{activityTitle}</SheetTitle>
         </SheetHeader>
@@ -124,7 +121,7 @@ export function ReviewSheet({
         {!success && (
           <div
             className="mt-2 overflow-y-auto"
-            style={{ maxHeight: "calc(85vh - 160px)" }}
+            style={{ maxHeight: "calc(85dvh - 160px)" }}
           >
             <div className="space-y-5">
               {/* Milestone ratings */}
