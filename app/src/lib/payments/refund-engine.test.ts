@@ -222,8 +222,8 @@ describe("calculateRefund — breakdown returned", () => {
       commissionAlreadyPaidCents: A$(750),
     });
     expect(result.breakdown.totalMonths).toBeGreaterThan(40);
-    expect(result.breakdown.monthsRemaining).toBeLessThan(
-      result.breakdown.totalMonths,
+    expect(result.breakdown.monthsRemaining ?? 0).toBeLessThan(
+      result.breakdown.totalMonths ?? 0,
     );
     expect(result.breakdown.proRataCents).toBeGreaterThan(0);
     expect(result.breakdown.commissionDeductedCents).toBe(A$(750));
