@@ -19,6 +19,7 @@ import type Stripe from "stripe";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/client";
+import { scheduleCommissionFor } from "@/lib/payments/commission-scheduler";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -113,6 +114,35 @@ export async function handleCheckoutCompleted(
     user_id: userId,
     action_details: { plan, session_id: session.id },
   });
+
+  // Schedule the trial-period commission row (Phase 7). Best-effort —
+  // logged but not thrown, because:
+  // - The subscription is already activated by this point; failing
+  //   to schedule the commission row shouldn't reverse that.
+  // - The cron-driven cycle-completed scheduling will fire later
+  //   regardless, so worst case the nanny misses one cycle of
+  //   trial-period commission. Bailey can manually backfill via
+  //   the admin queue.
+  // - `no_connected_nanny` is a benign reason (parent paid before
+  //   linking a nanny); not an error.
+  const { data: subRow } = await admin
+    .from("parent_subscriptions")
+    .select("id")
+    .eq("parent_user_id", userId)
+    .maybeSingle<{ id: string }>();
+  if (subRow) {
+    const result = await scheduleCommissionFor({
+      parentSubscriptionId: subRow.id,
+      trigger: "subscription_started",
+      cycleIndex: 1,
+    });
+    if (!result.ok && result.reason === "db_error") {
+      console.error(
+        "[stripe-webhook] scheduleCommissionFor failed",
+        result.detail,
+      );
+    }
+  }
 }
 
 interface UpsertMonthlyArgs {
@@ -311,6 +341,32 @@ export async function handleInvoiceSucceeded(
       user_id: existing.parent_user_id,
       action_details: { stripe_subscription_id: subId },
     });
+
+    // Schedule the commission row for the cycle just completed (Phase 7).
+    // Only fire on a normal renewal — not on a past_due → active recovery
+    // (the cycle wasn't fully completed in good standing).
+    const { data: subRow } = await admin
+      .from("parent_subscriptions")
+      .select("id")
+      .eq("stripe_subscription_id", subId)
+      .maybeSingle<{ id: string }>();
+    if (subRow) {
+      const cycleEnd = periodEndUnix
+        ? new Date(periodEndUnix * 1000)
+        : new Date();
+      const result = await scheduleCommissionFor({
+        parentSubscriptionId: subRow.id,
+        trigger: "cycle_completed",
+        cycleIndex: 1, // Monthly always 1; upfront cycles 2/3 fire from a separate end-of-cycle cron.
+        cycleEndsAt: cycleEnd,
+      });
+      if (!result.ok && result.reason === "db_error") {
+        console.error(
+          "[stripe-webhook] scheduleCommissionFor (renewal) failed",
+          result.detail,
+        );
+      }
+    }
   }
 }
 
