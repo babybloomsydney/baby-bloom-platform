@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BAppLayout } from "@/components/bapp/BAppLayout";
 import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { createSubscribeInvite } from "@/lib/actions/payments/createSubscribeInvite";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function DevelopmentLayout({
@@ -43,8 +45,49 @@ export default async function DevelopmentLayout({
   const showBanner = c.nanny_user_id === user.id && c.parent_user_id === null;
   const inviteResult = showBanner ? await getInviteForChild(c.id) : null;
 
+  // S4 + S5 — paywall gate. When the family lacks access (parent
+  // hasn't subscribed / trial expired / cancelled past period end),
+  // BAppLayout swaps the FAB action into the SubscribeModalNanny
+  // trigger + renders the LapsedBanner above page content. The modal
+  // needs a pre-minted nanny-share invite (S5) to render its share
+  // CTA. We mint it here so the modal can fire instantly on FAB tap.
+  const access = await requireChildFamilyAccess(c.id);
+
+  let nannyShareUrl: string | undefined;
+  let nannyShareText: string | undefined;
+  let parentFirstName: string | undefined;
+  if (
+    !access.hasAccess &&
+    c.parent_user_id !== null &&
+    c.nanny_user_id === user.id
+  ) {
+    const inviteRes = await createSubscribeInvite(c.id);
+    if (inviteRes.success) {
+      nannyShareUrl = inviteRes.data.url;
+      nannyShareText = inviteRes.data.shareText;
+    }
+    const { data: parentProfile } = await admin
+      .from("user_profiles")
+      .select("first_name")
+      .eq("user_id", c.parent_user_id)
+      .maybeSingle<{ first_name: string | null }>();
+    parentFirstName = parentProfile?.first_name ?? undefined;
+  }
+
   return (
-    <BAppLayout child={c} role="nanny">
+    <BAppLayout
+      child={c}
+      role="nanny"
+      familyHasAccess={access.hasAccess}
+      parentFirstName={parentFirstName}
+      nannyShareUrl={nannyShareUrl}
+      nannyShareText={nannyShareText}
+      lapseReason={
+        access.reason === "trial_expired"
+          ? "trial_ended"
+          : "subscription_lapsed"
+      }
+    >
       {inviteResult?.success && inviteResult.data && (
         <InviteBanner
           childId={c.id}
