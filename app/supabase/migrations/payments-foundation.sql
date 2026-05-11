@@ -34,8 +34,11 @@ ALTER TABLE activity_logs
     -- This migration is the chance to fold them in.
     'child_deleted',
     'invite_created',
+    'invite_connected',
     'invite_declined',
     'invite_revoked',
+    'nanny_left_child',
+    'nanny_removed_by_parent',
     'orphan_cleanup_run',
     'signup_via_invite',
     -- New payment events (per 03-data-model.md §0)
