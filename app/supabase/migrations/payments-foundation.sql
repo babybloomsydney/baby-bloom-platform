@@ -29,6 +29,15 @@ ALTER TABLE activity_logs
     'admin_override', 'verification_approved', 'verification_rejected',
     'user_suspended', 'user_reinstated',
     'email_sent', 'notification_sent', 'file_deleted',
+    -- Values added post-supabase-setup.sql by child-linking work — present
+    -- in production rows but never made it back into the canonical CHECK.
+    -- This migration is the chance to fold them in.
+    'child_deleted',
+    'invite_created',
+    'invite_declined',
+    'invite_revoked',
+    'orphan_cleanup_run',
+    'signup_via_invite',
     -- New payment events (per 03-data-model.md §0)
     'trial_started',
     'trial_lapsed',

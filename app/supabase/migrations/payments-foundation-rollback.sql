@@ -81,7 +81,10 @@ ALTER TABLE activity_logs
     'placement_created', 'placement_ended', 'placement_paused', 'placement_resumed',
     'admin_override', 'verification_approved', 'verification_rejected',
     'user_suspended', 'user_reinstated',
-    'email_sent', 'notification_sent', 'file_deleted'
+    'email_sent', 'notification_sent', 'file_deleted',
+    -- child-linking values that pre-exist in prod rows.
+    'child_deleted', 'invite_created', 'invite_declined', 'invite_revoked',
+    'orphan_cleanup_run', 'signup_via_invite'
   ));
 
 COMMIT;
