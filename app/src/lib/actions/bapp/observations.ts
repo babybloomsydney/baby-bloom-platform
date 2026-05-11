@@ -8,6 +8,7 @@ import { generateTileInsight, getChildContext } from "./insights";
 import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
 import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 
 // ---------------------------------------------------------------------------
 // Helper: transition child to active_nanny on first action
@@ -63,6 +64,13 @@ export async function logObservation(
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return { success: false, error: "Not authenticated" };
+    }
+
+    // Paywall gate — block writes when the family's subscription has
+    // lapsed. Nanny-only children pass through unconditionally.
+    const gate = await requireChildFamilyAccess(childId);
+    if (!gate.hasAccess) {
+      return { success: false, error: "subscription_required" };
     }
 
     const admin = createAdminClient();
@@ -185,6 +193,12 @@ export async function logBulkProgress(
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return { success: false, error: "Not authenticated" };
+    }
+
+    // Paywall gate — block writes when the family's subscription has lapsed.
+    const gate = await requireChildFamilyAccess(childId);
+    if (!gate.hasAccess) {
+      return { success: false, error: "subscription_required" };
     }
 
     const admin = createAdminClient();

@@ -164,3 +164,40 @@ export async function hasFamilyAccess(parentUserId: string): Promise<boolean> {
   const result = await requireFamilyAccess(parentUserId);
   return result.hasAccess;
 }
+
+/**
+ * Gate a write action by the child's family's subscription state.
+ *
+ * Resolves the parent for the child via `child_client.parent_user_id`,
+ * then delegates to `requireFamilyAccess`. Nanny-initiated writes on
+ * a child whose parent hasn't connected yet (`parent_user_id IS NULL`)
+ * pass — the child is in the nanny-only setup window which is
+ * gate-free by design (see business model §5 soft-lock).
+ *
+ * Used by every server action that writes to `bapp_logs` or
+ * `bapp_progress_*` to defend against direct API calls bypassing the
+ * UI paywall.
+ *
+ * Spec: `system/APP/PAYMENTS/05-trial-and-access-gates.md §2`.
+ */
+export async function requireChildFamilyAccess(
+  childId: string,
+): Promise<AccessGateResult> {
+  if (!childId) {
+    return { hasAccess: false, reason: "no_subscription" };
+  }
+  const admin = createAdminClient();
+  const { data: child } = await admin
+    .from("child_client")
+    .select("parent_user_id")
+    .eq("id", childId)
+    .maybeSingle<{ parent_user_id: string | null }>();
+
+  // Nanny-only child (no parent linked yet): not gated by family
+  // subscription. The soft-lock cron + UI handle the long-term case
+  // where a nanny-only child remains unlinked for >30 days.
+  if (!child || !child.parent_user_id) {
+    return OK;
+  }
+  return requireFamilyAccess(child.parent_user_id);
+}

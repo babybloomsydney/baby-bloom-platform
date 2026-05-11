@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 
 /** Transition child to active_nanny on first action */
 async function maybeActivateChild(childId: string): Promise<void> {
@@ -31,7 +32,7 @@ async function maybeActivateChild(childId: string): Promise<void> {
 
 export async function logDiaryEntry(
   childId: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -44,6 +45,14 @@ export async function logDiaryEntry(
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return { success: false, error: "Not authenticated" };
+    }
+
+    // Paywall gate — block writes when the family's subscription has
+    // lapsed. Nanny-only children (no parent connected) pass through
+    // unconditionally. See payments §5.
+    const gate = await requireChildFamilyAccess(childId);
+    if (!gate.hasAccess) {
+      return { success: false, error: "subscription_required" };
     }
 
     const admin = createAdminClient();

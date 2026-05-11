@@ -24,7 +24,7 @@ async function main() {
   console.log("=".repeat(50));
 
   // Account-level info.
-  const account = await stripe.accounts.retrieve();
+  const account = await stripe.accounts.retrieve(null);
   console.log("Account country:", account.country);
   console.log("Account email:", account.email ?? "(none)");
   console.log("Charges enabled:", account.charges_enabled);

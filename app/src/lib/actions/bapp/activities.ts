@@ -9,6 +9,7 @@ import {
   buildActivityUserPrompt,
 } from "@/lib/ai/prompts/bapp-activity-generation";
 import type { ActivityPlan } from "@/types/bapp";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 
 /** Transition child to active_nanny on first action */
 async function maybeActivateChild(childId: string): Promise<void> {
@@ -54,6 +55,12 @@ export async function generateActivity(
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return { success: false, error: "Not authenticated" };
+    }
+
+    // Paywall gate — block AI generation when the family's subscription has lapsed.
+    const gate = await requireChildFamilyAccess(childId);
+    if (!gate.hasAccess) {
+      return { success: false, error: "subscription_required" };
     }
 
     const admin = createAdminClient();

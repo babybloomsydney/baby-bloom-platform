@@ -7,6 +7,7 @@ import { recalculateProgress, writeHistorySnapshot } from "./progress";
 import { generateTileInsight, getChildContext } from "./insights";
 import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 
 /**
  * submitReport — Report Cascade
@@ -27,7 +28,7 @@ export async function submitReport(
   childId: string,
   ratings: { id: string; score: number }[],
   feedback: string | null,
-  imageUrl: string | null
+  imageUrl: string | null,
 ): Promise<{
   success: boolean;
   error: string | null;
@@ -40,6 +41,12 @@ export async function submitReport(
     } = await supabase.auth.getUser();
     if (authError || !user) {
       return { success: false, error: "Not authenticated" };
+    }
+
+    // Paywall gate — block writes when the family's subscription has lapsed.
+    const gate = await requireChildFamilyAccess(childId);
+    if (!gate.hasAccess) {
+      return { success: false, error: "subscription_required" };
     }
 
     const admin = createAdminClient();
@@ -128,9 +135,9 @@ export async function submitReport(
         .select("description, domain")
         .in("id", milestoneIds);
       const descriptions = milestones?.map((m) => m.description) ?? [];
-      const domains = [
-        ...new Set(milestones?.map((m) => m.domain) ?? []),
-      ].join(", ");
+      const domains = [...new Set(milestones?.map((m) => m.domain) ?? [])].join(
+        ", ",
+      );
 
       const levels = ratings
         .map((r) => MASTERY_LABELS[r.score as MasteryScore])
