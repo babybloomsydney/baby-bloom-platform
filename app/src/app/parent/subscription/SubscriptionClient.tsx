@@ -163,9 +163,37 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
       </Card>
 
       <div className="mt-6 flex flex-col gap-3">
-        {(status === "active_monthly" ||
-          status === "active_upfront" ||
-          status === "past_due") && (
+        {(status === "active_monthly" || status === "active_upfront") && (
+          <>
+            {/* Cancel routes to our own reason-capture flow (S9), NOT
+                the Stripe Customer Portal. Spec § "Customer Portal —
+                when we use it" — Portal is for card updates only. */}
+            <Button
+              size="lg"
+              className="w-full justify-center bg-violet-600 hover:bg-violet-700"
+              onClick={() => router.push("/parent/subscription/cancel")}
+            >
+              Cancel subscription
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full justify-center"
+              disabled={isPending}
+              onClick={openPortal}
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Update payment method <ExternalLink className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </>
+        )}
+
+        {status === "past_due" && (
           <Button
             size="lg"
             className="w-full justify-center bg-violet-600 hover:bg-violet-700"
@@ -176,7 +204,7 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                Cancel or update card <ExternalLink className="h-4 w-4" />
+                Update payment method <ExternalLink className="h-4 w-4" />
               </>
             )}
           </Button>
