@@ -557,6 +557,7 @@ export const diaryModule: BloomBotModule = {
   name: "Daily Diary",
   description:
     "Drafts daily-care diary entries — meals (log_food), sleep (log_sleep), and free-form parent-updates (log_update). Each tool returns a DRAFT tile the user must accept; nothing is inserted into bapp_logs until the user clicks Accept.",
+  childScoped: true,
 
   tools: [
     {

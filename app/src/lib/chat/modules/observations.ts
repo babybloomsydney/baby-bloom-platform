@@ -358,6 +358,7 @@ export const observationsModule: BloomBotModule = {
   name: "Observations",
   description:
     "Drafts observations about a child. Passing a milestone_id + score (1-4) cascades — on Accept — into a progress recalculation and a history snapshot.",
+  childScoped: true,
 
   proactiveTriggers: [
     {

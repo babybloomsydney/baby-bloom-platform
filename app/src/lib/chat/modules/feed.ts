@@ -77,6 +77,7 @@ export const feedModule: BloomBotModule = {
   name: "Feed Reader",
   description:
     "Reads a child's recent feed entries (observations, activities, diary, insights, progress, custom tiles).",
+  childScoped: true,
 
   tools: [
     {

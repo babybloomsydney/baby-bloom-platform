@@ -470,6 +470,7 @@ export const progressModule: BloomBotModule = {
   name: "Child Progress",
   description:
     "Reads EYLF milestones for a child's age bracket along with their observed scores and per-domain completion percent, and applies direct progress updates.",
+  childScoped: true,
 
   tools: [
     {

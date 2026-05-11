@@ -70,6 +70,8 @@ import {
 } from "@/lib/chat/cost-tracker";
 import { collectTools, findToolHandler } from "@/lib/chat/modules/registry";
 import type { ToolResult } from "@/lib/chat/modules/types";
+import { gateChildScopedTool } from "@/lib/chat/access-gate";
+import { buildKatieSubscriptionRequiredResult } from "@/lib/chat/subscription-required-reply";
 import type { ChatTile } from "@/lib/chat/tiles";
 import {
   getOrCreateBot,
@@ -610,6 +612,27 @@ export async function POST(req: NextRequest) {
             }
             return outcome.result;
           }
+        }
+        // S6 — paywall gate for child-scoped tools. If the resolved
+        // child's family lacks access, return a templated subscription_
+        // required ToolResult (terminal: true) BEFORE the handler runs.
+        // The existing terminal-result handler downstream will surface
+        // the message + break the agentic loop.
+        if (handlerModule.childScoped) {
+          const gate = await gateChildScopedTool(args, children, admin);
+          if (gate.kind === "blocked") {
+            return buildKatieSubscriptionRequiredResult(
+              effectiveRole,
+              gate.childFirstName,
+              gate.parentFirstName,
+            );
+          }
+          if (gate.kind === "unresolvable") {
+            // Forward the resolveChild-style error verbatim — Katie's
+            // UX is consistent with the pre-gate behaviour.
+            return gate.result;
+          }
+          // 'ok' or 'no_child_arg' → fall through to the handler.
         }
         try {
           return await handlerModule.execute(call.name!, args, {

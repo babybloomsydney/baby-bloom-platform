@@ -172,6 +172,24 @@ export interface BloomBotModule {
    *  keeps backward compatibility — pre-existing modules behave
    *  exactly as before. */
   enabledForBot?: (settings: BotSettings) => boolean;
+  /**
+   * True when this module's tools operate on a specific child via
+   * the `child_name` arg (resolved via `resolveChild`). The chat
+   * route's runTool dispatcher gates these tools through
+   * `requireChildFamilyAccess` BEFORE calling the handler — if the
+   * resolved child belongs to a family without active access, the
+   * gate short-circuits with a `subscription_required` error and
+   * Katie's chat route emits the templated assistant response (S6).
+   *
+   * Set on modules that resolveChild + read/write per-child data:
+   *   child-profile, feed, feed-writer, diary, observations,
+   *   activities, progress, agent-memory, katie-scheduling
+   *
+   * Do NOT set on bot-scoped or user-scoped modules (history,
+   * profile, verification, job-search, connections, bsr,
+   * onboarding, katie-admin) — those don't take child_name.
+   */
+  childScoped?: boolean;
 }
 
 // Re-exports for convenience

@@ -302,6 +302,7 @@ export const feedWriterModule: BloomBotModule = {
   name: "Feed Writer",
   description:
     "Drafts custom tiles for the child-shared feed (bapp_logs type='custom'). The feed is visible to BOTH the nanny and the child's parent. ONLY for content about the child; anything private goes through agent-memory instead.",
+  childScoped: true,
 
   tools: [
     {

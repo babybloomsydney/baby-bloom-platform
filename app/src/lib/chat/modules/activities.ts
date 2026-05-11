@@ -792,6 +792,7 @@ export const activitiesModule: BloomBotModule = {
   name: "Activities",
   description:
     "Drafts activity plans targeting specific milestones, and closes the loop by completing them after they've been done. Generation for plans runs at propose time so the user sees the plan before accepting; Accept inserts the bapp_logs row. Completion runs the full report cascade on Accept.",
+  childScoped: true,
 
   tools: [
     {

@@ -51,6 +51,7 @@ export const childProfileModule: BloomBotModule = {
   name: "Child Profile",
   description:
     "Reads a child's profile (name, age, gender, status, onboarding state).",
+  childScoped: true,
 
   tools: [
     {

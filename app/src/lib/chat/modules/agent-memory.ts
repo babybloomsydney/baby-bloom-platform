@@ -268,6 +268,7 @@ export const agentMemoryModule: BloomBotModule = {
   name: "Memory",
   description:
     "Katie's long-term memory store. Three scopes: account (user-level, no child), child (private to this bot + one child), shared (visible to any bot with access to the same child).",
+  childScoped: true,
 
   tools: [
     {

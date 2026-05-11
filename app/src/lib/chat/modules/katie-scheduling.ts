@@ -422,6 +422,7 @@ export const katieSchedulingModule: BloomBotModule = {
   name: "Proactive Scheduling",
   description:
     "Create, inspect, edit, and cancel proactive messages Katie fires on her own cadence. Stores rows in proactive_schedules. Dispatcher picks them up every 15 minutes.",
+  childScoped: true,
 
   tools: [
     {
