@@ -176,20 +176,9 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                Manage subscription <ExternalLink className="h-4 w-4" />
+                Cancel or update card <ExternalLink className="h-4 w-4" />
               </>
             )}
-          </Button>
-        )}
-
-        {status === "active_upfront" && (
-          <Button
-            size="lg"
-            variant="outline"
-            className="w-full"
-            onClick={() => router.push("/parent/subscription/refund-request")}
-          >
-            Request a refund
           </Button>
         )}
 
@@ -213,6 +202,22 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
           </Button>
         )}
       </div>
+
+      {(status === "active_monthly" || status === "active_upfront") && (
+        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          <p>
+            Looking for a refund?{" "}
+            <Link
+              href="/contact"
+              className="font-medium text-violet-700 underline-offset-2 hover:underline"
+            >
+              Get in touch
+            </Link>{" "}
+            and tell us what&apos;s going on. We review every request
+            individually and respond within 14 business days.
+          </p>
+        </div>
+      )}
 
       <div className="mt-10 border-t border-slate-200 pt-6">
         <Link
