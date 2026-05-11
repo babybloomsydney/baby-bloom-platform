@@ -1,0 +1,227 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { createPortalSession } from "@/lib/actions/payments/portal";
+
+interface SubscriptionRow {
+  status:
+    | "trial"
+    | "active_monthly"
+    | "active_upfront"
+    | "past_due"
+    | "cancelled"
+    | "lapsed"
+    | null;
+  trial_started_at?: string | null;
+  trial_ends_at?: string | null;
+  paid_period_starts_at?: string | null;
+  paid_period_ends_at?: string | null;
+  past_due_grace_ends_at?: string | null;
+  cancelled_at?: string | null;
+  has_used_trial?: boolean | null;
+}
+
+interface SubscriptionClientProps {
+  subscription: SubscriptionRow | null;
+}
+
+const STATUS_LABELS: Record<NonNullable<SubscriptionRow["status"]>, string> = {
+  trial: "Free trial",
+  active_monthly: "Active monthly",
+  active_upfront: "Active upfront",
+  past_due: "Payment past due",
+  cancelled: "Cancelled — access until period end",
+  lapsed: "Lapsed",
+};
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-AU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function openPortal() {
+    setError(null);
+    startTransition(async () => {
+      const result = await createPortalSession();
+      if (!result.success || !result.data) {
+        setError(result.error ?? "Couldn't open the subscription portal.");
+        return;
+      }
+      // Open in same tab — Stripe portal handles its own session.
+      window.location.href = result.data.url;
+    });
+  }
+
+  // No subscription row → never subscribed → drop them on the subscribe page.
+  if (!subscription || !subscription.status) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12">
+        <h1 className="text-2xl font-bold text-slate-900">
+          You don&apos;t have a subscription yet
+        </h1>
+        <p className="mt-2 text-slate-600">
+          Start a 30-day free trial to track your child&apos;s development.
+        </p>
+        <Button
+          size="lg"
+          className="mt-6 bg-violet-600 hover:bg-violet-700"
+          onClick={() => router.push("/parent/subscribe")}
+        >
+          Subscribe
+        </Button>
+      </div>
+    );
+  }
+
+  const status = subscription.status;
+
+  // Period-end string varies by status.
+  const accessEndsAt =
+    status === "trial"
+      ? subscription.trial_ends_at
+      : status === "past_due"
+        ? subscription.past_due_grace_ends_at
+        : subscription.paid_period_ends_at;
+
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-12">
+      <h1 className="text-2xl font-bold text-slate-900">Subscription</h1>
+      <p className="mt-1 text-sm text-slate-500">
+        Manage your Baby Bloom subscription.
+      </p>
+
+      {error && (
+        <div
+          role="alert"
+          className="mt-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+        >
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <Card className="mt-6">
+        <CardContent className="p-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Current plan
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-900">
+                {STATUS_LABELS[status]}
+              </p>
+            </div>
+            {(status === "active_monthly" ||
+              status === "active_upfront" ||
+              status === "trial") && (
+              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
+                Active
+              </span>
+            )}
+            {status === "past_due" && (
+              <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+                Action needed
+              </span>
+            )}
+            {(status === "cancelled" || status === "lapsed") && (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                Inactive
+              </span>
+            )}
+          </div>
+
+          {accessEndsAt && (
+            <p className="mt-4 text-sm text-slate-600">
+              {status === "trial"
+                ? "Trial ends"
+                : status === "past_due"
+                  ? "Update your card by"
+                  : status === "cancelled"
+                    ? "Access until"
+                    : "Next charge / renewal"}
+              :{" "}
+              <strong className="text-slate-900">
+                {formatDate(accessEndsAt)}
+              </strong>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="mt-6 flex flex-col gap-3">
+        {(status === "active_monthly" ||
+          status === "active_upfront" ||
+          status === "past_due") && (
+          <Button
+            size="lg"
+            className="w-full justify-center bg-violet-600 hover:bg-violet-700"
+            disabled={isPending}
+            onClick={openPortal}
+          >
+            {isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                Manage subscription <ExternalLink className="h-4 w-4" />
+              </>
+            )}
+          </Button>
+        )}
+
+        {status === "active_upfront" && (
+          <Button
+            size="lg"
+            variant="outline"
+            className="w-full"
+            onClick={() => router.push("/parent/subscription/refund-request")}
+          >
+            Request a refund
+          </Button>
+        )}
+
+        {(status === "cancelled" || status === "lapsed") && (
+          <Button
+            size="lg"
+            className="w-full bg-violet-600 hover:bg-violet-700"
+            onClick={() => router.push("/parent/subscribe")}
+          >
+            Subscribe
+          </Button>
+        )}
+
+        {status === "trial" && (
+          <Button
+            size="lg"
+            className="w-full bg-violet-600 hover:bg-violet-700"
+            onClick={() => router.push("/parent/subscribe")}
+          >
+            Choose a paid plan
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-10 border-t border-slate-200 pt-6">
+        <Link
+          href="/parent"
+          className="text-sm text-slate-500 hover:text-slate-700"
+        >
+          ← Back to dashboard
+        </Link>
+      </div>
+    </div>
+  );
+}
