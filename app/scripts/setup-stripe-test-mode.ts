@@ -58,14 +58,11 @@ const baseUrl =
   process.env.NEXT_PUBLIC_APP_URL ??
   "http://localhost:3000";
 
-const stripe = new Stripe(secretKey, {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  apiVersion: "2026-04-22.dahlia" as any,
-  appInfo: {
-    name: "Baby Bloom Sydney — setup script",
-    url: "https://babybloomsydney.com.au",
-  },
-});
+// Use the bare Stripe constructor — passing appInfo / apiVersion under
+// tsx surfaces a generic "connection retry" failure that doesn't repro
+// with `new Stripe(key)` alone. Earlier minimal test (test-stripe.ts)
+// confirmed bare form works against the same key + network.
+const stripe = new Stripe(secretKey);
 
 interface CapturedIds {
   STRIPE_PRODUCT_MONTHLY_ID: string;
