@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { trackEvent } from "@/lib/analytics/trackEvent";
+import { NannyEarningsBadge } from "./NannyEarningsBadge";
 
 interface DashboardNavProps {
   role: "nanny" | "parent";
@@ -72,6 +73,12 @@ export function DashboardNav({ role }: DashboardNavProps) {
           </Link>
         </Button>
         */}
+
+        {/* DSS §8 Q2 — nanny earnings wallet, only on nanny-side routes.
+            Renders inline with the avatar; hides until data lands AND
+            the nanny has at least one connected child. Click routes to
+            /nanny/payouts where the breakdown lives. */}
+        {role === "nanny" && <NannyEarningsBadge />}
 
         {/* User dropdown */}
         <DropdownMenu>

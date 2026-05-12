@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AccountTotalTile } from "@/components/payments/AccountTotalTile";
 import { FamilyPayoutCard } from "@/components/payments/FamilyPayoutCard";
+import { NextPayoutTile } from "@/components/payments/NextPayoutTile";
+import { ThisMonthEarningsTile } from "@/components/payments/ThisMonthEarningsTile";
 import { EarningsExplainer } from "@/components/payments/EarningsExplainer";
 import { deriveFamilyPayoutState } from "@/lib/payments/payouts-state";
 
@@ -233,12 +235,104 @@ export default async function NannyPayoutsPage() {
     }
   }
 
-  const familyTiles: FamilyTile[] = parentIds.map((parentId) => {
+  // DSS §8 Q3 (Bailey 2026-05-12) — next-payout + this-month tiles.
+  // Two additional queries scoped to this nanny:
+  //   1. Upcoming pending/held payouts (sorted ASC) → next payout tile
+  //      + per-family next-release date.
+  //   2. All payouts (paid + pending) with scheduled_release_at in
+  //      the current calendar month → this-month earnings tile.
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+  const monthEnd = new Date(monthStart);
+  monthEnd.setMonth(monthEnd.getMonth() + 1);
+
+  type UpcomingPayoutRow = {
+    parent_user_id: string;
+    amount_aud_cents: number;
+    scheduled_release_at: string;
+    status: string;
+  };
+
+  type MonthPayoutRow = {
+    amount_aud_cents: number;
+    status: string;
+    scheduled_release_at: string;
+    paid_at: string | null;
+  };
+
+  const [upcomingRes, monthRes] =
+    parentIds.length === 0
+      ? [
+          { data: [] as UpcomingPayoutRow[], error: null },
+          { data: [] as MonthPayoutRow[], error: null },
+        ]
+      : await Promise.all([
+          admin
+            .from("nanny_payouts")
+            .select(
+              "parent_user_id, amount_aud_cents, scheduled_release_at, status",
+            )
+            .eq("nanny_user_id", user.id)
+            .in("status", ["pending", "held"])
+            .order("scheduled_release_at", { ascending: true })
+            .limit(NANNY_FAMILY_CAP * 2)
+            .returns<UpcomingPayoutRow[]>(),
+          admin
+            .from("nanny_payouts")
+            .select("amount_aud_cents, status, scheduled_release_at, paid_at")
+            .eq("nanny_user_id", user.id)
+            .gte("scheduled_release_at", monthStart.toISOString())
+            .lt("scheduled_release_at", monthEnd.toISOString())
+            .limit(200)
+            .returns<MonthPayoutRow[]>(),
+        ]);
+
+  // Surface DB errors for the new tiles too (consistent with
+  // existing PayoutsErrorState pattern).
+  if (upcomingRes.error || monthRes.error) {
+    return <PayoutsErrorState />;
+  }
+
+  // Next-release per parent_user_id (first row wins because ASC).
+  const nextReleaseByParent = new Map<string, UpcomingPayoutRow>();
+  for (const row of upcomingRes.data ?? []) {
+    if (!nextReleaseByParent.has(row.parent_user_id)) {
+      nextReleaseByParent.set(row.parent_user_id, row);
+    }
+  }
+
+  // Account-level next payout = the soonest pending/held across
+  // all families.
+  const nextPayoutRow = (upcomingRes.data ?? [])[0] ?? null;
+  const nextPayoutParentName = nextPayoutRow
+    ? (profileByParent.get(nextPayoutRow.parent_user_id) ?? null)
+    : null;
+
+  // This-month earnings: sum of cents across the rows in the window.
+  let monthPaidCents = 0;
+  let monthPendingCents = 0;
+  for (const row of monthRes.data ?? []) {
+    if (row.status === "paid" && row.paid_at) {
+      monthPaidCents += row.amount_aud_cents;
+    } else if (row.status === "pending" || row.status === "held") {
+      monthPendingCents += row.amount_aud_cents;
+    }
+  }
+  const monthTotalCents = monthPaidCents + monthPendingCents;
+
+  type FamilyTileWithRelease = FamilyTile & {
+    nextReleaseAt: string | null;
+  };
+
+  const familyTiles: FamilyTileWithRelease[] = parentIds.map((parentId) => {
     const child = firstChildPerParent.get(parentId);
     const sub = subsByParent.get(parentId);
     const parentName = profileByParent.get(parentId) ?? "the parent";
     const childName = child?.first_name ?? "your charge";
     const lastPayoutAt = latestPaidByParent.get(parentId) ?? null;
+    const nextReleaseAt =
+      nextReleaseByParent.get(parentId)?.scheduled_release_at ?? null;
 
     const state = deriveFamilyPayoutState({
       subscriptionStatus: sub?.status ?? null,
@@ -254,6 +348,7 @@ export default async function NannyPayoutsPage() {
       childFirstName: childName,
       state,
       lastPayoutAt,
+      nextReleaseAt,
     };
   });
 
@@ -274,19 +369,44 @@ export default async function NannyPayoutsPage() {
           earnings will start to show here.
         </p>
       ) : (
-        <div className="mt-6 space-y-3">
-          {familyTiles.map((tile) => (
-            <FamilyPayoutCard
-              key={tile.familyId}
-              familyId={tile.familyId}
-              label={tile.label}
-              parentFirstName={tile.parentFirstName}
-              childFirstName={tile.childFirstName}
-              state={tile.state}
-              lastPayoutAt={tile.lastPayoutAt}
+        <>
+          {/* DSS §8 Q3 (Bailey 2026-05-12) — breakdown tiles between
+              the account total and the per-family cards. Two surfaces:
+              the next concrete payout (date + amount + family) and
+              the rolling this-month total split into paid vs releasing. */}
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <NextPayoutTile
+              scheduledReleaseAt={nextPayoutRow?.scheduled_release_at ?? null}
+              amountAudCents={nextPayoutRow?.amount_aud_cents ?? null}
+              parentFirstName={nextPayoutParentName}
             />
-          ))}
-        </div>
+            <ThisMonthEarningsTile
+              totalAudCents={monthTotalCents}
+              paidAudCents={monthPaidCents}
+              pendingAudCents={monthPendingCents}
+            />
+          </div>
+
+          <div className="mt-6">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Per family
+            </p>
+          </div>
+          <div className="mt-2 space-y-3">
+            {familyTiles.map((tile) => (
+              <FamilyPayoutCard
+                key={tile.familyId}
+                familyId={tile.familyId}
+                label={tile.label}
+                parentFirstName={tile.parentFirstName}
+                childFirstName={tile.childFirstName}
+                state={tile.state}
+                lastPayoutAt={tile.lastPayoutAt}
+                nextReleaseAt={tile.nextReleaseAt}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       <div className="mt-8">

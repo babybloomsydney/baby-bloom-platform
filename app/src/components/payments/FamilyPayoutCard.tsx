@@ -25,6 +25,13 @@ export interface FamilyPayoutCardProps {
   state: PayoutSubState;
   /** ISO timestamp of the last paid payout, if any. */
   lastPayoutAt: string | null;
+  /**
+   * ISO timestamp of the next scheduled payout for this family, if
+   * any. Used in state-B / state-C secondary copy to surface the
+   * actual release date (Bailey 2026-05-12) — replaces vague
+   * "releasing soon" / "14 days after parent paid" copy.
+   */
+  nextReleaseAt?: string | null;
 }
 
 const SECONDARY_COPY: Record<
@@ -33,16 +40,23 @@ const SECONDARY_COPY: Record<
 > = {
   A: (p) =>
     `Earned this trial period. Earnings convert when ${p.parentFirstName} subscribes.`,
-  // UX-FIX-PLAN FIX-10 (2026-05-12 audit) — previously "Trial earnings
-  // releasing soon" which read as misleading once the family had
-  // converted out of trial. State B fires for any first-payout-not-yet-
-  // released situation (post-trial or post-renewal), so the copy is now
-  // generic about the safeguard window rather than tying to "trial".
-  B: () => `First payout releasing soon — within the 14-day safeguard window.`,
-  C: (p) =>
-    p.lastPayoutAt
-      ? `Active cycle. Last payout received ${formatDate(p.lastPayoutAt)}.`
-      : `Active cycle. First payout releases after the 14-day safeguard.`,
+  // DSS §3.1 banned-copy entry + §8 Q3 (Bailey 2026-05-12): show the
+  // ACTUAL scheduled release date. No more "releasing soon" or
+  // "14 days after parent paid" — the date is concrete.
+  B: (p) =>
+    p.nextReleaseAt
+      ? `Next payout: ${formatDate(p.nextReleaseAt)}.`
+      : `First payout window opens once the parent's first payment clears.`,
+  C: (p) => {
+    const lastPaid = p.lastPayoutAt
+      ? `Last payout received ${formatDate(p.lastPayoutAt)}.`
+      : null;
+    const next = p.nextReleaseAt
+      ? `Next payout: ${formatDate(p.nextReleaseAt)}.`
+      : null;
+    if (lastPaid && next) return `${lastPaid} ${next}`;
+    return lastPaid ?? next ?? `Active cycle.`;
+  },
   D: (p) =>
     `Frozen. ${p.parentFirstName} cancelled. Unlocks if they resubscribe. Past payouts unaffected.`,
   E: (p) =>
