@@ -128,6 +128,8 @@ interface NannyHubClientProps {
   bsrBanUntil: string | null;
   shareUnlocked: boolean;
   educationChildren: ChildClient[];
+  /** Subscribed-family tick state per child — DSS §8 Q8. */
+  subscribedChildIds?: string[];
   pendingInvites?: PendingInviteCard[];
 }
 
@@ -167,8 +169,12 @@ export function NannyHubClient({
   bsrBanUntil,
   shareUnlocked,
   educationChildren,
+  subscribedChildIds,
   pendingInvites = [],
 }: NannyHubClientProps) {
+  const subscribedChildIdSet = subscribedChildIds
+    ? new Set(subscribedChildIds)
+    : undefined;
   // ── Verification locking ──
   const isTabsLocked = verificationLevel < 3;
 
@@ -1061,8 +1067,12 @@ export function NannyHubClient({
         <>
           <PendingInvitesSection initialInvites={pendingInvites} />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}
-            <ChildCardGrid children={educationChildren} role="nanny" />
+            <ChildCardGrid
+              // eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children
+              children={educationChildren}
+              role="nanny"
+              subscribedChildIds={subscribedChildIdSet}
+            />
           </div>
         </>
       )}

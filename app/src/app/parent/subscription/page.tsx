@@ -9,9 +9,13 @@ import { SubscriptionClient } from "./SubscriptionClient";
  * Spec: `system/APP/PAYMENTS/10-ui-surfaces.md` §4.
  *
  * Shows the parent their current subscription state + state-dependent
- * action buttons (manage / subscribe / request-refund). Billing-history
- * view is deferred — this v1 surfaces the actions that drive the most
- * common operations (cancel, update card, subscribe-after-lapse).
+ * action buttons (manage / subscribe). Billing-history view is
+ * deferred — this v1 surfaces the actions that drive the most common
+ * operations (cancel, update card, subscribe-after-lapse).
+ *
+ * Refund handling is intentionally absent from this surface per DSS
+ * §8 Q5 (Bailey 2026-05-12) — refunds happen via /contact + email,
+ * never via in-product UI.
  */
 // UX-FIX-PLAN FIX-5 (2026-05-12 audit) — the Checkout success URL
 // lands here with `?status=success`. Without force-dynamic Next.js

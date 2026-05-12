@@ -287,6 +287,35 @@ export default async function NannyHubPage() {
 
   const shareUnlocked = nannyRes.data?.visible_in_bsr === true;
 
+  // DSS §8 Q8 (Bailey 2026-05-12) — small green tick on each child
+  // tile whose family is currently subscribed. Resolve in one batched
+  // query for all parent_user_ids on the nanny's children list.
+  const educationChildrenRows = (educationChildrenRes.data ??
+    []) as ChildClient[];
+  const parentIdsForSub = Array.from(
+    new Set(
+      educationChildrenRows
+        .map((c) => c.parent_user_id)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+  let subscribedChildIds: string[] = [];
+  if (parentIdsForSub.length > 0) {
+    const { data: activeSubs } = await admin
+      .from("parent_subscriptions")
+      .select("parent_user_id, status")
+      .in("parent_user_id", parentIdsForSub)
+      .in("status", ["trial", "active_monthly", "active_upfront"]);
+    const subscribedParentIds = new Set(
+      (activeSubs ?? []).map((s) => s.parent_user_id as string),
+    );
+    subscribedChildIds = educationChildrenRows
+      .filter(
+        (c) => c.parent_user_id && subscribedParentIds.has(c.parent_user_id),
+      )
+      .map((c) => c.id);
+  }
+
   // Assemble accordion profile data
   const n = nannyRes.data;
   const nannyProfile: NannyProfileAccordionData | null = n
@@ -367,7 +396,8 @@ export default async function NannyHubPage() {
         bsrBanned={bsrRes.banned || false}
         bsrBanUntil={bsrRes.banUntil || null}
         shareUnlocked={shareUnlocked}
-        educationChildren={(educationChildrenRes.data ?? []) as ChildClient[]}
+        educationChildren={educationChildrenRows}
+        subscribedChildIds={subscribedChildIds}
         pendingInvites={pendingInvitesResult.data ?? []}
       />
     </div>

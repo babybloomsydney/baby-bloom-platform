@@ -346,21 +346,11 @@ export function SubscriptionClient({
         )}
       </div>
 
-      {(status === "active_monthly" || status === "active_upfront") && (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          <p>
-            Looking for a refund?{" "}
-            <Link
-              href="/contact"
-              className="font-medium text-violet-700 underline-offset-2 hover:underline"
-            >
-              Get in touch
-            </Link>{" "}
-            and tell us what&apos;s going on. We review every request
-            individually and respond within 14 business days.
-          </p>
-        </div>
-      )}
+      {/* Refund copy intentionally removed per DSS §3.1 + §8 Q5
+          (Bailey 2026-05-12). Users who want to discuss billing
+          navigate to /contact themselves; the product never invites
+          the thought. Legal pages retain the statutory ACL refund
+          clauses (different surface, different audience). */}
 
       <div className="mt-10 border-t border-slate-200 pt-6">
         <Link

@@ -39,8 +39,8 @@ export function EarningsExplainer() {
             <li>Cycle 1 begins the moment the family subscribes.</li>
             <li>
               You see your A$100 immediately, but it&apos;s protected by a
-              14-day window before reaching your bank account. This protects
-              everyone from chargebacks or refund disputes.
+              14-day window before reaching your bank account. This window keeps
+              things safe for everyone.
             </li>
             <li>At day 30 the cycle ends; on day 44 your A$100 lands.</li>
             <li>A fresh A$100 cycle begins on day 31, paid on day 74.</li>
