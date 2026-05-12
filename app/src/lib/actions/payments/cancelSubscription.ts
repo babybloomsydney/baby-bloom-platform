@@ -106,24 +106,32 @@ export async function cancelSubscription(
     if (sub.status !== "active_monthly" && sub.status !== "active_upfront") {
       // Capture reason anyway — useful product input even when the
       // sub is technically already cancelled.
-      await admin
+      const { error: noopUpdateErr } = await admin
         .from("parent_subscriptions")
         .update({
           cancellation_reason: input.reason,
           cancellation_reason_text: reasonText,
         })
         .eq("id", sub.id);
+      if (noopUpdateErr) {
+        console.error(
+          "[cancelSubscription] no-op reason capture DB update failed",
+          noopUpdateErr,
+        );
+        return { success: false, error: "db_update_failed" };
+      }
       return {
         success: true,
         data: { paidPeriodEndsAt: sub.paid_period_ends_at },
       };
     }
 
-    // Monthly: cancel at period end via Stripe. The
-    // customer.subscription.updated webhook will subsequently
-    // flip our status to `cancelled` once Stripe processes it,
-    // and a later `customer.subscription.deleted` finalises the
-    // transition when the period ends.
+    // Monthly: flag Stripe to cancel at period end. This fires a
+    // customer.subscription.updated event (with cancel_at_period_end
+    // set), which our webhook handler currently ignores for status
+    // purposes — status is flipped locally below to `cancelled`.
+    // Stripe later fires customer.subscription.deleted when the
+    // period actually ends; our handler treats that as idempotent.
     if (sub.status === "active_monthly") {
       if (!sub.stripe_subscription_id) {
         return { success: false, error: "no_stripe_sub_id" };

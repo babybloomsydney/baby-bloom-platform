@@ -767,12 +767,15 @@ async function cascadePaymentsOnAccountClose(
     }>();
 
   if (sub) {
+    // `cancelled` deliberately excluded — that state means Stripe was
+    // already asked to cancel-at-period-end. Calling .cancel() again
+    // would either no-op (good) or hit a stale state error (noisy);
+    // either way we have nothing new to ask Stripe to do.
     const cancellable = [
       "trial",
       "active_monthly",
       "active_upfront",
       "past_due",
-      "cancelled",
     ];
     if (cancellable.includes(sub.status) && sub.stripe_subscription_id) {
       try {
@@ -805,7 +808,13 @@ async function cascadePaymentsOnAccountClose(
   // 2. Anonymise child_client rows (NOT delete — preserve nanny's
   //    bapp_logs history per option B). Sets first_name + DOB to
   //    tombstones; clears parent_user_id link.
-  await admin
+  //
+  //    Best-effort: failure here is logged but does NOT abort the
+  //    deactivation. The user has already chosen to leave, and
+  //    leaving residual PII is preferable to leaving the user
+  //    half-deactivated with a confusing error message. Admin can
+  //    re-run anonymisation via a manual queue if this surface.
+  const childAnonResult = await admin
     .from("child_client")
     .update({
       first_name: "[closed]",
@@ -814,11 +823,17 @@ async function cascadePaymentsOnAccountClose(
       updated_at: new Date().toISOString(),
     })
     .eq("parent_user_id", parentUserId);
+  if (childAnonResult.error) {
+    console.error(
+      "[cascadePaymentsOnAccountClose] child_client anonymise failed",
+      childAnonResult.error,
+    );
+  }
 
   // 3. End nanny_placements for this parent. 'ended' is the live
   //    status; matches the placement-lifecycle constants used
   //    elsewhere in the codebase.
-  await admin
+  const placementsResult = await admin
     .from("nanny_placements")
     .update({
       status: "ended",
@@ -827,6 +842,12 @@ async function cascadePaymentsOnAccountClose(
     })
     .eq("parent_user_id", parentUserId)
     .eq("status", "active");
+  if (placementsResult.error) {
+    console.error(
+      "[cascadePaymentsOnAccountClose] nanny_placements end failed",
+      placementsResult.error,
+    );
+  }
 }
 
 // ── A-05: parent profile picture ─────────────────────────────────────────

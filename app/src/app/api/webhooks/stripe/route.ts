@@ -234,7 +234,10 @@ async function dispatchEvent(
       return;
     default:
       // Unknown event — log and acknowledge so Stripe doesn't retry.
-      console.log("[stripe-webhook] unhandled event type", event.type);
+      // `warn` rather than `log` so log-aggregation rules surface it
+      // and we get a signal when Stripe adds a new event type we
+      // should be handling.
+      console.warn("[stripe-webhook] unhandled event type", event.type);
       return;
   }
 }

@@ -19,7 +19,11 @@ export function ReplyForm({ messageId, defaultSubject }: ReplyFormProps) {
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // `sentWarning` flips when the email sent but the DB row couldn't
+  // be marked replied. We deliberately do NOT show a plain success in
+  // that case — the inbox row will still be `unread` until refresh.
   const [sent, setSent] = useState(false);
+  const [sentWarning, setSentWarning] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function submit() {
@@ -40,12 +44,29 @@ export function ReplyForm({ messageId, defaultSubject }: ReplyFormProps) {
         );
         return;
       }
+      if (r.warning) {
+        setSentWarning(r.warning);
+      }
       setSent(true);
       router.refresh();
     });
   }
 
   if (sent) {
+    if (sentWarning) {
+      return (
+        <div
+          role="alert"
+          className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Reply sent.</p>
+            <p>{sentWarning} Refresh the inbox to confirm.</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
         <CheckCircle2 className="h-4 w-4 shrink-0" />

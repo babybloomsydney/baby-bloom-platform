@@ -28,6 +28,7 @@ const SUPPORT_INBOX = "admin@babybloomsydney.com.au";
 const SUBJECT_MAX = 120;
 const MESSAGE_MIN = 10;
 const MESSAGE_MAX = 4000;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function escapeHtml(s: string): string {
   return s
@@ -77,6 +78,18 @@ export async function submitContactRequest(input: {
         success: false,
         error: `Message must be ${MESSAGE_MAX} characters or fewer.`,
       };
+    }
+    // Optional override — must be a valid email shape when provided so
+    // we don't ship a junk reply-to into Resend (would silently bounce
+    // any support reply). Server-side belt-and-braces: the client
+    // form should reject this earlier too. Length-cap before regex per
+    // RFC 5321 (254 chars) so a multi-KB string doesn't pass the
+    // "non-empty" gate and reach Resend as a junk header.
+    if (
+      replyEmail.length > 0 &&
+      (replyEmail.length > 254 || !EMAIL_REGEX.test(replyEmail))
+    ) {
+      return { success: false, error: "Please add a valid reply email." };
     }
 
     // Resolve user identity for the support team via admin client
@@ -201,8 +214,11 @@ function classifyContactCategory(
  * address. There's no rate-limit here yet; if the form sees
  * spam in production add a simple per-IP throttle in the route
  * handler that wraps this action.
+ *
+ * Both `submitContactRequest` and `submitPublicContactRequest`
+ * use the same `EMAIL_REGEX` — moved up to module scope rather
+ * than redeclared next to each user so they stay in sync.
  */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_MAX = 80;
 
 export async function submitPublicContactRequest(input: {

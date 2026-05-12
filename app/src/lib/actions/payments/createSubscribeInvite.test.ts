@@ -102,10 +102,8 @@ vi.mock("@/lib/supabase/admin", () => ({
   /* eslint-enable @typescript-eslint/no-explicit-any */
 }));
 
-import {
-  createSubscribeInvite,
-  isValidSubscribeInviteToken,
-} from "./createSubscribeInvite";
+import { createSubscribeInvite } from "./createSubscribeInvite";
+import { isValidSubscribeInviteToken } from "@/lib/payments/subscribe-invite-token";
 
 describe("createSubscribeInvite", () => {
   it("returns Not authenticated when unauth'd", async () => {

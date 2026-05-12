@@ -262,8 +262,59 @@ export async function handleSubscriptionUpdated(
     updates.paid_period_ends_at = new Date(periodEndUnix * 1000).toISOString();
   }
   if (Object.keys(updates).length === 0) {
+    // Period-end probe missed on both SDK shapes — leaves us with
+    // nothing to update. Log a warning so future Stripe-API-shape
+    // drifts (per readCurrentPeriodEnd's SDK-gap note) are visible
+    // rather than swallowed.
+    console.warn(
+      "[stripe-webhook] sub.updated had no current_period_end probe match",
+      sub.id,
+    );
     return;
   }
+
+  // Read current status before writing. If the row is in a terminal
+  // state (`cancelled` or `lapsed`), a stale customer.subscription.updated
+  // replay must NOT silently refresh paid_period_ends_at — that would
+  // mask a cancellation from the rest of the app (Katie chokepoint,
+  // banners, dashboards). Skip when the Stripe-side subscription is
+  // already in an inactive state too.
+  //
+  // Capture the read error: a transient DB failure here would otherwise
+  // be misread as "no row → no-op" and Stripe would acknowledge a
+  // legitimate event without applying it. Throw so the webhook retries.
+  const { data: existing, error: existingErr } = await admin
+    .from("parent_subscriptions")
+    .select("status")
+    .eq("stripe_subscription_id", sub.id)
+    .maybeSingle<{ status: string }>();
+  if (existingErr) {
+    throw new Error(
+      `parent_subscriptions status read (sub.updated) failed: ${existingErr.message}`,
+    );
+  }
+  if (!existing) {
+    // No row yet → nothing to update. Checkout completion creates the
+    // row; if a stray sub.updated arrives before that, it's not ours
+    // to act on.
+    return;
+  }
+  const terminalLocalStatuses = new Set<string>(["cancelled", "lapsed"]);
+  // Typed against Stripe.Subscription.Status so a Stripe API update
+  // that renames any of these literals fails to compile rather than
+  // silently dropping the guard.
+  const inactiveStripeStatuses = new Set<Stripe.Subscription.Status>([
+    "canceled",
+    "unpaid",
+    "incomplete_expired",
+  ]);
+  if (
+    terminalLocalStatuses.has(existing.status) ||
+    inactiveStripeStatuses.has(sub.status)
+  ) {
+    return;
+  }
+
   const { error } = await admin
     .from("parent_subscriptions")
     .update(updates)
@@ -495,9 +546,13 @@ export async function handleAccountUpdated(
   // Find the nanny row by the connect account id.
   const { data: nanny } = await admin
     .from("nannies")
-    .select("id, connect_onboarded_at")
+    .select("id, connect_onboarded_at, payout_application_status")
     .eq("stripe_connect_account_id", account.id)
-    .maybeSingle<{ id: string; connect_onboarded_at: string | null }>();
+    .maybeSingle<{
+      id: string;
+      connect_onboarded_at: string | null;
+      payout_application_status: string | null;
+    }>();
   if (!nanny) {
     console.warn(
       "[stripe-webhook] account.updated for unknown connect account",
@@ -535,7 +590,74 @@ export async function handleAccountUpdated(
     return;
   }
 
-  // For ongoing capability changes (e.g. Stripe asks for more info),
+  // Previously-onboarded account just lost payouts_enabled — Stripe has
+  // restricted the account (e.g. dispute, missing info, sanctions hit).
+  // Flip our payout_application_status to "restricted" so the admin
+  // dashboard surfaces the nanny + we stop scheduling new payouts to
+  // a frozen Stripe account. Leave connect_onboarded_at populated —
+  // it's the historical marker, not the live capability flag.
+  if (
+    !payoutsEnabled &&
+    nanny.connect_onboarded_at &&
+    nanny.payout_application_status !== "restricted"
+  ) {
+    const { error } = await admin
+      .from("nannies")
+      .update({ payout_application_status: "restricted" })
+      .eq("id", nanny.id);
+    if (error) {
+      throw new Error(
+        `nannies update (account.updated → restricted) failed: ${error.message}`,
+      );
+    }
+    await logActivity(admin, {
+      action_type: "payout_application_status_changed",
+      user_id: null,
+      action_details: {
+        nanny_id: nanny.id,
+        connect_account_id: account.id,
+        new_status: "restricted",
+        payouts_enabled: payoutsEnabled,
+        requirements_currently_due: account.requirements?.currently_due ?? null,
+      },
+    });
+    return;
+  }
+
+  // Stripe re-enables a previously-restricted account (admin or nanny
+  // resolved the outstanding requirements). Restore "verified" so we
+  // resume normal payout flow.
+  if (
+    payoutsEnabled &&
+    detailsSubmitted &&
+    nanny.connect_onboarded_at &&
+    nanny.payout_application_status === "restricted"
+  ) {
+    const { error } = await admin
+      .from("nannies")
+      .update({ payout_application_status: "verified" })
+      .eq("id", nanny.id);
+    if (error) {
+      throw new Error(
+        `nannies update (account.updated → re-verified) failed: ${error.message}`,
+      );
+    }
+    await logActivity(admin, {
+      action_type: "payout_application_status_changed",
+      user_id: null,
+      action_details: {
+        nanny_id: nanny.id,
+        connect_account_id: account.id,
+        new_status: "verified",
+        payouts_enabled: payoutsEnabled,
+        reason: "restored_from_restricted",
+      },
+    });
+    return;
+  }
+
+  // For ongoing capability changes that don't flip the actionable
+  // state (e.g. Stripe asks for more info but payouts still enabled),
   // surface as an activity log for admin visibility.
   await logActivity(admin, {
     action_type: "nanny_account_updated",
@@ -631,8 +753,12 @@ export async function handlePayoutCreated(
   admin: AdminClient,
   event: Stripe.PayoutCreatedEvent,
 ): Promise<void> {
+  // Audit-only event — actual state transition happens in handlePayoutPaid.
+  // The action_type was `payout_paid` previously, which mis-labelled the
+  // forensic log + would have mis-counted payout success in any future
+  // dashboard. Correct it to `payout_created`.
   await logActivity(admin, {
-    action_type: "payout_paid",
+    action_type: "payout_created",
     user_id: null,
     action_details: {
       stripe_payout_id: event.data.object.id,
@@ -650,6 +776,12 @@ export async function handlePayoutPaid(
 ): Promise<void> {
   // Mark any matching nanny_payouts row as paid. Stripe's payout id
   // is stored on `stripe_transfer_id` in our schema.
+  //
+  // Throw on DB failure — Stripe will retry the webhook + the missing
+  // state transition is high-stakes (nanny + admin both rely on
+  // `nanny_payouts.status` to determine whether the parent's money
+  // has landed). Silently logging would mark the event delivered
+  // while leaving the row stuck on `processing`.
   const stripePayoutId = event.data.object.id;
   const arrival = event.data.object.arrival_date * 1000;
   const arrivalIso = new Date(arrival).toISOString();
@@ -662,7 +794,9 @@ export async function handlePayoutPaid(
     })
     .eq("stripe_transfer_id", stripePayoutId);
   if (error) {
-    console.error("[stripe-webhook] payout.paid update failed", error);
+    throw new Error(
+      `nanny_payouts update (payout.paid) failed: ${error.message}`,
+    );
   }
 
   await logActivity(admin, {
@@ -680,6 +814,10 @@ export async function handlePayoutFailed(
   admin: AdminClient,
   event: Stripe.PayoutFailedEvent,
 ): Promise<void> {
+  // Throw on DB failure — see handlePayoutPaid rationale. A failed
+  // payout that isn't reflected in our row would leave the nanny seeing
+  // "scheduled" while Stripe shows "failed", which is exactly the
+  // dashboard divergence we can't ship.
   const stripePayoutId = event.data.object.id;
   const failureMessage =
     event.data.object.failure_message ?? "(no message provided)";
@@ -693,7 +831,9 @@ export async function handlePayoutFailed(
     })
     .eq("stripe_transfer_id", stripePayoutId);
   if (error) {
-    console.error("[stripe-webhook] payout.failed update failed", error);
+    throw new Error(
+      `nanny_payouts update (payout.failed) failed: ${error.message}`,
+    );
   }
 
   await logActivity(admin, {
@@ -758,6 +898,13 @@ function stringOrNull(
  * Reads `current_period_end` from a subscription. Stripe SDK shapes
  * differ across API versions — the field may live on the subscription
  * itself (legacy) or under the first item (newer). Probe both safely.
+ *
+ * SDK-gap note: this project pins `stripe@^17.x` against API version
+ * `2024-09-30.acacia`. On that version, the Subscription type's
+ * `current_period_end` was moved to per-item, so the top-level cast
+ * is for legacy-shape compatibility (older raw events). Replace with
+ * direct property access once the SDK + API version are advanced
+ * past the migration.
  */
 function readCurrentPeriodEnd(sub: Stripe.Subscription): number | null {
   const candidate = (sub as unknown as { current_period_end?: unknown })
@@ -795,9 +942,15 @@ function getInvoiceSubscription(
  * Returns the ISO timestamp for the earliest linked child's 5th birthday.
  * Used as `paid_period_ends_at` for the upfront plan.
  *
- * Falls back to "now + 5 years" when the parent has no linked children
- * yet — defensive only; the upfront flow shouldn't be reachable without
- * at least one child connected.
+ * Throws on DB error — this runs in the upfront checkout completion
+ * handler, where a misset `paid_period_ends_at` directly determines
+ * how long the parent retains paid access for a real-money
+ * subscription. Better to let Stripe retry the webhook than to silently
+ * fall back to "now + 5 years" and lock in the wrong period.
+ *
+ * Falls back to "now + 5 years" only when the parent has NO linked
+ * children — defensive; the upfront flow shouldn't be reachable
+ * without at least one child connected.
  */
 async function earliestChildFifthBirthdayIso(
   admin: AdminClient,
@@ -811,7 +964,9 @@ async function earliestChildFifthBirthdayIso(
     .order("date_of_birth", { ascending: true })
     .limit(1);
   if (error) {
-    console.error("[stripe-webhook] child_client lookup failed", error);
+    throw new Error(
+      `child_client lookup (earliest fifth birthday) failed: ${error.message}`,
+    );
   }
   const dob = rows?.[0]?.date_of_birth;
   if (typeof dob === "string" && dob.length > 0) {

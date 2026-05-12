@@ -26,8 +26,8 @@
  * - "track", "tracking", "tracked" — never appear in user copy.
  */
 
-import { useRef } from "react";
-import { Lock, Share2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { AlertCircle, Lock, Share2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -65,13 +65,19 @@ export function SubscribeModalNanny({
   shareText,
 }: SubscribeModalNannyProps) {
   const primaryCtaRef = useRef<HTMLButtonElement>(null);
+  // Surfaces when both navigator.share AND clipboard fail — non-HTTPS
+  // contexts, hardened mobile browsers, permission-denied. Falling
+  // through silently leaves the nanny tapping a dead button; the inline
+  // fallback gives her something selectable to copy by hand.
+  const [shareError, setShareError] = useState<boolean>(false);
 
   const parentRef = parentFirstName ?? "the parent";
   const ctaLabel = parentFirstName
     ? `Share link with ${parentFirstName}`
     : "Share link with the parent";
 
-  const handleShare = async (): Promise<void> => {
+  const performShare = async (): Promise<void> => {
+    setShareError(false);
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
@@ -87,21 +93,28 @@ export function SubscribeModalNanny({
         // context, etc.) → clipboard fallback.
       }
     }
-    await fallbackCopy();
-  };
-
-  const fallbackCopy = async (): Promise<void> => {
     try {
       await navigator.clipboard.writeText(shareText);
     } catch {
-      // Clipboard blocked — silent. The user will retry via the
-      // share button. No toast here; toast feedback is the parent
-      // route's responsibility if desired.
+      setShareError(true);
     }
   };
 
+  // React onClick expects a sync handler — wrap so the floating
+  // Promise from `performShare` is captured (via `void`) instead of
+  // unhandled. Without this, an exception inside performShare would
+  // turn into a global unhandled-rejection.
+  const handleShareClick = (): void => {
+    void performShare();
+  };
+
   const handleOpenChange = (next: boolean): void => {
-    if (!next) onClose();
+    if (!next) {
+      // Reset transient share-error state so a re-open of the modal
+      // doesn't show a stale alert from a previous attempt.
+      setShareError(false);
+      onClose();
+    }
   };
 
   return (
@@ -132,11 +145,31 @@ export function SubscribeModalNanny({
             ref={primaryCtaRef}
             size="lg"
             className="w-full bg-violet-600 hover:bg-violet-700"
-            onClick={handleShare}
+            onClick={handleShareClick}
           >
             <Share2 className="h-4 w-4" aria-hidden="true" />
             {ctaLabel}
           </Button>
+          {shareError && (
+            <div
+              role="alert"
+              className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-900"
+            >
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Couldn&apos;t open share or copy automatically. Select + copy
+                  the link below.
+                </span>
+              </div>
+              <input
+                readOnly
+                value={shareUrl}
+                onFocus={(e) => e.currentTarget.select()}
+                className="w-full rounded-md border border-amber-200 bg-white px-2 py-1 font-mono text-xs text-slate-700"
+              />
+            </div>
+          )}
           <Button
             size="lg"
             variant="ghost"

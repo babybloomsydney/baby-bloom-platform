@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isValidSubscribeInviteToken } from "@/lib/payments/subscribe-invite-token";
 import { SubscribeClient } from "./SubscribeClient";
 
 /**
@@ -72,10 +73,13 @@ export default async function ParentSubscribePage({
   const trialAvailable = !sub?.has_used_trial;
 
   // Personalised-header context when arriving via a nanny share link.
+  // Validate the token format BEFORE any DB lookup so malformed
+  // values (typos, fuzz, attempted injection) never hit Postgres.
   let nannyContext: SubscribeContext | null = null;
   if (
     searchParams.via === "nanny-invite" &&
-    typeof searchParams.inviteToken === "string"
+    typeof searchParams.inviteToken === "string" &&
+    isValidSubscribeInviteToken(searchParams.inviteToken)
   ) {
     nannyContext = await resolveNannyContext(searchParams.inviteToken, user.id);
   }

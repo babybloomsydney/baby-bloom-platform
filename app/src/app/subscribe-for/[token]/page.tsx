@@ -16,7 +16,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isValidSubscribeInviteToken } from "@/lib/actions/payments/createSubscribeInvite";
+import { isValidSubscribeInviteToken } from "@/lib/payments/subscribe-invite-token";
 
 interface PageProps {
   params: { token: string };
@@ -58,6 +58,14 @@ export default async function SubscribeForLandingPage({
   if (invite.status === "expired") {
     return <InvalidLinkPage reason="expired" />;
   }
+  if (invite.status === "redeemed") {
+    // The link has already been used (parent already completed
+    // Checkout with this token). A second arrival here would
+    // otherwise route to /parent/subscribe and offer the plan picker
+    // again — confusing if the family already has an active
+    // subscription, and wasted DB roundtrip if they don't.
+    return <InvalidLinkPage reason="redeemed" />;
+  }
 
   // Auth check. Unauth'd users return after signin via `?next=`.
   const supabase = createClient();
@@ -89,7 +97,7 @@ export default async function SubscribeForLandingPage({
 function InvalidLinkPage({
   reason,
 }: {
-  reason: "malformed" | "not_found" | "revoked" | "expired";
+  reason: "malformed" | "not_found" | "revoked" | "expired" | "redeemed";
 }): JSX.Element {
   const copy = (() => {
     switch (reason) {
@@ -101,6 +109,8 @@ function InvalidLinkPage({
         return "This link has been revoked. Ask your nanny to share a fresh one.";
       case "expired":
         return "This link has expired. Ask your nanny to share a fresh one.";
+      case "redeemed":
+        return "This link has already been used. Your subscription should be active in your dashboard.";
       default:
         return "This link is no longer valid.";
     }

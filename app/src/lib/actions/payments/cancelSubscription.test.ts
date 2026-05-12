@@ -19,6 +19,7 @@ const state = vi.hoisted(() => ({
     table: string;
     payload: Record<string, unknown>;
   }>,
+  dbUpdateError: null as null | { message: string },
   activityLogInserts: [] as Record<string, unknown>[],
 }));
 
@@ -34,6 +35,7 @@ beforeEach(() => {
   state.stripeUpdateCalls = [];
   state.stripeUpdateThrows = false;
   state.dbUpdateCalls = [];
+  state.dbUpdateError = null;
   state.activityLogInserts = [];
   vi.clearAllMocks();
 });
@@ -73,7 +75,7 @@ vi.mock("@/lib/supabase/admin", () => ({
           update: (payload: Record<string, unknown>) => ({
             eq: async () => {
               state.dbUpdateCalls.push({ table, payload });
-              return { data: null, error: null };
+              return { data: null, error: state.dbUpdateError };
             },
           }),
         };
@@ -205,5 +207,31 @@ describe("cancelSubscription", () => {
   it("empty reasonText stored as null", async () => {
     await cancelSubscription({ reason: "other", reasonText: "   " });
     expect(state.dbUpdateCalls[0]?.payload.cancellation_reason_text).toBeNull();
+  });
+
+  it("active-branch DB UPDATE failure → db_update_failed (was unchecked before C6)", async () => {
+    state.dbUpdateError = { message: "rls_denied" };
+    const r = await cancelSubscription({ reason: "other" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toBe("db_update_failed");
+  });
+
+  it("no-op-branch (cancelled): DB UPDATE failure now surfaces failure — silent before C6", async () => {
+    state.subRow!.status = "cancelled";
+    state.dbUpdateError = { message: "rls_denied" };
+    const r = await cancelSubscription({ reason: "other" });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error).toBe("db_update_failed");
+  });
+
+  it("no-op-branch (lapsed): DB UPDATE success still returns success + captures reason", async () => {
+    state.subRow!.status = "lapsed";
+    const r = await cancelSubscription({ reason: "not_using" });
+    expect(r.success).toBe(true);
+    expect(state.dbUpdateCalls[0]?.payload).toMatchObject({
+      cancellation_reason: "not_using",
+    });
+    // Status NOT touched in no-op branch
+    expect(state.dbUpdateCalls[0]?.payload).not.toHaveProperty("status");
   });
 });

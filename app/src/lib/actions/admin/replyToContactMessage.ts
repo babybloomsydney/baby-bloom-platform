@@ -19,7 +19,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
 
 export type ReplyToContactMessageResult =
-  | { success: true }
+  | { success: true; warning?: string }
   | { success: false; error: string };
 
 export async function replyToContactMessage(input: {
@@ -100,11 +100,8 @@ export async function replyToContactMessage(input: {
         replied_by: user.id,
       })
       .eq("id", msg.id);
-    if (updateErr) {
-      console.error("[replyToContactMessage] db update failed", updateErr);
-    }
 
-    await admin.from("activity_logs").insert({
+    const { error: logErr } = await admin.from("activity_logs").insert({
       user_id: msg.user_id,
       action_type: "contact_message_replied",
       action_details: {
@@ -112,8 +109,31 @@ export async function replyToContactMessage(input: {
         replied_by: user.id,
         subject_chars: subject.length,
         body_chars: body.length,
+        db_update_succeeded: !updateErr,
       },
     });
+    if (logErr) {
+      // Audit-log misses are non-fatal but worth surfacing so they
+      // get picked up in log aggregation. Pattern matches the
+      // best-effort logActivity helper in the Stripe webhook handlers.
+      console.warn(
+        "[replyToContactMessage] activity_logs insert failed",
+        logErr.code,
+      );
+    }
+
+    // Email IS sent at this point — returning `success:false` would
+    // invite the admin to retry, which would send a duplicate. Surface
+    // the DB miss via the `warning` channel so the UI can render "sent,
+    // but the inbox row may stay 'unread' — refresh to confirm" without
+    // implying the customer hasn't been replied to.
+    if (updateErr) {
+      console.error("[replyToContactMessage] db update failed", updateErr);
+      return {
+        success: true,
+        warning: "Reply sent, but the message status couldn't be updated.",
+      };
+    }
 
     return { success: true };
   } catch (err) {

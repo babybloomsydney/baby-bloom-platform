@@ -33,12 +33,13 @@
 import crypto from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { SUBSCRIBE_INVITE_TOKEN_ALPHABET } from "@/lib/payments/subscribe-invite-token";
 
-const TOKEN_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-// Crockford-like: uppercase letters minus I/L/O + digits 2-9 (no 0/1).
-// Char class mirrors TOKEN_ALPHABET exactly.
-const TOKEN_FORMAT_REGEX =
-  /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
+// Token shape (alphabet + regex + validator) lives at
+// `lib/payments/subscribe-invite-token.ts` so it can be imported
+// from non-server contexts (server components, page components).
+// Next.js 14 rejects sync exports from "use server" files, so this
+// action file holds only the async writer + the generator.
 
 /** Generate a fresh XXXX-XXXX token. Matches child-invites format
  *  so future agents reading either table recognise the shape. */
@@ -46,7 +47,10 @@ function generateToken(): string {
   const buf = crypto.randomBytes(8);
   let out = "";
   for (let i = 0; i < 8; i++) {
-    out += TOKEN_ALPHABET[buf[i] % TOKEN_ALPHABET.length];
+    out +=
+      SUBSCRIBE_INVITE_TOKEN_ALPHABET[
+        buf[i] % SUBSCRIBE_INVITE_TOKEN_ALPHABET.length
+      ];
     if (i === 3) out += "-";
   }
   return out;
@@ -56,12 +60,6 @@ function buildSubscribeUrl(token: string): string {
   const base =
     process.env.NEXT_PUBLIC_INVITE_BASE_URL ?? "https://babybloomsydney.com.au";
   return `${base}/subscribe-for/${token}`;
-}
-
-/** Validate token format BEFORE any DB call — same defence-in-depth
- *  pattern as child-invites. Malformed tokens never reach Postgres. */
-export function isValidSubscribeInviteToken(token: unknown): token is string {
-  return typeof token === "string" && TOKEN_FORMAT_REGEX.test(token);
 }
 
 export interface CreateSubscribeInviteSuccess {

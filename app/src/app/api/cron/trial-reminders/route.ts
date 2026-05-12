@@ -23,12 +23,21 @@ import { buildTrialExpiryReminderEmail } from "@/lib/email/templates/trial-expir
  * Returns: { reminded: number, errors: number }.
  */
 export async function GET(request: NextRequest) {
+  // Fail-CLOSED: require CRON_SECRET to be set. If it's missing in the
+  // environment, the cron endpoint MUST refuse to run rather than
+  // silently accept any caller. A misconfigured deploy that drops the
+  // env var would otherwise expose the endpoint to the open internet,
+  // letting anyone trigger marketing emails to real customers.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: "cron_secret_not_configured" },
+      { status: 503 },
+    );
+  }
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const admin = createAdminClient();

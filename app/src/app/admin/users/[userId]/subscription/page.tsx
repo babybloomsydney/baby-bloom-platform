@@ -39,9 +39,22 @@ export default async function AdminUserSubscriptionPage({
       }>(),
     admin
       .from("parent_subscriptions")
-      .select("*")
+      .select(
+        // Explicit projection — narrower than `*` so we don't leak any
+        // new column added later (e.g. internal flags, billing notes).
+        // The view renders exactly these seven fields.
+        "status, trial_ends_at, paid_period_ends_at, cancelled_at, cancellation_reason, stripe_customer_id, stripe_subscription_id",
+      )
       .eq("parent_user_id", params.userId)
-      .maybeSingle(),
+      .maybeSingle<{
+        status: string;
+        trial_ends_at: string | null;
+        paid_period_ends_at: string | null;
+        cancelled_at: string | null;
+        cancellation_reason: string | null;
+        stripe_customer_id: string | null;
+        stripe_subscription_id: string | null;
+      }>(),
     admin
       .from("child_client")
       .select("id, first_name, nanny_user_id")
