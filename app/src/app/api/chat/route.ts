@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const children = await getUserChildren(userId);
+      const children = await getUserChildren(userId, role);
       const admin = createAdminClient();
 
       // Save user message. Surface insert errors loudly — if the user's

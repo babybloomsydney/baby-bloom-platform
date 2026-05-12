@@ -24,9 +24,7 @@ import { SparkleIcon } from "@/components/katie/messages/SparkleIcon";
 import { SubscribeModal } from "@/components/payments/SubscribeModal";
 import { SubscribeModalNanny } from "@/components/payments/SubscribeModalNanny";
 import { LapsedBanner } from "@/components/payments/LapsedBanner";
-import { SubscriptionStatePill } from "./SubscriptionStatePill";
 import type { SubscribeModalLapseReason } from "@/components/payments/SubscribeModal";
-import type { SubscriptionStateForPill } from "@/lib/payments/subscription-state-for-child";
 
 interface BAppLayoutProps {
   child: ChildClient;
@@ -58,15 +56,6 @@ interface BAppLayoutProps {
   nannyShareUrl?: string;
   /** Pre-built share-text body matching the URL. */
   nannyShareText?: string;
-  /**
-   * Per-family subscription state. Drives a small contextual pill
-   * shown next to the child's name on the hero card. Without it the
-   * dev page is silent on trial / active / cancelled-in-period /
-   * past-due — three of four real states render identically (see
-   * UX-FIX-PLAN FIX-8 audit). Optional for back-compat — callers
-   * that don't pass it get no pill.
-   */
-  subscriptionState?: SubscriptionStateForPill;
 }
 
 const TABS = [
@@ -132,7 +121,6 @@ export function BAppLayout({
   nannyFirstName,
   nannyShareUrl,
   nannyShareText,
-  subscriptionState,
 }: BAppLayoutProps) {
   const pathname = usePathname();
   const [fabOpen, setFabOpen] = useState(false);
@@ -259,11 +247,6 @@ export function BAppLayout({
                   <p className="text-xs text-slate-500">
                     Following with {nannyFirstName}
                   </p>
-                )}
-                {subscriptionState && (
-                  <div className="mt-1">
-                    <SubscriptionStatePill state={subscriptionState} />
-                  </div>
                 )}
               </div>
             </div>

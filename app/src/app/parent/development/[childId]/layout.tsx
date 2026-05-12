@@ -5,7 +5,6 @@ import { BAppLayout } from "@/components/bapp/BAppLayout";
 import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
-import { getSubscriptionStateForChild } from "@/lib/payments/subscription-state-for-child";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function ParentDevelopmentLayout({
@@ -50,10 +49,7 @@ export default async function ParentDevelopmentLayout({
   // the FAB action into the SubscribeModal trigger + renders the
   // LapsedBanner above page content. Trial state has access; lapsed /
   // cancelled-after-period do not.
-  const [access, subscriptionState] = await Promise.all([
-    requireChildFamilyAccess(c.id),
-    getSubscriptionStateForChild(c.id),
-  ]);
+  const access = await requireChildFamilyAccess(c.id);
 
   // Fetch nanny first name. UX-FIX-PLAN FIX-9 (2026-05-12 audit):
   // previously only fetched when access was lapsed (for the modal
@@ -76,7 +72,6 @@ export default async function ParentDevelopmentLayout({
       role="parent"
       familyHasAccess={access.hasAccess}
       nannyFirstName={nannyFirstName}
-      subscriptionState={subscriptionState}
       lapseReason={
         access.reason === "trial_expired"
           ? "trial_ended"

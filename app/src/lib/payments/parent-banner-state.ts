@@ -67,10 +67,10 @@ export async function deriveParentBannerState({
 
   // Resolve the first child for child-named copy. Skipped on the
   // active-and-positive states where no banner renders anyway.
-  const wantsChildName =
-    sub.status === "trial" ||
-    sub.status === "lapsed" ||
-    sub.status === "cancelled";
+  // Trial deliberately omitted — no banner during trial per memory
+  // `feedback_no_ambient_banners_during_trial` (2026-05-11). Email
+  // (T-5 cron) handles trial urgency.
+  const wantsChildName = sub.status === "lapsed" || sub.status === "cancelled";
   let childHint: FirstChildHint | undefined = firstChild;
   if (wantsChildName && !childHint) {
     const { data: c } = await admin
@@ -85,16 +85,11 @@ export async function deriveParentBannerState({
   const now = Date.now();
 
   switch (sub.status) {
-    case "trial": {
-      if (!sub.trial_ends_at) return { kind: "none" };
-      const endsAt = new Date(sub.trial_ends_at).getTime();
-      const daysRemaining = Math.max(0, Math.ceil((endsAt - now) / ONE_DAY_MS));
-      return {
-        kind: "trial",
-        daysRemaining,
-        childFirstName: childHint?.first_name ?? undefined,
-      };
-    }
+    case "trial":
+      // Memory `feedback_no_ambient_banners_during_trial` — product
+      // stays focused on child development during trial. Email handles
+      // the urgency at T-5 + (TBD) T-1.
+      return { kind: "none" };
 
     case "past_due": {
       if (!sub.past_due_grace_ends_at) return { kind: "none" };

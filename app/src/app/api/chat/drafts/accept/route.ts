@@ -163,7 +163,7 @@ export async function POST(request: Request) {
   // Apply functions resolve a child by name from this list; they
   // cannot reach across to other users' children. (Loaded fresh per
   // accept; cache here in 8.22d if throughput warrants.)
-  const children = await getUserChildren(userId);
+  const children = await getUserChildren(userId, role);
 
   // WU 11.3 — idempotency lock. INSERT-or-fail on chat_draft_locks
   // keyed by the client-generated draftId. Second concurrent or

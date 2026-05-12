@@ -5,41 +5,35 @@
  *
  * Sits above all parent-side routes (hub, development pages, etc.) and
  * surfaces the right state banner — or nothing — based on the parent's
- * current `parent_subscriptions` row. UX-FIX-PLAN FIX-3 (2026-05-12
- * audit) — before this, three of four payment-state banners existed
- * as components but were never imported, so every state except
- * lapsed-on-dev-page was invisible to the parent.
+ * current `parent_subscriptions` row.
  *
- * Why a client component:
- *   - Provides the `router.push("/parent/subscribe")` handlers that
- *     each banner's CTA needs. The banner components are themselves
- *     client (they own dismissal state, animations, etc.).
- *   - Lets the server layout pass plain serialisable props (status +
- *     a handful of dates) without ferrying client callbacks across
- *     the boundary.
+ * **CRITICAL: no banner during `trial` state.**
+ *   Per memory `feedback_no_ambient_banners_during_trial` (2026-05-11)
+ *   — Bailey explicitly rejects commercial-countdown banners in the
+ *   product. Trial urgency is email-only (T-5 reminder cron). The
+ *   product stays focused on child development; the email handles
+ *   time-based money concerns. Past-due / cancelled / lapsed are
+ *   genuine system-state failures and DO get banners.
  *
  * State → banner mapping:
- *   trial            → TrialBanner (escalation by days remaining)
- *   past_due         → PastDueBanner (grace end date)
+ *   trial               → NONE (email-only urgency per memory)
+ *   past_due            → PastDueBanner (grace end date)
  *   cancelled in-period → CancelledInPeriodBanner (period end date)
- *   lapsed           → LapsedBanner role=parent (hub-level, generic)
- *   active_*         → nothing (positive-state UI lives elsewhere)
- *   trial expired (no row) → nothing here (handled by the
- *                            development-page paywall and /parent/subscribe)
+ *   lapsed              → LapsedBanner role=parent
+ *   active_*            → NONE (positive-state UI lives elsewhere)
+ *   no row              → NONE (pre-trial; paywall handles it)
  *
  * Multiple banners never co-render. The state machine is mutually
  * exclusive at the row level.
  */
 
 import { useRouter } from "next/navigation";
-import { TrialBanner } from "./TrialBanner";
 import { PastDueBanner } from "./PastDueBanner";
 import { CancelledInPeriodBanner } from "./CancelledInPeriodBanner";
 import { LapsedBanner } from "./LapsedBanner";
 
 export type ParentBannerState =
   | { kind: "none" }
-  | { kind: "trial"; daysRemaining: number; childFirstName?: string }
   | { kind: "past_due"; graceEndsAt: string }
   | {
       kind: "cancelled_in_period";
@@ -59,16 +53,6 @@ export function ParentStateBannerHub({ state }: Props) {
 
   const goToSubscribe = () => router.push("/parent/subscribe");
   const goToSubscriptionPortal = () => router.push("/parent/subscription");
-
-  if (state.kind === "trial") {
-    return (
-      <TrialBanner
-        daysRemaining={state.daysRemaining}
-        childFirstName={state.childFirstName}
-        onPrimaryCta={goToSubscribe}
-      />
-    );
-  }
 
   if (state.kind === "past_due") {
     return (
