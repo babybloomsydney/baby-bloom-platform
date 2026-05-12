@@ -221,6 +221,14 @@ async function seedConnectedPair(suffix: string): Promise<SetupResult> {
       date_of_birth: "2024-01-15",
       parent_user_id: parent.userId,
       nanny_user_id: nanny.userId,
+      // `under_three` defaults to false at the DB level + is set to
+      // true by every real signup path (createChild + createChildAsParent).
+      // Without this flag the child is excluded by the hub queries,
+      // by Katie's children enumeration, and by the nanny earnings
+      // badge — producing false negatives in observation captures.
+      under_three: true,
+      onboarded: true,
+      status: "created_manual",
     })
     .select("id")
     .single();
