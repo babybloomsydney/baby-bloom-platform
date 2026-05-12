@@ -1,20 +1,20 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { OnboardingClient } from "./OnboardingClient";
+import { PayoutOnboardingEmbedded } from "@/components/payments/PayoutOnboardingEmbedded";
 
 /**
- * `/nanny/payouts/onboarding` — Stripe Connect entry (S13).
+ * `/nanny/payouts/onboarding` — Stripe Connect entry (S13 v2 embedded).
  *
- * v1 = hosted redirect. Page just renders a launch button + benefits
- * blurb; clicking the button calls `startConnectOnboarding` which
- * returns a hosted URL the client then redirects to. Stripe collects
- * legal name / DOB / address / bank / ABN / ID on its own pages and
- * returns the nanny to /nanny/payouts on completion.
+ * v2 (now live) — embedded `<ConnectAccountOnboarding />` inside
+ * Baby Bloom brand chrome via @stripe/react-connect-js. Spec §
+ * psychology: trust-transfer via "Powered by Stripe" footer +
+ * brand-matched component appearance (violet primary, BB radius).
  *
- * v2 (deferred) = embedded `<ConnectAccountOnboarding />` — same
- * server-side account creation, different rendering layer. Requires
- * `@stripe/react-connect-js` dependency.
+ * v1 was hosted redirect via `startConnectOnboarding`. That server
+ * action is retained as a fallback path — useful if a future
+ * Connect API change breaks the embedded component faster than we
+ * can patch.
  *
  * Spec: `system/APP/PAYMENTS/FRONTEND/03-build-spec.md` §S13.
  */
@@ -26,7 +26,7 @@ export default async function NannyOnboardingPage() {
   if (!user) redirect("/login?next=/nanny/payouts/onboarding");
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-12">
+    <div className="mx-auto max-w-2xl px-4 py-12">
       <Link
         href="/nanny/payouts"
         className="text-sm text-slate-500 hover:text-slate-700"
@@ -41,7 +41,7 @@ export default async function NannyOnboardingPage() {
         you&apos;ll need your bank details and ABN.
       </p>
 
-      <OnboardingClient />
+      <PayoutOnboardingEmbedded />
 
       <p className="mt-6 text-xs text-slate-500">
         Powered by Stripe. Your information is handled by Stripe, our payment
