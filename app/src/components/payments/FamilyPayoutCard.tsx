@@ -33,7 +33,12 @@ const SECONDARY_COPY: Record<
 > = {
   A: (p) =>
     `Earned this trial period. Earnings convert when ${p.parentFirstName} subscribes.`,
-  B: () => `Trial earnings releasing soon (14-day safeguard window).`,
+  // UX-FIX-PLAN FIX-10 (2026-05-12 audit) — previously "Trial earnings
+  // releasing soon" which read as misleading once the family had
+  // converted out of trial. State B fires for any first-payout-not-yet-
+  // released situation (post-trial or post-renewal), so the copy is now
+  // generic about the safeguard window rather than tying to "trial".
+  B: () => `First payout releasing soon — within the 14-day safeguard window.`,
   C: (p) =>
     p.lastPayoutAt
       ? `Active cycle. Last payout received ${formatDate(p.lastPayoutAt)}.`

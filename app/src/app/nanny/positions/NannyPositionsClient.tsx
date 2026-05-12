@@ -1331,7 +1331,7 @@ export function NannyPositionsClient({
 
           {!shareUnlocked ? (
             <div className="rounded-lg border border-violet-100 bg-violet-50/50 p-4 text-center space-y-2">
-              <p className="text-sm text-slate-600">You profile is live</p>
+              <p className="text-sm text-slate-600">Your profile is live</p>
               <p className="text-sm text-slate-600">
                 Share your profile to appear in parent matchmaking results
               </p>
@@ -1342,7 +1342,7 @@ export function NannyPositionsClient({
               >
                 <Link href="/nanny/share">
                   <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                  Be seen in parents matchmaking
+                  Be seen in parents&apos; matchmaking
                 </Link>
               </Button>
             </div>

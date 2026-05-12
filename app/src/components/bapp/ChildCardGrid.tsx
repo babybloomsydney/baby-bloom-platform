@@ -159,7 +159,7 @@ export function ChildCardGrid({ children, role }: ChildCardGridProps) {
           </div>
           <p className="text-base font-semibold text-slate-900">Add Child</p>
           <p className="max-w-xs text-center text-xs text-slate-500">
-            Add your first child to start tracking their development
+            Add your first child to start following their development
           </p>
         </button>
       )}

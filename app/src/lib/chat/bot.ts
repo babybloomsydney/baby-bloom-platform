@@ -177,6 +177,19 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
     .eq("nanny_user_id", userId)
     .eq("under_three", true);
 
+  // Step 1b: child_client rows where the user is the parent owner.
+  // A parent owns a child via `child_client.parent_user_id` directly
+  // (the column is set when a parent claims an invite + by parent-side
+  // child creation). Without this step Katie was blind to parent's
+  // children whenever no active `nanny_placement` existed for the
+  // parent — i.e. for every parent during the trial + post-cancel
+  // window. UX-FIX-PLAN FIX-1 (2026-05-12 audit).
+  const { data: parentOwned } = await admin
+    .from("child_client")
+    .select("id, first_name, gender, date_of_birth")
+    .eq("parent_user_id", userId)
+    .eq("under_three", true);
+
   // Step 2: placement-based access — children linked to placements where
   // the user is either the nanny (via nannies.user_id) or the parent
   // (via parents.user_id). nanny_placements.status = 'active' is a real
@@ -207,6 +220,9 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
     }
   >();
   for (const row of direct ?? []) {
+    all.set(row.id as string, row);
+  }
+  for (const row of parentOwned ?? []) {
     all.set(row.id as string, row);
   }
   for (const p of viaPlacement) {

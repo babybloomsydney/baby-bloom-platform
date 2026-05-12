@@ -1,9 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createPortalSession } from "@/lib/actions/payments/portal";
@@ -28,6 +34,15 @@ interface SubscriptionRow {
 
 interface SubscriptionClientProps {
   subscription: SubscriptionRow | null;
+  /**
+   * `true` when the user just returned from Stripe Checkout with
+   * `?status=success` on the URL. Drives the conversion-celebration
+   * banner + the post-checkout `router.refresh()` loop that pulls
+   * the new subscription state once the webhook lands.
+   */
+  justSubscribed?: boolean;
+  childFirstName?: string | null;
+  nannyFirstName?: string | null;
 }
 
 const STATUS_LABELS: Record<NonNullable<SubscriptionRow["status"]>, string> = {
@@ -48,10 +63,47 @@ function formatDate(iso: string | null | undefined): string {
   });
 }
 
-export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
+export function SubscriptionClient({
+  subscription,
+  justSubscribed,
+  childFirstName,
+  nannyFirstName,
+}: SubscriptionClientProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // UX-FIX-PLAN FIX-5 — Checkout return celebration.
+  //
+  // Stripe redirects the parent to /parent/subscription?status=success
+  // 0–2 seconds before the webhook actually lands and flips the row
+  // to active_*. Without intervention the page renders stale state
+  // (still "lapsed" or "trial") and the parent thinks payment didn't
+  // go through. We:
+  //   1. Show a celebration banner immediately based on the URL signal
+  //      (cheap, optimistic — Stripe redirects only on actual success).
+  //   2. Poll `router.refresh()` every 1.5s until the subscription
+  //      row reports an active status, OR for 4 cycles (failsafe).
+  //   3. The banner stays visible after the active status arrives.
+  const [showCelebration, setShowCelebration] = useState<boolean>(
+    Boolean(justSubscribed),
+  );
+  const refreshTickCountRef = useRef<number>(0);
+  useEffect(() => {
+    if (!justSubscribed) return;
+    if (
+      subscription?.status === "active_monthly" ||
+      subscription?.status === "active_upfront"
+    ) {
+      // Already landed — no polling needed.
+      return;
+    }
+    if (refreshTickCountRef.current >= 4) return;
+    const timer = setTimeout(() => {
+      refreshTickCountRef.current += 1;
+      router.refresh();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [justSubscribed, subscription?.status, router]);
 
   function openPortal() {
     setError(null);
@@ -97,12 +149,75 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
         ? subscription.past_due_grace_ends_at
         : subscription.paid_period_ends_at;
 
+  // Celebration banner copy — uses interpolated names when available;
+  // falls back to generic per COPY-AND-FRAMING.md cross-section rules.
+  const childRef = childFirstName ?? "your child";
+  const nannyRef = nannyFirstName ? ` and ${nannyFirstName}` : "";
+  const stateConfirmed =
+    subscription?.status === "active_monthly" ||
+    subscription?.status === "active_upfront";
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-2xl font-bold text-slate-900">Subscription</h1>
       <p className="mt-1 text-sm text-slate-500">
         Manage your Baby Bloom subscription.
       </p>
+
+      {showCelebration && (
+        <div
+          role="status"
+          className="mt-6 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100">
+            {stateConfirmed ? (
+              <CheckCircle2
+                className="h-5 w-5 text-emerald-700"
+                aria-hidden="true"
+              />
+            ) : (
+              <Sparkles
+                className="h-5 w-5 text-emerald-700 animate-pulse"
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-emerald-900">
+              {stateConfirmed
+                ? `You're in. Welcome to Baby Bloom for ${childRef}.`
+                : `Activating your subscription for ${childRef}…`}
+            </p>
+            <p className="mt-1 text-sm text-emerald-800">
+              {stateConfirmed
+                ? `A$100 of every payment supports ${childRef}'s development${nannyRef}.`
+                : `Stripe is confirming payment. This usually takes a few seconds.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setShowCelebration(false)}
+            className="shrink-0 rounded-md p-1 text-emerald-700 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {error && (
         <div

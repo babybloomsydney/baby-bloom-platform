@@ -4,16 +4,20 @@ import { getOnboardingBannerStatus } from "@/lib/actions/bapp/onboarding-banner"
 import { BAppFeedView } from "@/components/bapp/BAppFeedView";
 import { PreloadPublisher } from "@/components/preload/PreloadPublisher";
 import { PRELOAD_RECENT_FEED_CAP } from "@/lib/chat/preload/predicates";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 
 export default async function ParentDevelopmentFeedPage({
   params,
 }: {
   params: { childId: string };
 }) {
-  const [feedRes, milestonesRes, bannerStatus] = await Promise.all([
+  const [feedRes, milestonesRes, bannerStatus, access] = await Promise.all([
     getFeed(params.childId),
     getMilestones(),
     getOnboardingBannerStatus(),
+    // UX-FIX-PLAN FIX-7 — sibling banner + empty-state must not
+    // contradict each other on lapsed/cancelled states.
+    requireChildFamilyAccess(params.childId),
   ]);
 
   return (
@@ -35,6 +39,7 @@ export default async function ParentDevelopmentFeedPage({
         initialFeed={feedRes.data}
         milestones={milestonesRes.data}
         bannerStatus={bannerStatus}
+        familyHasAccess={access.hasAccess}
       />
     </>
   );

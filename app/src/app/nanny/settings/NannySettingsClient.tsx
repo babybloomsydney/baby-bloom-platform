@@ -42,6 +42,7 @@ import {
   Users,
   LifeBuoy,
   ShieldCheck,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -100,9 +101,7 @@ function publicIdentityStatus(level: number): {
   return { label: "Not started", tone: "warning", isVerified: false };
 }
 
-function publicWwccStatus(
-  status: string | null,
-): {
+function publicWwccStatus(status: string | null): {
   label: string;
   tone: "success" | "warning" | "danger" | "neutral";
 } | null {
@@ -198,6 +197,11 @@ function buildTree(args: {
           ? { label: String(childCount), tone: "neutral" }
           : undefined,
     },
+    // Per FRONTEND/03-build-spec.md line 1114 + UX-FIX-PLAN FIX-4
+    // (2026-05-12 audit). The /nanny/payouts dashboard is the
+    // loss-aversion engine — must be reachable from a default-tab
+    // surface, not only via direct URL.
+    { id: "payouts", label: "Payouts", icon: Wallet },
     { id: "contact-us", label: "Contact Us", icon: LifeBuoy },
     // Hidden danger leaf — reached only via the small link at the
     // bottom of Account's drill-down menu.
@@ -273,6 +277,8 @@ export function NannySettingsClient({
             return <SecuritySection />;
           case "linked-children":
             return <ChildrenSection items={managedChildren} />;
+          case "payouts":
+            return <PayoutsLinkSection />;
           case "contact-us":
             return <ContactSection />;
           case "close-account":
@@ -764,6 +770,32 @@ function ChildrenSection({ items }: { items: ChildClient[] }) {
     <SettingsSubsection header="Linked children">
       <div className="px-4 py-4">
         <ChildManagementCard items={items} role="nanny" />
+      </div>
+    </SettingsSubsection>
+  );
+}
+
+// ── Payouts (link to dashboard) ──────────────────────────────
+//
+// Per UX-FIX-PLAN FIX-4 + FRONTEND/03-build-spec.md line 1114:
+// /nanny/payouts is the loss-aversion engine. Surfacing the entry
+// point in the settings tree is the spec-mandated way to reach it
+// (the dashboard remains a full page at /nanny/payouts, not embedded
+// here — this leaf is a link). Copy follows Section 9 of
+// system/APP/PAYMENTS/COPY-AND-FRAMING.md (earnings-as-endowment
+// framing, not "subscription billing").
+
+function PayoutsLinkSection() {
+  return (
+    <SettingsSubsection header="Payouts">
+      <div className="space-y-3 px-4 py-4">
+        <p className="text-sm text-slate-700">
+          Your earnings, payout history, and Stripe Connect setup all live on
+          your Payouts dashboard.
+        </p>
+        <Button asChild size="sm" className="bg-violet-600 hover:bg-violet-700">
+          <Link href="/nanny/payouts">Open Payouts dashboard</Link>
+        </Button>
       </div>
     </SettingsSubsection>
   );

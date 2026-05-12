@@ -5,6 +5,7 @@ import { BAppLayout } from "@/components/bapp/BAppLayout";
 import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { getSubscriptionStateForChild } from "@/lib/payments/subscription-state-for-child";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function ParentDevelopmentLayout({
@@ -49,12 +50,18 @@ export default async function ParentDevelopmentLayout({
   // the FAB action into the SubscribeModal trigger + renders the
   // LapsedBanner above page content. Trial state has access; lapsed /
   // cancelled-after-period do not.
-  const access = await requireChildFamilyAccess(c.id);
+  const [access, subscriptionState] = await Promise.all([
+    requireChildFamilyAccess(c.id),
+    getSubscriptionStateForChild(c.id),
+  ]);
 
-  // Fetch nanny first name for the modal's locked-in copy. Cheap
-  // single-row lookup; can be skipped when access is granted.
+  // Fetch nanny first name. UX-FIX-PLAN FIX-9 (2026-05-12 audit):
+  // previously only fetched when access was lapsed (for the modal
+  // copy); now fetched whenever a nanny is linked so the layout can
+  // surface "Following with [Nanny]" on the parent side and make the
+  // relational frame visible — not just during paywall moments.
   let nannyFirstName: string | undefined;
-  if (!access.hasAccess && c.nanny_user_id) {
+  if (c.nanny_user_id) {
     const { data: nannyProfile } = await admin
       .from("user_profiles")
       .select("first_name")
@@ -69,6 +76,7 @@ export default async function ParentDevelopmentLayout({
       role="parent"
       familyHasAccess={access.hasAccess}
       nannyFirstName={nannyFirstName}
+      subscriptionState={subscriptionState}
       lapseReason={
         access.reason === "trial_expired"
           ? "trial_ended"

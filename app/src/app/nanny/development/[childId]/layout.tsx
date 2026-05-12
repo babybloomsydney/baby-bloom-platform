@@ -6,6 +6,7 @@ import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 import { createSubscribeInvite } from "@/lib/actions/payments/createSubscribeInvite";
+import { getSubscriptionStateForChild } from "@/lib/payments/subscription-state-for-child";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function DevelopmentLayout({
@@ -51,7 +52,13 @@ export default async function DevelopmentLayout({
   // trigger + renders the LapsedBanner above page content. The modal
   // needs a pre-minted nanny-share invite (S5) to render its share
   // CTA. We mint it here so the modal can fire instantly on FAB tap.
-  const access = await requireChildFamilyAccess(c.id);
+  // Resolve access state + the underlying subscription state in
+  // parallel. The pill needs the underlying status to label trial /
+  // active / cancelled-in-period / past-due (UX-FIX-PLAN FIX-8).
+  const [access, subscriptionState] = await Promise.all([
+    requireChildFamilyAccess(c.id),
+    getSubscriptionStateForChild(c.id),
+  ]);
 
   let nannyShareUrl: string | undefined;
   let nannyShareText: string | undefined;
@@ -82,6 +89,7 @@ export default async function DevelopmentLayout({
       parentFirstName={parentFirstName}
       nannyShareUrl={nannyShareUrl}
       nannyShareText={nannyShareText}
+      subscriptionState={subscriptionState}
       lapseReason={
         access.reason === "trial_expired"
           ? "trial_ended"
