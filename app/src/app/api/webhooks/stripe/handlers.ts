@@ -478,6 +478,236 @@ export async function handlePaymentIntentFailed(
 }
 
 // ---------------------------------------------------------------------------
+// account.updated — Connect Express account verification state changes
+// ---------------------------------------------------------------------------
+
+export async function handleAccountUpdated(
+  admin: AdminClient,
+  event: Stripe.AccountUpdatedEvent,
+): Promise<void> {
+  const account = event.data.object;
+  // Verification is "ready for payouts" when the transfers capability
+  // is active AND there are no current/past-due/disabled requirements
+  // blocking. Stripe consolidates this into payouts_enabled.
+  const payoutsEnabled = account.payouts_enabled === true;
+  const detailsSubmitted = account.details_submitted === true;
+
+  // Find the nanny row by the connect account id.
+  const { data: nanny } = await admin
+    .from("nannies")
+    .select("id, connect_onboarded_at")
+    .eq("stripe_connect_account_id", account.id)
+    .maybeSingle<{ id: string; connect_onboarded_at: string | null }>();
+  if (!nanny) {
+    console.warn(
+      "[stripe-webhook] account.updated for unknown connect account",
+      account.id,
+    );
+    return;
+  }
+
+  // Mark onboarded when first time the account passes both gates.
+  // Idempotent: don't overwrite an existing onboarded timestamp.
+  if (payoutsEnabled && detailsSubmitted && !nanny.connect_onboarded_at) {
+    const nowIso = new Date().toISOString();
+    const { error } = await admin
+      .from("nannies")
+      .update({
+        connect_onboarded_at: nowIso,
+        payout_application_status: "verified",
+      })
+      .eq("id", nanny.id);
+    if (error) {
+      throw new Error(
+        `nannies update (account.updated) failed: ${error.message}`,
+      );
+    }
+    await logActivity(admin, {
+      action_type: "payout_application_status_changed",
+      user_id: null,
+      action_details: {
+        nanny_id: nanny.id,
+        connect_account_id: account.id,
+        new_status: "verified",
+        payouts_enabled: payoutsEnabled,
+      },
+    });
+    return;
+  }
+
+  // For ongoing capability changes (e.g. Stripe asks for more info),
+  // surface as an activity log for admin visibility.
+  await logActivity(admin, {
+    action_type: "nanny_account_updated",
+    user_id: null,
+    action_details: {
+      nanny_id: nanny.id,
+      connect_account_id: account.id,
+      payouts_enabled: payoutsEnabled,
+      details_submitted: detailsSubmitted,
+      requirements_currently_due: account.requirements?.currently_due ?? null,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// account.application.deauthorized — nanny revoked Connect access
+// ---------------------------------------------------------------------------
+
+export async function handleAccountDeauthorized(
+  admin: AdminClient,
+  event: Stripe.AccountApplicationDeauthorizedEvent,
+): Promise<void> {
+  // Account id is on event.account when the application is the
+  // platform's own Connect app (which it is for our Express flow).
+  const accountId = event.account ?? null;
+  if (!accountId) {
+    console.warn(
+      "[stripe-webhook] account.application.deauthorized no account",
+    );
+    return;
+  }
+
+  const { data: nanny } = await admin
+    .from("nannies")
+    .select("id")
+    .eq("stripe_connect_account_id", accountId)
+    .maybeSingle<{ id: string }>();
+  if (!nanny) return;
+
+  const { error } = await admin
+    .from("nannies")
+    .update({
+      payout_application_status: "not_applied",
+      connect_onboarded_at: null,
+    })
+    .eq("id", nanny.id);
+  if (error) {
+    throw new Error(
+      `nannies update (account.deauthorized) failed: ${error.message}`,
+    );
+  }
+
+  await logActivity(admin, {
+    action_type: "payout_application_status_changed",
+    user_id: null,
+    action_details: {
+      nanny_id: nanny.id,
+      connect_account_id: accountId,
+      new_status: "deauthorized",
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// capability.updated — granular Connect capability changes
+// ---------------------------------------------------------------------------
+
+export async function handleCapabilityUpdated(
+  admin: AdminClient,
+  event: Stripe.CapabilityUpdatedEvent,
+): Promise<void> {
+  const cap = event.data.object;
+  const accountId = stringOrNull(cap.account);
+  if (!accountId) return;
+
+  // Audit-only — actionable state flips are picked up by account.updated.
+  await logActivity(admin, {
+    action_type: "nanny_account_updated",
+    user_id: null,
+    action_details: {
+      connect_account_id: accountId,
+      capability: cap.id,
+      status: cap.status,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// payout.created / payout.paid / payout.failed — Stripe transferring to bank
+// ---------------------------------------------------------------------------
+
+export async function handlePayoutCreated(
+  admin: AdminClient,
+  event: Stripe.PayoutCreatedEvent,
+): Promise<void> {
+  await logActivity(admin, {
+    action_type: "payout_paid",
+    user_id: null,
+    action_details: {
+      stripe_payout_id: event.data.object.id,
+      stripe_account: event.account ?? null,
+      amount: event.data.object.amount,
+      status: event.data.object.status,
+      created_at: event.data.object.created,
+    },
+  });
+}
+
+export async function handlePayoutPaid(
+  admin: AdminClient,
+  event: Stripe.PayoutPaidEvent,
+): Promise<void> {
+  // Mark any matching nanny_payouts row as paid. Stripe's payout id
+  // is stored on `stripe_transfer_id` in our schema.
+  const stripePayoutId = event.data.object.id;
+  const arrival = event.data.object.arrival_date * 1000;
+  const arrivalIso = new Date(arrival).toISOString();
+
+  const { error } = await admin
+    .from("nanny_payouts")
+    .update({
+      status: "paid",
+      paid_at: arrivalIso,
+    })
+    .eq("stripe_transfer_id", stripePayoutId);
+  if (error) {
+    console.error("[stripe-webhook] payout.paid update failed", error);
+  }
+
+  await logActivity(admin, {
+    action_type: "payout_paid",
+    user_id: null,
+    action_details: {
+      stripe_payout_id: stripePayoutId,
+      stripe_account: event.account ?? null,
+      arrival_date: arrivalIso,
+    },
+  });
+}
+
+export async function handlePayoutFailed(
+  admin: AdminClient,
+  event: Stripe.PayoutFailedEvent,
+): Promise<void> {
+  const stripePayoutId = event.data.object.id;
+  const failureMessage =
+    event.data.object.failure_message ?? "(no message provided)";
+
+  const { error } = await admin
+    .from("nanny_payouts")
+    .update({
+      status: "failed",
+      failed_at: new Date().toISOString(),
+      failure_reason: failureMessage,
+    })
+    .eq("stripe_transfer_id", stripePayoutId);
+  if (error) {
+    console.error("[stripe-webhook] payout.failed update failed", error);
+  }
+
+  await logActivity(admin, {
+    action_type: "payout_failed",
+    user_id: null,
+    action_details: {
+      stripe_payout_id: stripePayoutId,
+      stripe_account: event.account ?? null,
+      failure_message: failureMessage,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // charge.refunded
 // ---------------------------------------------------------------------------
 

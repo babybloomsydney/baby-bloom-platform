@@ -39,10 +39,16 @@ import { verifyWebhookSignature } from "@/lib/stripe/webhooks";
 
 import {
   type AdminClient,
+  handleAccountDeauthorized,
+  handleAccountUpdated,
+  handleCapabilityUpdated,
   handleChargeRefunded,
   handleCheckoutCompleted,
   handleInvoiceFailed,
   handleInvoiceSucceeded,
+  handlePayoutCreated,
+  handlePayoutFailed,
+  handlePayoutPaid,
   handlePaymentIntentFailed,
   handleSubscriptionDeleted,
   handleSubscriptionUpdated,
@@ -201,6 +207,30 @@ async function dispatchEvent(
       return;
     case "charge.refunded":
       await handleChargeRefunded(admin, event as Stripe.ChargeRefundedEvent);
+      return;
+    case "account.updated":
+      await handleAccountUpdated(admin, event as Stripe.AccountUpdatedEvent);
+      return;
+    case "account.application.deauthorized":
+      await handleAccountDeauthorized(
+        admin,
+        event as Stripe.AccountApplicationDeauthorizedEvent,
+      );
+      return;
+    case "capability.updated":
+      await handleCapabilityUpdated(
+        admin,
+        event as Stripe.CapabilityUpdatedEvent,
+      );
+      return;
+    case "payout.created":
+      await handlePayoutCreated(admin, event as Stripe.PayoutCreatedEvent);
+      return;
+    case "payout.paid":
+      await handlePayoutPaid(admin, event as Stripe.PayoutPaidEvent);
+      return;
+    case "payout.failed":
+      await handlePayoutFailed(admin, event as Stripe.PayoutFailedEvent);
       return;
     default:
       // Unknown event — log and acknowledge so Stripe doesn't retry.
