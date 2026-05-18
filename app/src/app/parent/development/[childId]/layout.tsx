@@ -5,6 +5,8 @@ import { BAppLayout } from "@/components/bapp/BAppLayout";
 import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
+import { ConsentRenewalModal } from "@/components/legal/ConsentRenewalModal";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function ParentDevelopmentLayout({
@@ -51,6 +53,17 @@ export default async function ParentDevelopmentLayout({
   // cancelled-after-period do not.
   const access = await requireChildFamilyAccess(c.id);
 
+  // T-015 — check whether the parent's media consent is within the
+  // T-7d renewal window or already expired. If so, render the
+  // ConsentRenewalModal alongside the page content.
+  const mediaConsentGate = await hasParentMediaConsent(
+    { childId: c.id },
+    { admin },
+  );
+  const showRenewalModal =
+    mediaConsentGate.state === "nearing_expiry" ||
+    mediaConsentGate.state === "expired";
+
   // Fetch nanny first name. UX-FIX-PLAN FIX-9 (2026-05-12 audit):
   // previously only fetched when access was lapsed (for the modal
   // copy); now fetched whenever a nanny is linked so the layout can
@@ -87,6 +100,14 @@ export default async function ParentDevelopmentLayout({
         />
       )}
       {children}
+      {showRenewalModal && mediaConsentGate.expiresAt && (
+        <ConsentRenewalModal
+          childId={c.id}
+          childFirstName={c.first_name ?? "your child"}
+          role="parent"
+          expiresAt={mediaConsentGate.expiresAt}
+        />
+      )}
     </BAppLayout>
   );
 }

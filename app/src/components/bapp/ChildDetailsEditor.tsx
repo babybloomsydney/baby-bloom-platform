@@ -27,6 +27,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateChildDetails } from "@/lib/actions/bapp/child-clients";
+import {
+  earliestAllowedDobIso,
+  todayIso,
+  validateChildDob,
+} from "@/lib/bapp/child-age";
 
 interface ChildDetailsEditorProps {
   childId: string;
@@ -79,6 +84,20 @@ export function ChildDetailsEditor({
       patch.first_name = trimmedName;
     }
     if (dob !== (currentDateOfBirth ?? "")) {
+      // Non-empty DOB must satisfy the under-3 cap. Empty clears the date.
+      if (dob !== "") {
+        const dobCheck = validateChildDob(dob);
+        if (!dobCheck.ok) {
+          setError(
+            dobCheck.error === "child_too_old"
+              ? "Baby Bloom supports children under 3."
+              : dobCheck.error === "date_of_birth_in_future"
+                ? "Date of birth can't be in the future."
+                : "Please enter a valid date of birth.",
+          );
+          return;
+        }
+      }
       patch.date_of_birth = dob === "" ? null : dob;
     }
 
@@ -99,9 +118,11 @@ export function ChildDetailsEditor({
     });
   }
 
-  // Today as YYYY-MM-DD for the date input's max attribute, matching
-  // the server-side future-date guard.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  // DoB bounds for the date input: max = today (no future), min =
+  // earliest allowed under the under-3 cap. Mirrors the server-side
+  // `validateChildDob` rules so client picker + server guard agree.
+  const dobMaxIso = todayIso();
+  const dobMinIso = earliestAllowedDobIso();
 
   return (
     <>
@@ -149,9 +170,13 @@ export function ChildDetailsEditor({
                 type="date"
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
-                max={todayIso}
+                min={dobMinIso}
+                max={dobMaxIso}
                 disabled={isPending}
               />
+              <p className="text-xs text-slate-500">
+                Baby Bloom supports children under 3.
+              </p>
             </div>
           </div>
 

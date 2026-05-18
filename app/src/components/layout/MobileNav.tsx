@@ -32,6 +32,9 @@ import {
   Inbox,
   Link2,
   Share2,
+  CreditCard,
+  Wallet,
+  LifeBuoy,
 } from "lucide-react";
 
 type UserRole = "nanny" | "parent" | "admin" | "super_admin" | "guest";
@@ -77,6 +80,9 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/pipeline", icon: Filter, label: "User Pipeline" },
   { href: "/admin/verifications", icon: ShieldCheck, label: "Verifications" },
   { href: "/admin/users", icon: Users, label: "User Management" },
+  { href: "/admin/subscriptions", icon: CreditCard, label: "Subscriptions" },
+  { href: "/admin/payouts", icon: Wallet, label: "Payouts" },
+  { href: "/admin/support", icon: LifeBuoy, label: "Support" },
   { href: "/admin/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
@@ -96,12 +102,16 @@ const navItemsByRole: Record<UserRole, NavItem[]> = {
   guest: publicNavItems,
 };
 
-export function MobileNav({ role: propRole, open, onOpenChange }: MobileNavProps) {
+export function MobileNav({
+  role: propRole,
+  open,
+  onOpenChange,
+}: MobileNavProps) {
   const pathname = usePathname();
   const { user, role: authRole, profile, signOut } = useAuth();
 
   // Use auth role if user is logged in, otherwise fall back to prop
-  const role: UserRole = (user && authRole) ? authRole as UserRole : propRole;
+  const role: UserRole = user && authRole ? (authRole as UserRole) : propRole;
   const isGuest = role === "guest";
   const navItems = navItemsByRole[role] || publicNavItems;
 
@@ -115,7 +125,10 @@ export function MobileNav({ role: propRole, open, onOpenChange }: MobileNavProps
       <SheetContent side="left" className="w-64 p-0">
         <SheetHeader className="border-b px-6 py-4">
           <SheetTitle className="text-left">
-            <Link href="/" className="flex items-center gap-0.5 text-xl font-bold">
+            <Link
+              href="/"
+              className="flex items-center gap-0.5 text-xl font-bold"
+            >
               <span className="text-slate-900">Baby</span>
               <span className="text-violet-500">Bloom</span>
             </Link>
@@ -135,7 +148,7 @@ export function MobileNav({ role: propRole, open, onOpenChange }: MobileNavProps
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   isActive
                     ? "bg-violet-500 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                 )}
               >
                 <Icon className="h-5 w-5" />
@@ -148,10 +161,19 @@ export function MobileNav({ role: propRole, open, onOpenChange }: MobileNavProps
         {/* Bottom: auth buttons for guests, user info for logged-in */}
         {isGuest && (
           <div className="border-t p-4 flex flex-col gap-2">
-            <Button variant="outline" asChild className="w-full" onClick={() => onOpenChange(false)}>
+            <Button
+              variant="outline"
+              asChild
+              className="w-full"
+              onClick={() => onOpenChange(false)}
+            >
               <Link href="/login">Log in</Link>
             </Button>
-            <Button asChild className="w-full bg-violet-500 hover:bg-violet-600" onClick={() => onOpenChange(false)}>
+            <Button
+              asChild
+              className="w-full bg-violet-500 hover:bg-violet-600"
+              onClick={() => onOpenChange(false)}
+            >
               <Link href="/signup">Sign Up</Link>
             </Button>
           </div>
@@ -167,7 +189,9 @@ export function MobileNav({ role: propRole, open, onOpenChange }: MobileNavProps
                 <p className="truncate text-sm font-medium text-slate-900">
                   {firstName}
                 </p>
-                <p className="truncate text-xs text-slate-500 capitalize">{role}</p>
+                <p className="truncate text-xs text-slate-500 capitalize">
+                  {role}
+                </p>
               </div>
               <Button
                 variant="ghost"

@@ -26,7 +26,6 @@ import { trackEvent } from "@/lib/analytics/trackEvent";
 
 interface BadgePayload {
   totalAud: number;
-  familyCount: number;
 }
 
 export function NannyEarningsBadge() {
@@ -54,10 +53,10 @@ export function NannyEarningsBadge() {
     };
   }, []);
 
-  // Hide entirely until data lands (avoids a flash of A$0). The badge
-  // is OK to skip on the very first render — it's not load-bearing
-  // chrome.
-  if (!data || data.familyCount === 0) return null;
+  // Hide until data lands AND there's something earned. Showing A$0
+  // would be noise; the wallet appears when the nanny has actual
+  // money paid + accruing (Bailey correction 2026-05-13).
+  if (!data || data.totalAud === 0) return null;
 
   return (
     <Link
@@ -69,7 +68,7 @@ export function NannyEarningsBadge() {
         })
       }
       className="flex h-8 items-center gap-1.5 rounded-full bg-emerald-50 px-3 text-sm font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-      aria-label={`Open payouts dashboard — current cycle total A$${data.totalAud}`}
+      aria-label={`Open contributions dashboard — current cycle total A$${data.totalAud}`}
     >
       <Wallet className="h-4 w-4" aria-hidden="true" />
       <span>A${data.totalAud}</span>

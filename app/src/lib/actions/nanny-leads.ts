@@ -1,9 +1,9 @@
-'use server';
+"use server";
 
-import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
-import { capitalizeName } from '@/lib/utils';
-import { sendEmail } from '@/lib/email/resend';
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
+import { capitalizeName } from "@/lib/utils";
+import { sendEmail } from "@/lib/email/resend";
 import {
   NannyLeadIdentity,
   NannyLeadExperience,
@@ -14,7 +14,8 @@ import {
   NannyLeadSalary,
   NannyLeadMatching,
   NannyLeadAboutYou,
-} from '@/types/nanny-leads';
+  NannyLeadSignals,
+} from "@/types/nanny-leads";
 
 interface ActionResult {
   success: boolean;
@@ -27,7 +28,7 @@ interface ActionResult {
 
 function ageStringToMonths(s: string | null | undefined): number | null {
   if (!s) return null;
-  if (s === 'Newborn') return 0;
+  if (s === "Newborn") return 0;
   const monthMatch = s.match(/^(\d+)\s*months?$/i);
   if (monthMatch) return parseInt(monthMatch[1]);
   const yearMatch = s.match(/^(\d+)\s*years?$/i);
@@ -37,7 +38,7 @@ function ageStringToMonths(s: string | null | undefined): number | null {
 
 function parseRate(s: string | null | undefined): number | null {
   if (!s) return null;
-  const n = parseFloat(s.replace('$', ''));
+  const n = parseFloat(s.replace("$", ""));
   return isNaN(n) ? null : n;
 }
 
@@ -52,28 +53,40 @@ export async function createNannyLead(data: {
   experience: NannyLeadExperience;
   qualifications: NannyLeadQualifications;
   residency: NannyLeadResidency;
+  lead_signals: NannyLeadSignals;
   visitor_id?: string;
   highest_page_reached?: number;
 }): Promise<ActionResult> {
   const adminClient = createAdminClient();
 
+  // Server-side normalisation for the lead_signals JSONB column (T-023).
+  // The client state is restored from localStorage and could be tampered
+  // with — strip to the known keys, coerce to known types. New signals
+  // added in future must be added here too; the column is allowlist-only.
+  const safeLeadSignals: NannyLeadSignals = {
+    external_u3_position:
+      typeof data.lead_signals?.external_u3_position === "boolean"
+        ? data.lead_signals.external_u3_position
+        : null,
+  };
+
   try {
     // Check if an auth account already exists with this email
     const { data: userProfileMatch } = await adminClient
-      .from('user_profiles')
-      .select('user_id')
-      .eq('email', data.email.toLowerCase())
+      .from("user_profiles")
+      .select("user_id")
+      .eq("email", data.email.toLowerCase())
       .maybeSingle();
     if (userProfileMatch) {
       return {
         success: false,
-        error: 'account_exists',
+        error: "account_exists",
       };
     }
 
     // Try a straight insert
     const { data: lead, error } = await adminClient
-      .from('nanny_leads')
+      .from("nanny_leads")
       .insert({
         first_name: capitalizeName(data.first_name),
         last_name: capitalizeName(data.last_name),
@@ -83,34 +96,41 @@ export async function createNannyLead(data: {
         experience: data.experience,
         qualifications: data.qualifications,
         residency: data.residency,
-        lead_status: 'applied',
-        funnel_step: 'N1',
+        lead_signals: safeLeadSignals,
+        lead_status: "applied",
+        funnel_step: "N1",
         last_active_at: new Date().toISOString(),
         ...(data.visitor_id && { visitor_id: data.visitor_id }),
-        ...(data.highest_page_reached != null && { highest_page_reached: data.highest_page_reached }),
+        ...(data.highest_page_reached != null && {
+          highest_page_reached: data.highest_page_reached,
+        }),
       })
-      .select('id')
+      .select("id")
       .single();
 
     if (error) {
       // Duplicate email — check if they already have an auth account
-      if (error.message.includes('duplicate') || error.code === '23505') {
+      if (error.message.includes("duplicate") || error.code === "23505") {
         // Look up existing lead
         const { data: existing } = await adminClient
-          .from('nanny_leads')
-          .select('id, auth_user_id')
-          .eq('email', data.email)
+          .from("nanny_leads")
+          .select("id, auth_user_id")
+          .eq("email", data.email)
           .single();
 
         if (existing?.auth_user_id) {
           // Already converted to a real account — block
-          return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+          return {
+            success: false,
+            error:
+              "An account with this email already exists. Please sign in instead.",
+          };
         }
 
         // Pre-auth lead with no account — overwrite with fresh application data
         if (existing) {
           const { data: updated, error: updateErr } = await adminClient
-            .from('nanny_leads')
+            .from("nanny_leads")
             .update({
               first_name: capitalizeName(data.first_name),
               last_name: capitalizeName(data.last_name),
@@ -119,33 +139,48 @@ export async function createNannyLead(data: {
               experience: data.experience,
               qualifications: data.qualifications,
               residency: data.residency,
-              lead_status: 'applied',
-              funnel_step: 'N1',
+              lead_signals: safeLeadSignals,
+              lead_status: "applied",
+              funnel_step: "N1",
               last_active_at: new Date().toISOString(),
               ...(data.visitor_id && { visitor_id: data.visitor_id }),
-              ...(data.highest_page_reached != null && { highest_page_reached: data.highest_page_reached }),
+              ...(data.highest_page_reached != null && {
+                highest_page_reached: data.highest_page_reached,
+              }),
             })
-            .eq('id', existing.id)
-            .select('id')
+            .eq("id", existing.id)
+            .select("id")
             .single();
 
           if (updateErr) {
-            console.error('Overwrite lead error:', updateErr);
-            return { success: false, error: 'Failed to submit application. Please try again.' };
+            console.error("Overwrite lead error:", updateErr);
+            return {
+              success: false,
+              error: "Failed to submit application. Please try again.",
+            };
           }
           return { success: true, leadId: updated.id };
         }
 
-        return { success: false, error: 'Failed to submit application. Please try again.' };
+        return {
+          success: false,
+          error: "Failed to submit application. Please try again.",
+        };
       }
-      console.error('Create lead error:', error);
-      return { success: false, error: 'Failed to submit application. Please try again.' };
+      console.error("Create lead error:", error);
+      return {
+        success: false,
+        error: "Failed to submit application. Please try again.",
+      };
     }
 
     return { success: true, leadId: lead.id };
   } catch (err) {
-    console.error('Create lead exception:', err);
-    return { success: false, error: 'An unexpected error occurred. Please try again.' };
+    console.error("Create lead exception:", err);
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again.",
+    };
   }
 }
 
@@ -164,7 +199,7 @@ export async function updateNannyLead(
     lead_status?: string;
     funnel_step?: string;
     highest_page_reached?: number;
-  }
+  },
 ): Promise<ActionResult> {
   const adminClient = createAdminClient();
 
@@ -173,7 +208,8 @@ export async function updateNannyLead(
       last_active_at: new Date().toISOString(),
     };
 
-    if (data.highest_page_reached != null) updateData.highest_page_reached = data.highest_page_reached;
+    if (data.highest_page_reached != null)
+      updateData.highest_page_reached = data.highest_page_reached;
 
     if (data.preferences) updateData.preferences = data.preferences;
     if (data.availability) updateData.availability = data.availability;
@@ -186,19 +222,25 @@ export async function updateNannyLead(
     if (data.funnel_step) updateData.funnel_step = data.funnel_step;
 
     const { error } = await adminClient
-      .from('nanny_leads')
+      .from("nanny_leads")
       .update(updateData)
-      .eq('id', leadId);
+      .eq("id", leadId);
 
     if (error) {
-      console.error('Update lead error:', error);
-      return { success: false, error: 'Failed to save progress. Please try again.' };
+      console.error("Update lead error:", error);
+      return {
+        success: false,
+        error: "Failed to save progress. Please try again.",
+      };
     }
 
     return { success: true };
   } catch (err) {
-    console.error('Update lead exception:', err);
-    return { success: false, error: 'An unexpected error occurred. Please try again.' };
+    console.error("Update lead exception:", err);
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again.",
+    };
   }
 }
 
@@ -207,43 +249,54 @@ export async function updateNannyLead(
 export async function convertLeadToAccount(
   leadId: string,
   password: string,
-  email?: string
+  email?: string,
 ): Promise<ActionResult> {
   const adminClient = createAdminClient();
 
   try {
     // 1. Fetch lead record
     const { data: lead, error: leadError } = await adminClient
-      .from('nanny_leads')
-      .select('*')
-      .eq('id', leadId)
+      .from("nanny_leads")
+      .select("*")
+      .eq("id", leadId)
       .single();
 
     if (leadError || !lead) {
-      console.error('Fetch lead error:', leadError);
-      return { success: false, error: 'Application not found.' };
+      console.error("Fetch lead error:", leadError);
+      return { success: false, error: "Application not found." };
     }
 
     // Use the email from the account creation form (may differ from lead email)
     const finalEmail = email?.trim() || lead.email;
 
     // 2. Create Supabase auth user
-    const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
-      email: finalEmail,
-      password: password,
-      email_confirm: true,
-      user_metadata: {
-        first_name: capitalizeName(lead.first_name),
-        last_name: capitalizeName(lead.last_name),
-      },
-    });
+    const { data: authData, error: authError } =
+      await adminClient.auth.admin.createUser({
+        email: finalEmail,
+        password: password,
+        email_confirm: true,
+        user_metadata: {
+          first_name: capitalizeName(lead.first_name),
+          last_name: capitalizeName(lead.last_name),
+        },
+      });
 
     if (authError || !authData.user) {
-      console.error('Auth create error:', authError);
-      if (authError?.message.includes('already registered') || authError?.message.includes('already been registered')) {
-        return { success: false, error: 'An account with this email already exists. Please sign in instead.' };
+      console.error("Auth create error:", authError);
+      if (
+        authError?.message.includes("already registered") ||
+        authError?.message.includes("already been registered")
+      ) {
+        return {
+          success: false,
+          error:
+            "An account with this email already exists. Please sign in instead.",
+        };
       }
-      return { success: false, error: 'Failed to create account. Please try again.' };
+      return {
+        success: false,
+        error: "Failed to create account. Please try again.",
+      };
     }
 
     const userId = authData.user.id;
@@ -251,14 +304,15 @@ export async function convertLeadToAccount(
     try {
       // 3. Insert user_roles
       const { error: roleError } = await adminClient
-        .from('user_roles')
-        .insert({ user_id: userId, role: 'nanny' });
+        .from("user_roles")
+        .insert({ user_id: userId, role: "nanny" });
 
-      if (roleError) throw new Error(`Role insert failed: ${roleError.message}`);
+      if (roleError)
+        throw new Error(`Role insert failed: ${roleError.message}`);
 
       // 4. Insert user_profiles
       const { error: profileError } = await adminClient
-        .from('user_profiles')
+        .from("user_profiles")
         .insert({
           user_id: userId,
           first_name: capitalizeName(lead.first_name),
@@ -271,7 +325,8 @@ export async function convertLeadToAccount(
           profile_picture_url: lead.about_you?.profile_picture_url || null,
         });
 
-      if (profileError) throw new Error(`Profile insert failed: ${profileError.message}`);
+      if (profileError)
+        throw new Error(`Profile insert failed: ${profileError.message}`);
 
       // 5. Insert nannies record (INSERT, not UPDATE — no pre-existing record in V2)
       const identity = lead.identity || {};
@@ -284,17 +339,19 @@ export async function convertLeadToAccount(
       const aboutYou = lead.about_you || {};
 
       const { data: nanny, error: nannyError } = await adminClient
-        .from('nannies')
+        .from("nannies")
         .insert({
           user_id: userId,
-          status: 'active',
+          status: "active",
           // Identity (N1.1)
           motivation: identity.motivation,
           personality_traits: identity.personality_traits,
           level_of_support_offered: identity.level_of_support,
           professional_values: identity.professional_values,
           // Experience (N1.2)
-          total_experience_years: experience.total_experience ? parseInt(experience.total_experience) || 0 : null,
+          total_experience_years: experience.total_experience
+            ? parseInt(experience.total_experience) || 0
+            : null,
           under_3_experience_years: experience.under_3_experience || null,
           newborn_experience_years: experience.newborn_experience || null,
           childcare_roles: experience.childcare_roles,
@@ -320,8 +377,8 @@ export async function convertLeadToAccount(
           hourly_rate_min: parseRate(salary.hourly_rate_min),
           pay_frequency: salary.pay_frequency,
           // Availability flags (N3.3)
-          immediate_start_available: availability.immediate_start === 'Yes',
-          placement_ongoing_preferred: availability.placement_ongoing === 'Yes',
+          immediate_start_available: availability.immediate_start === "Yes",
+          placement_ongoing_preferred: availability.placement_ongoing === "Yes",
           start_date_earliest: availability.start_date,
           end_date_latest: availability.end_date,
           // Photos (N3.5)
@@ -333,83 +390,98 @@ export async function convertLeadToAccount(
           ai_bio: lead.ai_bio,
           ai_content: lead.ai_content || {},
           // Derived nanny experience from childcare roles
-          nanny_experience_years: experience.childcare_roles?.length > 0
-            ? experience.childcare_roles
-                .filter((r: { role: string }) => r.role === 'Nanny')
-                .reduce((sum: number, r: { duration: number }) => sum + (r.duration || 0), 0) || null
-            : null,
+          nanny_experience_years:
+            experience.childcare_roles?.length > 0
+              ? experience.childcare_roles
+                  .filter((r: { role: string }) => r.role === "Nanny")
+                  .reduce(
+                    (sum: number, r: { duration: number }) =>
+                      sum + (r.duration || 0),
+                    0,
+                  ) || null
+              : null,
           // Link to lead
           lead_id: leadId,
         })
-        .select('id')
+        .select("id")
         .single();
 
-      if (nannyError || !nanny) throw new Error(`Nanny insert failed: ${nannyError?.message}`);
+      if (nannyError || !nanny)
+        throw new Error(`Nanny insert failed: ${nannyError?.message}`);
 
       // 6. Upsert nanny_availability
       if (availability.available_days?.length > 0) {
-        await adminClient.from('nanny_availability').upsert(
+        await adminClient.from("nanny_availability").upsert(
           {
             nanny_id: nanny.id,
             days_available: availability.available_days,
             schedule: availability.day_times || {},
           },
-          { onConflict: 'nanny_id' }
+          { onConflict: "nanny_id" },
         );
       }
 
       // 7. Insert credentials
       const qualifications = lead.qualifications || {};
 
-      if (qualifications.has_qualifications && qualifications.highest_qualification) {
-        await adminClient.from('nanny_credentials').insert({
+      if (
+        qualifications.has_qualifications &&
+        qualifications.highest_qualification
+      ) {
+        await adminClient.from("nanny_credentials").insert({
           nanny_id: nanny.id,
-          credential_category: 'qualification',
+          credential_category: "qualification",
           qualification_type: qualifications.highest_qualification,
         });
       }
 
-      if (qualifications.has_certificates && qualifications.certificates?.length > 0) {
+      if (
+        qualifications.has_certificates &&
+        qualifications.certificates?.length > 0
+      ) {
         for (const cert of qualifications.certificates) {
-          await adminClient.from('nanny_credentials').insert({
+          await adminClient.from("nanny_credentials").insert({
             nanny_id: nanny.id,
-            credential_category: 'certification',
+            credential_category: "certification",
             certification_type: cert,
           });
         }
       }
 
       // 8. Create verifications record (empty — all statuses not_started)
-      await adminClient.from('verifications').insert({
+      await adminClient.from("verifications").insert({
         user_id: userId,
-        identity_status: 'not_started',
-        wwcc_status: 'not_started',
-        contact_status: 'not_started',
-        cross_check_status: 'not_started',
+        identity_status: "not_started",
+        wwcc_status: "not_started",
+        contact_status: "not_started",
+        cross_check_status: "not_started",
         verification_status: 0,
       });
 
       // 9. Insert user_progress
-      await adminClient.from('user_progress').insert({
+      await adminClient.from("user_progress").insert({
         user_id: userId,
-        stage: 'nanny_lead_converted',
+        stage: "nanny_lead_converted",
       });
 
       // 9. Insert form_snapshot audit trail
-      await adminClient.from('form_snapshots').insert({
+      await adminClient.from("form_snapshots").insert({
         user_id: userId,
-        form_type: 'nanny_lead_conversion',
+        form_type: "nanny_lead_conversion",
         data: lead as unknown as Record<string, unknown>,
       });
 
       // 10. Mark lead as converted
-      await adminClient.from('nanny_leads').update({
-        lead_status: 'converted',
-        converted_at: new Date().toISOString(),
-        auth_user_id: userId,
-        funnel_step: 'N5',
-        terms_accepted_at: new Date().toISOString(),
-      }).eq('id', leadId);
+      await adminClient
+        .from("nanny_leads")
+        .update({
+          lead_status: "converted",
+          converted_at: new Date().toISOString(),
+          auth_user_id: userId,
+          funnel_step: "N5",
+          terms_accepted_at: new Date().toISOString(),
+        })
+        .eq("id", leadId);
 
       // 11. Sign the user in via the cookie-based client
       const supabase = createClient();
@@ -419,7 +491,8 @@ export async function convertLeadToAccount(
       });
 
       // 12. Send welcome email (ACC-001, fire-and-forget)
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app-babybloom.vercel.app';
+      const appUrl =
+        process.env.NEXT_PUBLIC_APP_URL || "https://app-babybloom.vercel.app";
       const firstName = capitalizeName(lead.first_name);
       sendEmail({
         to: finalEmail,
@@ -455,22 +528,25 @@ export async function convertLeadToAccount(
   </div>
 </div>
 </body></html>`,
-        emailType: 'welcome',
+        emailType: "welcome",
         recipientUserId: userId,
-      }).catch(err => console.error('[Signup] ACC-001 email error:', err));
+      }).catch((err) => console.error("[Signup] ACC-001 email error:", err));
 
-      return { success: true, redirectTo: '/nanny' };
+      return { success: true, redirectTo: "/nanny" };
     } catch (innerError) {
       // Cleanup: delete auth user if any downstream insert failed
-      console.error('Conversion error, cleaning up:', innerError);
+      console.error("Conversion error, cleaning up:", innerError);
       await adminClient.auth.admin.deleteUser(userId);
       return {
         success: false,
-        error: 'Failed to create account. Please try again.',
+        error: "Failed to create account. Please try again.",
       };
     }
   } catch (err) {
-    console.error('Convert lead exception:', err);
-    return { success: false, error: 'An unexpected error occurred. Please try again.' };
+    console.error("Convert lead exception:", err);
+    return {
+      success: false,
+      error: "An unexpected error occurred. Please try again.",
+    };
   }
 }

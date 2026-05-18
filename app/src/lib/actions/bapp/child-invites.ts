@@ -629,6 +629,76 @@ export async function connectChildInvite(token: string): Promise<{
       childId: row.child_id,
     });
 
+    // Auto-start the family's 30-day trial the first time a parent +
+    // nanny become connected on this child. The PG function is
+    // idempotent + no-ops when the parent already has a row with
+    // `has_used_trial=true` or is a test user. Best-effort — a failure
+    // here must not roll back the linkage. (Bailey bug 2026-05-13:
+    // previously this was never called, so newly-linked families
+    // landed in a "no subscription row" state and the dev page
+    // mis-framed them as lapsed.)
+    try {
+      const { data: linkedChild } = await admin
+        .from("child_client")
+        .select("parent_user_id")
+        .eq("id", row.child_id)
+        .maybeSingle<{ parent_user_id: string | null }>();
+      if (linkedChild?.parent_user_id) {
+        const { error: trialErr } = await admin.rpc(
+          "start_family_trial_if_first",
+          { p_parent_user_id: linkedChild.parent_user_id },
+        );
+        if (trialErr) {
+          console.error(
+            "[connectChildInvite] trial-start rpc error:",
+            trialErr,
+          );
+        }
+      }
+    } catch (e) {
+      console.error("[connectChildInvite] trial-start unexpected:", e);
+    }
+
+    // T-015 — record bundled consent at invite-accept moment. The
+    // invitee's role determines which agreement: parent →
+    // PARENT-APP-CONSENT, nanny → NANNY-ATTESTATION. Both are scoped
+    // to the new child. Best-effort: a row miss here does not unwind
+    // the link (the consent intent is captured by the checkbox state
+    // at submit time; the missing row will be re-prompted by the
+    // T-7d renewal cron at next opportunity).
+    try {
+      const { data: roleRow } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .maybeSingle<{ role: string }>();
+      const role = roleRow?.role;
+      if (role === "parent" || role === "nanny") {
+        const { recordConsent } = await import("@/lib/legal/record-consent");
+        const agreementId =
+          role === "parent" ? "PARENT-APP-CONSENT" : "NANNY-ATTESTATION";
+        const checkpointText =
+          role === "parent"
+            ? "I consent to Baby Bloom collecting and processing data for this child including photos, daily observations, and any sensitive information I choose to share, in accordance with the Privacy Policy."
+            : "I agree to Baby Bloom's professional terms for this engagement, including my responsibilities while caring for this child + handling their data.";
+        await recordConsent(
+          [
+            {
+              agreementId,
+              checkpointId: "invite-accept",
+              checkpointText,
+            },
+          ],
+          row.child_id,
+        );
+      }
+    } catch (consentErr) {
+      console.warn(
+        "[connectChildInvite] consent record failed (non-fatal):",
+        consentErr,
+      );
+    }
+
     revalidatePath("/parent");
     revalidatePath("/nanny");
     revalidateTag("pending-invites");

@@ -589,3 +589,22 @@ Multi-surface ship covering ~30 user-visible changes. Full detail in `system/APP
 - `supabase/migrations/sync-user-profile-email.sql` — auth.users → user_profiles email mirror trigger. Studio rejected (auth.users ownership). App-level fallback lives in `/api/auth/callback/route.ts` (`syncUserProfileEmailIfNeeded`) — load-bearing path.
 
 **Verification**: typecheck 0 · 60 test files / 741 tests passing · `npm run build` green · code-reviewer + typescript-reviewer + security-reviewer + database-reviewer + silent-failure-hunter ran in parallel across multiple rounds. HIGH findings closed before commit.
+
+---
+
+## 2026-05-15 — T-021 Parent mobile collection at signup (uncommitted)
+
+**Mission:** Mandatory AU mobile capture at all parent signup entry points; `/signup/nanny` + apply funnel + parent settings + invite ergonomics untouched. No DB migration (`user_profiles.mobile_number text` already nullable).
+
+**Files modified:**
+- `src/lib/auth/actions.ts` — `signUp()` now reads `mobile_number` from FormData, role-conditionally normalises + validates against `^04\d{8}$` via `lib/au-contact.ts` helpers, persists `mobile_number: normalisedMobile` (string for parents, null for nannies) in the `user_profiles` insert.
+- `src/app/(auth)/signup/page.tsx` · `src/app/(auth)/signup/parent/page.tsx` · `src/app/(funnel)/matchmaking/signup/MatchmakingSignupClient.tsx` — added `mobile` Zod field + `<FormField>` block mirroring `(funnel)/apply/components/stages/n1/N1Contact.tsx` UX (tel input, +61 prefix, real-time validation, formatted-number checkmark).
+
+**Files created:**
+- `src/__tests__/auth/signUp.spec.ts` — first unit tests for `signUp()` (6 cases). vi.hoisted shared mock state.
+
+**Verification:** typecheck ✓ (after `rm -rf .next` to clear stale generated types) · vitest 1206/1206 ✓ · lint clean for diff (warnings exist in unrelated files) · 5-agent ECC review batch (code + ts + security + silent-failure + a11y) returned 0 CRITICAL · 4 HIGH · 11 MEDIUM · 1 LOW; 9 in-scope fixes applied (HIGH: actions.ts double-guard simplify, a11y live-region for valid cue, +61 prefix aria-hidden; MEDIUM: drop client-side normalise (server-canonical), fieldState.invalid for aria-invalid, text-green-700 WCAG AA contrast, hoist InsertCall type, mockClear test hygiene; LOW: tighten nanny test to toBeNull). Out-of-scope/pre-existing items logged in `system/OPERATIONS/ACTIVE/T-021-.../PROGRESS.md` Outstanding follow-ups.
+
+**🚨 BLOCKER for ANY production deploy (NOT T-021):** `npm run build` fails at `app/src/app/admin/users/[userId]/subscription/page.tsx:221` with `react/no-children-prop` (`children={children}` prop usage). From prior payments-frontend commits `ab87961` + `4e8de33` (`builder090526`). T-021 push is gated on this being fixed first.
+
+**State:** Phases A-E ☑ Shipped locally · Push HELD pending Bailey 3-step approval (commit, push, preview→promote) + pre-existing build blocker resolution. Visual baselines `signup-parent-{desktop,mobile,tablet}` need `--update-snapshots` against live dev server (out-of-band).

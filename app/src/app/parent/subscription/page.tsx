@@ -49,23 +49,27 @@ export default async function ParentSubscriptionPage({
     .eq("parent_user_id", user.id)
     .maybeSingle();
 
-  // Resolve a first child + a connected nanny name for the
-  // success-banner copy. Best-effort: missing data falls back to
-  // generic copy.
+  // Resolve a first child + a connected nanny name for the post-
+  // checkout activation overlay. Best-effort: missing data falls
+  // back to generic copy. `childId` drives the auto-redirect target
+  // once the webhook lands (Bailey 2026-05-13).
   const justSubscribed = searchParams.status === "success";
+  let childId: string | null = null;
   let childFirstName: string | null = null;
   let nannyFirstName: string | null = null;
   if (justSubscribed) {
     const { data: child } = await admin
       .from("child_client")
-      .select("first_name, nanny_user_id")
+      .select("id, first_name, nanny_user_id")
       .eq("parent_user_id", user.id)
       .limit(1)
       .maybeSingle<{
+        id: string;
         first_name: string | null;
         nanny_user_id: string | null;
       }>();
     if (child) {
+      childId = child.id;
       childFirstName = child.first_name;
       if (child.nanny_user_id) {
         const { data: nanny } = await admin
@@ -82,6 +86,7 @@ export default async function ParentSubscriptionPage({
     <SubscriptionClient
       subscription={sub ?? null}
       justSubscribed={justSubscribed}
+      childId={childId}
       childFirstName={childFirstName}
       nannyFirstName={nannyFirstName}
     />

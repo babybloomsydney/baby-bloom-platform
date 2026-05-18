@@ -41,8 +41,14 @@ export interface LapsedBannerProps {
    * route behaviour is to re-open the SubscribeModal (so the
    * user gets the full pitch + secondary CTAs), but the parent
    * route could also route direct to /parent/subscribe.
+   *
+   * Optional on the parent variant — omit when the parent is
+   * already on the Subscribe destination page so the button
+   * would self-navigate (Bailey 2026-05-14). The nanny variant
+   * always renders its Share CTA (different action, not a
+   * self-nav risk).
    */
-  onPrimaryCta: () => void;
+  onPrimaryCta?: () => void;
 }
 
 export function LapsedBanner({
@@ -62,13 +68,15 @@ export function LapsedBanner({
           <span className="font-semibold">Subscription required.</span>{" "}
           Subscribe to keep adding to {childFirstName}&apos;s feed.
         </p>
-        <Button
-          size="sm"
-          className="shrink-0 bg-violet-600 hover:bg-violet-700"
-          onClick={onPrimaryCta}
-        >
-          Subscribe
-        </Button>
+        {onPrimaryCta && (
+          <Button
+            size="sm"
+            className="shrink-0 bg-violet-600 hover:bg-violet-700"
+            onClick={onPrimaryCta}
+          >
+            Subscribe
+          </Button>
+        )}
       </div>
     );
   }
@@ -87,13 +95,15 @@ export function LapsedBanner({
         </span>{" "}
         {parentRef} needs to subscribe to continue.
       </p>
-      <Button
-        size="sm"
-        className="shrink-0 bg-violet-600 hover:bg-violet-700"
-        onClick={onPrimaryCta}
-      >
-        Share with {parentRef}
-      </Button>
+      {onPrimaryCta && (
+        <Button
+          size="sm"
+          className="shrink-0 bg-violet-600 hover:bg-violet-700"
+          onClick={onPrimaryCta}
+        >
+          Share with {parentRef}
+        </Button>
+      )}
     </div>
   );
 }

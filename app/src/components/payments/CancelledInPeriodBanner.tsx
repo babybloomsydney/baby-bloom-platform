@@ -29,31 +29,24 @@
 import { useEffect, useState } from "react";
 import { X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatAuDate } from "@/lib/format/date";
 
 export interface CancelledInPeriodBannerProps {
   /** Scopes the LocalStorage dismissal key per child. */
   childId: string;
   /** ISO timestamp for `parent_subscriptions.paid_period_ends_at`. */
   paidPeriodEndsAt: string;
-  /** Called when the parent clicks the Resubscribe CTA. */
-  onPrimaryCta: () => void;
+  /** Called when the parent clicks the Resubscribe CTA. Omit to
+   *  render the banner without a CTA — used when the parent is
+   *  already on the Resubscribe destination page so the button
+   *  would self-navigate (Bailey 2026-05-14). */
+  onPrimaryCta?: () => void;
 }
 
 const STORAGE_KEY_PREFIX = "bb_cancelled_banner_dismissed_";
 
 function getStorageKey(childId: string): string {
   return `${STORAGE_KEY_PREFIX}${childId}`;
-}
-
-/** AU-locale date formatter — "15 Jun 2026". */
-function formatPeriodEnd(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function CancelledInPeriodBanner({
@@ -87,7 +80,7 @@ export function CancelledInPeriodBanner({
     }
   };
 
-  const formattedDate = formatPeriodEnd(paidPeriodEndsAt);
+  const formattedDate = formatAuDate(paidPeriodEndsAt);
 
   return (
     <div
@@ -102,13 +95,15 @@ export function CancelledInPeriodBanner({
         <span className="font-semibold">Your subscription has ended,</span> but
         you&apos;ll still have access until {formattedDate}.
       </p>
-      <Button
-        size="sm"
-        className="shrink-0 bg-violet-600 hover:bg-violet-700"
-        onClick={onPrimaryCta}
-      >
-        Resubscribe
-      </Button>
+      {onPrimaryCta && (
+        <Button
+          size="sm"
+          className="shrink-0 bg-violet-600 hover:bg-violet-700"
+          onClick={onPrimaryCta}
+        >
+          Resubscribe
+        </Button>
+      )}
       <button
         type="button"
         aria-label="Dismiss"

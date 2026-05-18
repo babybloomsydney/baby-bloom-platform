@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NannySettingsClient } from "./NannySettingsClient";
 import type { ChildClient } from "@/types/bapp";
+import { fetchPayoutsDashboardData } from "@/lib/payments/queryPayoutsDashboard";
+import { fetchPayoutHistory } from "@/lib/payments/queryPayoutHistory";
+import { fetchPayoutOnboardingViewData } from "@/lib/payments/queryNannyPayoutOnboarding";
 
 export default async function NannySettingsPage() {
   const supabase = createClient();
@@ -14,31 +17,41 @@ export default async function NannySettingsPage() {
 
   const admin = createAdminClient();
 
-  const [profileRes, nannyRes, verificationRes, childrenRes] =
-    await Promise.all([
-      admin
-        .from("user_profiles")
-        .select(
-          "first_name, last_name, email, mobile_number, date_of_birth, suburb, postcode",
-        )
-        .eq("user_id", user.id)
-        .single(),
-      admin
-        .from("nannies")
-        .select("verification_level")
-        .eq("user_id", user.id)
-        .single(),
-      admin
-        .from("verifications")
-        .select("wwcc_number, wwcc_status, wwcc_expiry_date")
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      admin
-        .from("child_client")
-        .select("*")
-        .eq("nanny_user_id", user.id)
-        .order("created_at", { ascending: true }),
-    ]);
+  const [
+    profileRes,
+    nannyRes,
+    verificationRes,
+    childrenRes,
+    payoutsData,
+    historyRows,
+    payoutOnboarding,
+  ] = await Promise.all([
+    admin
+      .from("user_profiles")
+      .select(
+        "first_name, last_name, email, mobile_number, date_of_birth, suburb, postcode",
+      )
+      .eq("user_id", user.id)
+      .single(),
+    admin
+      .from("nannies")
+      .select("verification_level")
+      .eq("user_id", user.id)
+      .single(),
+    admin
+      .from("verifications")
+      .select("wwcc_number, wwcc_status, wwcc_expiry_date")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    admin
+      .from("child_client")
+      .select("*")
+      .eq("nanny_user_id", user.id)
+      .order("created_at", { ascending: true }),
+    fetchPayoutsDashboardData(user.id),
+    fetchPayoutHistory(user.id),
+    fetchPayoutOnboardingViewData(user.id),
+  ]);
 
   return (
     <NannySettingsClient
@@ -62,6 +75,13 @@ export default async function NannySettingsPage() {
           : null
       }
       managedChildren={(childrenRes.data ?? []) as ChildClient[]}
+      payoutsDashboard={payoutsData}
+      payoutHistory={historyRows}
+      payoutOnboarding={{
+        status: payoutOnboarding.status,
+        email: user.email ?? null,
+        bankSummary: payoutOnboarding.bankSummary,
+      }}
     />
   );
 }

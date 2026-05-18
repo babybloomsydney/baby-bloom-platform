@@ -161,7 +161,9 @@ describe("updateChildDetails — validation", () => {
       date_of_birth: "tomorrow",
     });
     expect(result.success).toBe(false);
-    expect(result.error).toMatch(/invalid date of birth/i);
+    // Now delegates to shared `validateChildDob`, which returns typed
+    // error codes (under_3 cap rolled in here too).
+    expect(result.error).toBe("invalid_date_of_birth");
   });
 
   it("rejects future dob", async () => {
@@ -173,6 +175,19 @@ describe("updateChildDetails — validation", () => {
       date_of_birth: iso,
     });
     expect(result.success).toBe(false);
+    expect(result.error).toBe("date_of_birth_in_future");
+  });
+
+  it("rejects dob older than the under-3 cap (closes the editor bypass)", async () => {
+    const { updateChildDetails } = await import("./child-clients");
+    const tooOld = new Date();
+    tooOld.setUTCFullYear(tooOld.getUTCFullYear() - 4);
+    const iso = tooOld.toISOString().slice(0, 10);
+    const result = await updateChildDetails(CHILD_ID, {
+      date_of_birth: iso,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("child_too_old");
   });
 
   it("accepts a valid past dob", async () => {

@@ -27,10 +27,20 @@
  * exclusive at the row level.
  */
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { PastDueBanner } from "./PastDueBanner";
 import { CancelledInPeriodBanner } from "./CancelledInPeriodBanner";
 import { LapsedBanner } from "./LapsedBanner";
+
+/** Routes where a CTA targeting that route would self-navigate. The
+ *  banner still renders for the date/state info, but its primary CTA
+ *  is omitted (the destination IS this page). Bailey 2026-05-14:
+ *  same-URL `router.push` triggered an RSC prefetch 404 + did nothing
+ *  visually, which was confusing. Hiding the CTA on the destination
+ *  removes the no-op click without losing the banner's informational
+ *  value. */
+const SUBSCRIBE_DESTINATION = "/parent/subscribe";
+const SUBSCRIPTION_DESTINATION = "/parent/subscription";
 
 export type ParentBannerState =
   | { kind: "none" }
@@ -48,11 +58,19 @@ interface Props {
 
 export function ParentStateBannerHub({ state }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
 
   if (state.kind === "none") return null;
 
-  const goToSubscribe = () => router.push("/parent/subscribe");
-  const goToSubscriptionPortal = () => router.push("/parent/subscription");
+  const onSubscribeDestination = pathname === SUBSCRIBE_DESTINATION;
+  const onSubscriptionDestination = pathname === SUBSCRIPTION_DESTINATION;
+
+  const goToSubscribe = onSubscribeDestination
+    ? undefined
+    : () => router.push(SUBSCRIBE_DESTINATION);
+  const goToSubscriptionPortal = onSubscriptionDestination
+    ? undefined
+    : () => router.push(SUBSCRIPTION_DESTINATION);
 
   if (state.kind === "past_due") {
     return (

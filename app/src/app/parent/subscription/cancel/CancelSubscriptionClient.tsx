@@ -10,6 +10,7 @@ import {
   cancelSubscription,
   type CancellationReason,
 } from "@/lib/actions/payments/cancelSubscription";
+import { formatAuDate } from "@/lib/format/date";
 
 interface Props {
   plan: "monthly" | "upfront";
@@ -26,15 +27,6 @@ const REASONS: ReadonlyArray<{
   { value: "circumstances_changed", label: "My circumstances have changed" },
   { value: "other", label: "Something else" },
 ];
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
 
 export function CancelSubscriptionClient({ plan, paidPeriodEndsAt }: Props) {
   const router = useRouter();
@@ -78,7 +70,7 @@ export function CancelSubscriptionClient({ plan, paidPeriodEndsAt }: Props) {
         <p className="mt-3 text-base text-slate-600">
           You&apos;ll continue to have access until{" "}
           <strong className="text-slate-900">
-            {formatDate(confirmedEndsAt)}
+            {formatAuDate(confirmedEndsAt)}
           </strong>
           . Resubscribe any time from your subscription settings.
         </p>
@@ -108,7 +100,7 @@ export function CancelSubscriptionClient({ plan, paidPeriodEndsAt }: Props) {
         Cancelling your {plan === "monthly" ? "monthly" : "upfront"} plan.
         You&apos;ll keep access until{" "}
         <strong className="text-slate-900">
-          {formatDate(paidPeriodEndsAt)}
+          {formatAuDate(paidPeriodEndsAt)}
         </strong>
         .
       </p>

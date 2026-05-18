@@ -7,7 +7,12 @@ import { usePathname } from "next/navigation";
 // rendered globally by `KatieShell` (A-07) so this wrapper no longer
 // owns it — that way the header stays put across Katie ↔ BabyBloom
 // swaps instead of disappearing with the swap-able main element.
-const DISTRACTION_FREE_PATHS = ["/nanny/onboarding-verification"];
+const DISTRACTION_FREE_PATHS = [
+  "/nanny/onboarding-verification",
+  // T-022 — onboarding contributions page sits on the same focused
+  // surface as the verification flow; same hide-chrome treatment.
+  "/nanny/onboarding/add-child",
+];
 
 export function NannyDashboard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

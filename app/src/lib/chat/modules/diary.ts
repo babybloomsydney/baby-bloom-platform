@@ -23,6 +23,7 @@
  */
 
 import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import type { DiaryChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
@@ -50,6 +51,28 @@ async function insertLog(
   ctx: InsertCtx,
   row: BappLogInsert,
 ): Promise<{ id: string } | null> {
+  // T-015 media gate — applies to ALL diary apply* paths via this
+  // shared helper. If the data payload includes an image_url, the
+  // parent's `parent-app-consent` must be current for that child.
+  const dataImageUrl =
+    typeof (row.data as { image_url?: unknown })?.image_url === "string"
+      ? ((row.data as { image_url?: string }).image_url ?? null)
+      : null;
+  if (dataImageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: row.child_client_id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      console.warn(
+        "[diary insertLog] media_consent_required — blocking image_url insert for child",
+        row.child_client_id,
+      );
+      return null;
+    }
+  }
+
   const { data, error } = await ctx.supabase
     .from("bapp_logs")
     .insert(row)

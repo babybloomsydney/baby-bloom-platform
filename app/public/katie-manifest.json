@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-05-08T06:10:26.026Z",
+  "generated_at": "2026-05-18T07:41:14.546Z",
   "summary": {
-    "route_count": 53,
-    "page_count": 99,
-    "cron_count": 7,
-    "migration_count": 16,
-    "server_action_file_count": 36
+    "route_count": 64,
+    "page_count": 114,
+    "cron_count": 15,
+    "migration_count": 35,
+    "server_action_file_count": 45
   },
   "routes": [
     {
@@ -134,6 +134,11 @@
       "file": "src/app/api/check-share-screenshot/route.ts"
     },
     {
+      "path": "/api/cron/audit-consent-expiry",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/audit-consent-expiry/route.ts"
+    },
+    {
       "path": "/api/cron/cleanup-orphan-children",
       "methods": ["GET"],
       "file": "src/app/api/cron/cleanup-orphan-children/route.ts"
@@ -149,14 +154,39 @@
       "file": "src/app/api/cron/dfy-waves/route.ts"
     },
     {
+      "path": "/api/cron/expire-cancelled-subscriptions",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/expire-cancelled-subscriptions/route.ts"
+    },
+    {
       "path": "/api/cron/expire-connections",
       "methods": ["GET"],
       "file": "src/app/api/cron/expire-connections/route.ts"
     },
     {
+      "path": "/api/cron/expire-past-due",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/expire-past-due/route.ts"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/expire-trials/route.ts"
+    },
+    {
       "path": "/api/cron/proactive",
       "methods": ["GET"],
       "file": "src/app/api/cron/proactive/route.ts"
+    },
+    {
+      "path": "/api/cron/release-payouts",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/release-payouts/route.ts"
+    },
+    {
+      "path": "/api/cron/schedule-upfront-cycles",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/schedule-upfront-cycles/route.ts"
     },
     {
       "path": "/api/cron/send-delayed-emails",
@@ -167,6 +197,16 @@
       "path": "/api/cron/snapshot-pipeline",
       "methods": ["GET"],
       "file": "src/app/api/cron/snapshot-pipeline/route.ts"
+    },
+    {
+      "path": "/api/cron/soft-lock-stale-children",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/soft-lock-stale-children/route.ts"
+    },
+    {
+      "path": "/api/cron/trial-reminders",
+      "methods": ["GET"],
+      "file": "src/app/api/cron/trial-reminders/route.ts"
     },
     {
       "path": "/api/interviews",
@@ -182,6 +222,16 @@
       "path": "/api/nannies",
       "methods": ["GET"],
       "file": "src/app/api/nannies/route.ts"
+    },
+    {
+      "path": "/api/nanny/earnings-badge",
+      "methods": ["GET"],
+      "file": "src/app/api/nanny/earnings-badge/route.ts"
+    },
+    {
+      "path": "/api/nanny/payout-status",
+      "methods": ["GET"],
+      "file": "src/app/api/nanny/payout-status/route.ts"
     },
     {
       "path": "/api/og/babysitting/[id]",
@@ -272,6 +322,11 @@
       "path": "/api/webhooks",
       "methods": ["POST"],
       "file": "src/app/api/webhooks/route.ts"
+    },
+    {
+      "path": "/api/webhooks/stripe",
+      "methods": ["POST"],
+      "file": "src/app/api/webhooks/stripe/route.ts"
     }
   ],
   "pages": [
@@ -412,6 +467,10 @@
       "file": "src/app/admin/katie-stats/page.tsx"
     },
     {
+      "path": "/admin/payouts",
+      "file": "src/app/admin/payouts/page.tsx"
+    },
+    {
       "path": "/admin/pipeline",
       "file": "src/app/admin/pipeline/page.tsx"
     },
@@ -422,6 +481,22 @@
     {
       "path": "/admin/settings",
       "file": "src/app/admin/settings/page.tsx"
+    },
+    {
+      "path": "/admin/subscriptions",
+      "file": "src/app/admin/subscriptions/page.tsx"
+    },
+    {
+      "path": "/admin/support/[messageId]",
+      "file": "src/app/admin/support/[messageId]/page.tsx"
+    },
+    {
+      "path": "/admin/support",
+      "file": "src/app/admin/support/page.tsx"
+    },
+    {
+      "path": "/admin/users/[userId]/subscription",
+      "file": "src/app/admin/users/[userId]/subscription/page.tsx"
     },
     {
       "path": "/admin/users",
@@ -504,12 +579,36 @@
       "file": "src/app/nanny/interviews/page.tsx"
     },
     {
+      "path": "/nanny/onboarding/add-child",
+      "file": "src/app/nanny/onboarding/add-child/page.tsx"
+    },
+    {
       "path": "/nanny/onboarding-verification",
       "file": "src/app/nanny/onboarding-verification/page.tsx"
     },
     {
       "path": "/nanny",
       "file": "src/app/nanny/page.tsx"
+    },
+    {
+      "path": "/nanny/payouts/[familyId]",
+      "file": "src/app/nanny/payouts/[familyId]/page.tsx"
+    },
+    {
+      "path": "/nanny/payouts/history",
+      "file": "src/app/nanny/payouts/history/page.tsx"
+    },
+    {
+      "path": "/nanny/payouts/onboarding",
+      "file": "src/app/nanny/payouts/onboarding/page.tsx"
+    },
+    {
+      "path": "/nanny/payouts",
+      "file": "src/app/nanny/payouts/page.tsx"
+    },
+    {
+      "path": "/nanny/payouts/terms",
+      "file": "src/app/nanny/payouts/terms/page.tsx"
     },
     {
       "path": "/nanny/positions",
@@ -640,12 +739,28 @@
       "file": "src/app/parent/settings/page.tsx"
     },
     {
+      "path": "/parent/subscribe",
+      "file": "src/app/parent/subscribe/page.tsx"
+    },
+    {
+      "path": "/parent/subscription/cancel",
+      "file": "src/app/parent/subscription/cancel/page.tsx"
+    },
+    {
+      "path": "/parent/subscription",
+      "file": "src/app/parent/subscription/page.tsx"
+    },
+    {
       "path": "/parent/verification",
       "file": "src/app/parent/verification/page.tsx"
     },
     {
       "path": "/parent/verify",
       "file": "src/app/parent/verify/page.tsx"
+    },
+    {
+      "path": "/subscribe-for/[token]",
+      "file": "src/app/subscribe-for/[token]/page.tsx"
     },
     {
       "path": "/test/ProfileOGTAGS",
@@ -700,9 +815,81 @@
     {
       "path": "/api/cron/snapshot-pipeline",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-past-due",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-cancelled-subscriptions",
+      "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/cron/soft-lock-stale-children",
+      "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/schedule-upfront-cycles",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/trial-reminders",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/release-payouts",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/audit-consent-expiry",
+      "schedule": "5 21 * * *"
     }
   ],
   "migrations": [
+    {
+      "filename": "abn-collection-rollback.sql",
+      "bytes": 3713,
+      "modified_at": "2026-05-15T05:17:14.092Z"
+    },
+    {
+      "filename": "abn-collection.sql",
+      "bytes": 8673,
+      "modified_at": "2026-05-15T04:58:39.378Z"
+    },
+    {
+      "filename": "bonus-program-onboarding-rollback.sql",
+      "bytes": 907,
+      "modified_at": "2026-05-18T03:53:03.112Z"
+    },
+    {
+      "filename": "bonus-program-onboarding.sql",
+      "bytes": 4105,
+      "modified_at": "2026-05-18T03:52:59.064Z"
+    },
+    {
+      "filename": "cancel-freeze-trigger-rollback.sql",
+      "bytes": 1268,
+      "modified_at": "2026-05-14T06:18:45.468Z"
+    },
+    {
+      "filename": "cancel-freeze-trigger.sql",
+      "bytes": 6328,
+      "modified_at": "2026-05-14T06:18:39.207Z"
+    },
+    {
+      "filename": "cancel-inflight-trigger-v2-rollback.sql",
+      "bytes": 1514,
+      "modified_at": "2026-05-14T10:49:38.172Z"
+    },
+    {
+      "filename": "cancel-inflight-trigger-v2.sql",
+      "bytes": 4028,
+      "modified_at": "2026-05-14T10:49:31.901Z"
+    },
     {
       "filename": "education-app.sql",
       "bytes": 13414,
@@ -712,6 +899,16 @@
       "filename": "expand-milestones-210.sql",
       "bytes": 20941,
       "modified_at": "2026-05-07T07:06:54.824Z"
+    },
+    {
+      "filename": "frozen-rows-to-cancelled-rollback.sql",
+      "bytes": 1442,
+      "modified_at": "2026-05-14T11:06:01.399Z"
+    },
+    {
+      "filename": "frozen-rows-to-cancelled.sql",
+      "bytes": 873,
+      "modified_at": "2026-05-14T10:49:42.135Z"
     },
     {
       "filename": "katie-admin-edits-rollback.sql",
@@ -764,9 +961,44 @@
       "modified_at": "2026-05-07T07:06:54.826Z"
     },
     {
+      "filename": "lead-signals-rollback.sql",
+      "bytes": 764,
+      "modified_at": "2026-05-18T03:47:35.073Z"
+    },
+    {
+      "filename": "lead-signals.sql",
+      "bytes": 2873,
+      "modified_at": "2026-05-18T03:47:35.071Z"
+    },
+    {
+      "filename": "nannies-payout-status-constraint-fix.sql",
+      "bytes": 1038,
+      "modified_at": "2026-05-13T05:31:08.748Z"
+    },
+    {
       "filename": "nanny-leads-v2.sql",
       "bytes": 3424,
       "modified_at": "2026-03-20T02:09:28.782Z"
+    },
+    {
+      "filename": "payments-foundation-rollback.sql",
+      "bytes": 3561,
+      "modified_at": "2026-05-11T01:20:41.461Z"
+    },
+    {
+      "filename": "payments-foundation.sql",
+      "bytes": 22403,
+      "modified_at": "2026-05-11T01:20:39.193Z"
+    },
+    {
+      "filename": "payments-frontend-rollback.sql",
+      "bytes": 4294,
+      "modified_at": "2026-05-11T05:42:17.873Z"
+    },
+    {
+      "filename": "payments-frontend.sql",
+      "bytes": 13521,
+      "modified_at": "2026-05-11T05:42:00.264Z"
     },
     {
       "filename": "reset-test-user.sql",
@@ -782,12 +1014,30 @@
       "filename": "sync-user-profile-email.sql",
       "bytes": 4863,
       "modified_at": "2026-05-07T07:06:54.826Z"
+    },
+    {
+      "filename": "T-015-media-consent-seed.sql",
+      "bytes": 1964,
+      "modified_at": "2026-05-14T05:24:26.456Z"
+    },
+    {
+      "filename": "T-017-load-v2-policies.sql",
+      "bytes": 78007,
+      "modified_at": "2026-05-14T08:10:05.014Z"
     }
   ],
   "server_actions": [
     {
       "file": "src/lib/actions/account-security.ts",
       "functions": ["requestPasswordChange"]
+    },
+    {
+      "file": "src/lib/actions/admin/replyToContactMessage.ts",
+      "functions": ["replyToContactMessage"]
+    },
+    {
+      "file": "src/lib/actions/admin/test-user-flag.ts",
+      "functions": ["setTestUserFlag"]
     },
     {
       "file": "src/lib/actions/admin.ts",
@@ -1040,6 +1290,34 @@
         "deactivateParentAccount",
         "updateParentProfilePictureUrl"
       ]
+    },
+    {
+      "file": "src/lib/actions/payments/cancelSubscription.ts",
+      "functions": ["cancelSubscription"]
+    },
+    {
+      "file": "src/lib/actions/payments/checkout.ts",
+      "functions": ["createCheckoutSession"]
+    },
+    {
+      "file": "src/lib/actions/payments/createConnectAccountSession.ts",
+      "functions": ["createConnectAccountSession"]
+    },
+    {
+      "file": "src/lib/actions/payments/createSubscribeInvite.ts",
+      "functions": ["createSubscribeInvite"]
+    },
+    {
+      "file": "src/lib/actions/payments/customer.ts",
+      "functions": ["ensureStripeCustomer"]
+    },
+    {
+      "file": "src/lib/actions/payments/portal.ts",
+      "functions": ["createPortalSession"]
+    },
+    {
+      "file": "src/lib/actions/payments/startConnectOnboarding.ts",
+      "functions": ["startConnectOnboarding"]
     },
     {
       "file": "src/lib/actions/position-funnel.ts",

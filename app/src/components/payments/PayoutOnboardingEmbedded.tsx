@@ -37,7 +37,17 @@ import { loadConnectAndInitialize } from "@stripe/connect-js";
 import type { StripeConnectInstance } from "@stripe/connect-js";
 import { createConnectAccountSession } from "@/lib/actions/payments/createConnectAccountSession";
 
-export function PayoutOnboardingEmbedded() {
+export interface PayoutOnboardingEmbeddedProps {
+  /** 11-digit ABN collected by BB before this component mounts.
+   *  Passed to Stripe at account creation so the embed doesn't
+   *  re-ask. When the Stripe account already exists, ignored
+   *  (the account creation has already happened). */
+  abn?: string;
+}
+
+export function PayoutOnboardingEmbedded({
+  abn,
+}: PayoutOnboardingEmbeddedProps = {}) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [connectInstance, setConnectInstance] =
@@ -56,7 +66,7 @@ export function PayoutOnboardingEmbedded() {
         const instance = loadConnectAndInitialize({
           publishableKey: pk,
           fetchClientSecret: async (): Promise<string> => {
-            const r = await createConnectAccountSession();
+            const r = await createConnectAccountSession({ abn });
             if (!r.success) {
               throw new Error(r.error);
             }
@@ -71,6 +81,11 @@ export function PayoutOnboardingEmbedded() {
               colorBackground: "#FFFFFF",
               colorText: "#0F172A",
               borderRadius: "8px",
+              // Tighter spacing + slightly smaller base font so the
+              // embed fits comfortably on phones without horizontal
+              // overflow. Bailey 2026-05-13.
+              spacingUnit: "6px",
+              fontSizeBase: "13px",
             },
           },
         });
@@ -96,7 +111,11 @@ export function PayoutOnboardingEmbedded() {
     return () => {
       mounted = false;
     };
-  }, []);
+    // `abn` captured in fetchClientSecret closure — re-init on change
+    // so a user who edits the value before account creation gets the
+    // new value pushed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abn]);
 
   if (error) {
     return (

@@ -7,8 +7,11 @@
  * (module structure).
  *
  * Mode is gated by `STRIPE_MODE`. The `STRIPE_SECRET_KEY` env var must
- * hold the matching `sk_test_*` or `sk_live_*` key — we do NOT auto-pick
- * keys based on mode. Mismatched mode + key throws on construction.
+ * hold a key matching the mode — `sk_{test,live}_*` (full secret) or
+ * `rk_{test,live}_*` (restricted key). We do NOT auto-pick keys based on
+ * mode. Mismatched mode + key throws on construction. Restricted keys
+ * are preferred for production because they limit blast radius if
+ * compromised.
  *
  * Server-only. Importing this from a `'use client'` module will fail at
  * build time because Stripe's Node SDK is not browser-safe.
@@ -40,14 +43,18 @@ function readMode(): StripeMode {
 }
 
 function assertKeyMatchesMode(secretKey: string, mode: StripeMode): void {
-  if (mode === "live" && !secretKey.startsWith("sk_live_")) {
+  const isLive =
+    secretKey.startsWith("sk_live_") || secretKey.startsWith("rk_live_");
+  const isTest =
+    secretKey.startsWith("sk_test_") || secretKey.startsWith("rk_test_");
+  if (mode === "live" && !isLive) {
     throw new Error(
-      "STRIPE_MODE=live requires a 'sk_live_*' STRIPE_SECRET_KEY",
+      "STRIPE_MODE=live requires a live STRIPE_SECRET_KEY (sk_live_* or rk_live_*)",
     );
   }
-  if (mode === "test" && !secretKey.startsWith("sk_test_")) {
+  if (mode === "test" && !isTest) {
     throw new Error(
-      "STRIPE_MODE=test requires a 'sk_test_*' STRIPE_SECRET_KEY",
+      "STRIPE_MODE=test requires a test STRIPE_SECRET_KEY (sk_test_* or rk_test_*)",
     );
   }
 }

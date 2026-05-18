@@ -1,30 +1,24 @@
 /**
  * GET /api/nanny/earnings-badge
  *
- * Returns the nanny's cycle-total earnings value for the global header
- * wallet badge — DSS §8 Q2 (Bailey 2026-05-12).
+ * Returns the nanny's earnings total for the global header wallet badge.
  *
- * Value definition: A$100 × number of `child_client` rows where this
- * user is the nanny and `under_three=true`. This matches the existing
- * loss-aversion engine on `/nanny/payouts` (AccountTotalTile). The
- * value is the "could earn this cycle" frame — visible from the moment
- * the nanny adds her first child, regardless of subscription state.
+ * T-018: pulls from the same `fetchPayoutsDashboardData` function the
+ * full dashboard uses, eliminating drift between pill + list views.
  *
- * Why client-fetched: DashboardNav is a deep client component already
- * inside KatieShell; threading the value down via props would require
- * touching the entire shell hierarchy. A small fetched endpoint keeps
- * the change scoped.
+ * Value definition:
+ *  - `realTotalCents`: sum of real `paid|pending|held` rows for current
+ *    cycle (`period_start <= today`).
+ *  - `trialTeaserAudCents`: $100 per connected family currently in trial
+ *    state. Loss-aversion engine — nanny sees money waiting before
+ *    parent subscribes.
  *
- * Returns { totalAud: number, familyCount: number } — header renders
- * `totalAud` directly; `familyCount` is incidentally useful but not
- * surfaced per Bailey's "just the A$ value, no out-of-N text" rule.
+ * Header hides the badge when totalAud = 0.
  */
 
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-
-const EARNINGS_PER_FAMILY_AUD = 100;
+import { fetchPayoutsDashboardData } from "@/lib/payments/queryPayoutsDashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -37,23 +31,13 @@ export async function GET() {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
 
-  const admin = createAdminClient();
-  const { count, error } = await admin
-    .from("child_client")
-    .select("id", { count: "exact", head: true })
-    .eq("nanny_user_id", user.id)
-    .eq("under_three", true);
-
-  if (error) {
-    return NextResponse.json(
-      { error: "lookup_failed", message: error.message },
-      { status: 500 },
-    );
+  const data = await fetchPayoutsDashboardData(user.id);
+  if (!data) {
+    return NextResponse.json({ error: "lookup_failed" }, { status: 500 });
   }
 
-  const familyCount = count ?? 0;
-  return NextResponse.json({
-    totalAud: familyCount * EARNINGS_PER_FAMILY_AUD,
-    familyCount,
-  });
+  const totalAud =
+    Math.floor(data.realTotalCents / 100) +
+    Math.floor(data.trialTeaserAudCents / 100);
+  return NextResponse.json({ totalAud });
 }

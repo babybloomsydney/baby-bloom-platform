@@ -1,7 +1,9 @@
 /**
  * Commission engine tests — TDD-MANDATORY for cent calculations.
  *
- * Per `06-commission-system.md` §1.5 + §3 (timing).
+ * Rewritten 2026-05-13 against the engine signature lock-in:
+ * - Monthly: A$100, released 14 days after each parent payment.
+ * - Upfront: A$500 / A$300 / A$200 at +30d / +60d / +90d.
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,85 +15,46 @@ import {
 } from "./commission-engine";
 
 const A$ = (dollars: number) => Math.round(dollars * 100);
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const FIXED_PAYMENT = new Date("2026-01-15T00:00:00Z");
 
 describe("calculateCommissionCents — monthly plan", () => {
-  it("monthly + subscription_started → A$100 (10,000 cents)", () => {
-    expect(
-      calculateCommissionCents({
-        plan: "monthly",
-        trigger: "subscription_started",
-        cycleIndex: 1,
-      }),
-    ).toBe(A$(100));
-  });
-
-  it("monthly + cycle_completed (any cycle) → A$100 (10,000 cents)", () => {
-    expect(
-      calculateCommissionCents({
-        plan: "monthly",
-        trigger: "cycle_completed",
-        cycleIndex: 1,
-      }),
-    ).toBe(A$(100));
-    // Monthly cycleIndex is always 1 (each call schedules the current
-    // cycle), but verify the function doesn't crash on higher values.
-    expect(
-      calculateCommissionCents({
-        plan: "monthly",
-        trigger: "cycle_completed",
-        cycleIndex: 3,
-      }),
-    ).toBe(A$(100));
+  it("monthly always returns A$100 (10,000 cents)", () => {
+    expect(calculateCommissionCents({ plan: "monthly", cycleIndex: 1 })).toBe(
+      A$(100),
+    );
+    expect(calculateCommissionCents({ plan: "monthly", cycleIndex: 2 })).toBe(
+      A$(100),
+    );
+    expect(calculateCommissionCents({ plan: "monthly", cycleIndex: 3 })).toBe(
+      A$(100),
+    );
   });
 });
 
 describe("calculateCommissionCents — upfront plan", () => {
-  it("upfront cycle 1 → 33,333 cents", () => {
-    expect(
-      calculateCommissionCents({
-        plan: "upfront",
-        trigger: "subscription_started",
-        cycleIndex: 1,
-      }),
-    ).toBe(33_333);
+  it("upfront cycle 1 → A$500 (50,000 cents)", () => {
+    expect(calculateCommissionCents({ plan: "upfront", cycleIndex: 1 })).toBe(
+      A$(500),
+    );
   });
 
-  it("upfront cycle 2 → 33,333 cents", () => {
-    expect(
-      calculateCommissionCents({
-        plan: "upfront",
-        trigger: "cycle_completed",
-        cycleIndex: 2,
-      }),
-    ).toBe(33_333);
+  it("upfront cycle 2 → A$300 (30,000 cents)", () => {
+    expect(calculateCommissionCents({ plan: "upfront", cycleIndex: 2 })).toBe(
+      A$(300),
+    );
   });
 
-  it("upfront cycle 3 → 33,334 cents (remainder)", () => {
-    expect(
-      calculateCommissionCents({
-        plan: "upfront",
-        trigger: "cycle_completed",
-        cycleIndex: 3,
-      }),
-    ).toBe(33_334);
+  it("upfront cycle 3 → A$200 (20,000 cents)", () => {
+    expect(calculateCommissionCents({ plan: "upfront", cycleIndex: 3 })).toBe(
+      A$(200),
+    );
   });
 
   it("3 upfront cycles sum to exactly A$1,000", () => {
-    const c1 = calculateCommissionCents({
-      plan: "upfront",
-      trigger: "subscription_started",
-      cycleIndex: 1,
-    });
-    const c2 = calculateCommissionCents({
-      plan: "upfront",
-      trigger: "cycle_completed",
-      cycleIndex: 2,
-    });
-    const c3 = calculateCommissionCents({
-      plan: "upfront",
-      trigger: "cycle_completed",
-      cycleIndex: 3,
-    });
+    const c1 = calculateCommissionCents({ plan: "upfront", cycleIndex: 1 });
+    const c2 = calculateCommissionCents({ plan: "upfront", cycleIndex: 2 });
+    const c3 = calculateCommissionCents({ plan: "upfront", cycleIndex: 3 });
     expect(c1 + c2 + c3).toBe(A$(1000));
     expect(c1 + c2 + c3).toBe(
       COMMISSION_CONSTANTS.UPFRONT_TOTAL_COMMISSION_CENTS,
@@ -102,92 +65,128 @@ describe("calculateCommissionCents — upfront plan", () => {
     expect(() =>
       calculateCommissionCents({
         plan: "upfront",
-        trigger: "cycle_completed",
         cycleIndex: 4 as 1 | 2 | 3,
       }),
-    ).toThrow(/cycles 1-3/);
+    ).toThrow(/cycleIndex must be 1-3/);
     expect(() =>
       calculateCommissionCents({
         plan: "upfront",
-        trigger: "subscription_started",
         cycleIndex: 0 as 1 | 2 | 3,
       }),
-    ).toThrow(/cycles 1-3/);
+    ).toThrow(/cycleIndex must be 1-3/);
+  });
+
+  it("monthly cycleIndex out of [1,3] also throws (M4 — caller-bug guard)", () => {
+    // Defensive: the type constraint already says 1|2|3, but a caller
+    // that widens to `number` (cron, untyped event payload) would
+    // otherwise silently get back the flat $100. Throw instead.
+    expect(() =>
+      calculateCommissionCents({
+        plan: "monthly",
+        cycleIndex: 0 as 1 | 2 | 3,
+      }),
+    ).toThrow(/cycleIndex must be 1-3/);
+    expect(() =>
+      calculateCommissionCents({
+        plan: "monthly",
+        cycleIndex: 4 as 1 | 2 | 3,
+      }),
+    ).toThrow(/cycleIndex must be 1-3/);
   });
 });
 
-describe("calculateScheduledReleaseAt — 14-day safeguard window", () => {
-  it("subscription_started → paid_period_starts_at + 14 days", () => {
-    const start = new Date("2026-01-01T00:00:00Z");
+describe("calculateScheduledReleaseAt — monthly = payment + 14d", () => {
+  it("monthly → paymentLandedAt + 14 days", () => {
     const release = calculateScheduledReleaseAt({
-      trigger: "subscription_started",
-      paidPeriodStartsAt: start,
+      plan: "monthly",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 1,
     });
-    const expected = new Date("2026-01-15T00:00:00Z");
-    expect(release.getTime()).toBe(expected.getTime());
-  });
-
-  it("cycle_completed → cycle_end + 14 days", () => {
-    const start = new Date("2026-01-01T00:00:00Z");
-    const cycleEnd = new Date("2026-01-31T00:00:00Z");
-    const release = calculateScheduledReleaseAt({
-      trigger: "cycle_completed",
-      paidPeriodStartsAt: start,
-      cycleEndsAt: cycleEnd,
-    });
-    const expected = new Date("2026-02-14T00:00:00Z");
-    expect(release.getTime()).toBe(expected.getTime());
-  });
-
-  it("cycle_completed without cycleEndsAt → falls back to paidPeriodStartsAt + 14d (defensive)", () => {
-    const start = new Date("2026-01-01T00:00:00Z");
-    const release = calculateScheduledReleaseAt({
-      trigger: "cycle_completed",
-      paidPeriodStartsAt: start,
-    });
-    expect(release.getTime()).toBe(new Date("2026-01-15T00:00:00Z").getTime());
+    expect(release.getTime() - FIXED_PAYMENT.getTime()).toBe(14 * MS_PER_DAY);
   });
 });
 
-describe("calculateCommissionPeriod", () => {
-  it("subscription_started + trial → covers trial window", () => {
-    const trialStart = new Date("2026-01-01T00:00:00Z");
-    const trialEnd = new Date("2026-01-31T00:00:00Z");
-    const result = calculateCommissionPeriod({
-      trigger: "subscription_started",
-      paidPeriodStartsAt: new Date("2026-01-31T00:00:00Z"),
-      trialStartedAt: trialStart,
-      trialEndsAt: trialEnd,
+describe("calculateScheduledReleaseAt — upfront = payment + 30/60/90d", () => {
+  it("upfront cycle 1 → paymentLandedAt + 30 days", () => {
+    const release = calculateScheduledReleaseAt({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 1,
     });
-    expect(result.periodStart.getTime()).toBe(trialStart.getTime());
-    expect(result.periodEnd.getTime()).toBe(trialEnd.getTime());
+    expect(release.getTime() - FIXED_PAYMENT.getTime()).toBe(30 * MS_PER_DAY);
   });
 
-  it("subscription_started without trial → first 30 days of paid period", () => {
-    const paidStart = new Date("2026-01-01T00:00:00Z");
-    const result = calculateCommissionPeriod({
-      trigger: "subscription_started",
-      paidPeriodStartsAt: paidStart,
-      trialStartedAt: null,
-      trialEndsAt: null,
+  it("upfront cycle 2 → paymentLandedAt + 60 days", () => {
+    const release = calculateScheduledReleaseAt({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 2,
     });
-    expect(result.periodStart.getTime()).toBe(paidStart.getTime());
-    expect(result.periodEnd.getTime()).toBe(
-      new Date("2026-01-31T00:00:00Z").getTime(),
+    expect(release.getTime() - FIXED_PAYMENT.getTime()).toBe(60 * MS_PER_DAY);
+  });
+
+  it("upfront cycle 3 → paymentLandedAt + 90 days", () => {
+    const release = calculateScheduledReleaseAt({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 3,
+    });
+    expect(release.getTime() - FIXED_PAYMENT.getTime()).toBe(90 * MS_PER_DAY);
+  });
+});
+
+describe("calculateCommissionPeriod — monthly = single 30d window", () => {
+  it("monthly → period_start=paymentLandedAt, period_end=+30d", () => {
+    const period = calculateCommissionPeriod({
+      plan: "monthly",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 1,
+    });
+    expect(period.periodStart.getTime()).toBe(FIXED_PAYMENT.getTime());
+    expect(period.periodEnd.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      30 * MS_PER_DAY,
+    );
+  });
+});
+
+describe("calculateCommissionPeriod — upfront = three sequential 30d windows", () => {
+  it("upfront cycle 1 → first 30d window after payment", () => {
+    const period = calculateCommissionPeriod({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 1,
+    });
+    expect(period.periodStart.getTime()).toBe(FIXED_PAYMENT.getTime());
+    expect(period.periodEnd.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      30 * MS_PER_DAY,
     );
   });
 
-  it("cycle_completed → period covers cycle_end - 30d → cycle_end", () => {
-    const cycleEnd = new Date("2026-03-31T00:00:00Z");
-    const result = calculateCommissionPeriod({
-      trigger: "cycle_completed",
-      paidPeriodStartsAt: new Date("2026-01-01T00:00:00Z"),
-      cycleEndsAt: cycleEnd,
+  it("upfront cycle 2 → second 30d window (30-60d after payment)", () => {
+    const period = calculateCommissionPeriod({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 2,
     });
-    expect(result.periodEnd.getTime()).toBe(cycleEnd.getTime());
-    // 30 days before cycle end
-    expect(result.periodStart.getTime()).toBe(
-      new Date("2026-03-01T00:00:00Z").getTime(),
+    expect(period.periodStart.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      30 * MS_PER_DAY,
+    );
+    expect(period.periodEnd.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      60 * MS_PER_DAY,
+    );
+  });
+
+  it("upfront cycle 3 → third 30d window (60-90d after payment)", () => {
+    const period = calculateCommissionPeriod({
+      plan: "upfront",
+      paymentLandedAt: FIXED_PAYMENT,
+      cycleIndex: 3,
+    });
+    expect(period.periodStart.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      60 * MS_PER_DAY,
+    );
+    expect(period.periodEnd.getTime() - FIXED_PAYMENT.getTime()).toBe(
+      90 * MS_PER_DAY,
     );
   });
 });

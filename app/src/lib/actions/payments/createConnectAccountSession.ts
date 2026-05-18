@@ -28,7 +28,17 @@ export type CreateConnectAccountSessionResult =
   | { success: true; data: { clientSecret: string } }
   | { success: false; error: string };
 
-export async function createConnectAccountSession(): Promise<CreateConnectAccountSessionResult> {
+export interface CreateConnectAccountSessionInput {
+  /** 11-digit ABN. Required when the nanny doesn't yet have a
+   *  stripe_connect_account_id — passed to Stripe at account
+   *  creation so the embed doesn't have to ask. Ignored when an
+   *  account already exists. */
+  abn?: string;
+}
+
+export async function createConnectAccountSession(
+  input?: CreateConnectAccountSessionInput,
+): Promise<CreateConnectAccountSessionResult> {
   try {
     if (!PAYMENTS_ENABLED) {
       return { success: false, error: "payments_disabled" };
@@ -55,11 +65,74 @@ export async function createConnectAccountSession(): Promise<CreateConnectAccoun
 
     let accountId = nanny.stripe_connect_account_id;
     if (!accountId) {
+      // Pull every field Stripe might ask for so the embedded
+      // onboarding form is reduced to bank + address only. Anything
+      // unknown stays null and Stripe collects it inline. Bailey
+      // 2026-05-13.
+      const [{ data: profile }, { data: verification }] = await Promise.all([
+        admin
+          .from("user_profiles")
+          .select(
+            "first_name, last_name, mobile_number, date_of_birth, address_line1, address_line2, suburb, postcode, state",
+          )
+          .eq("user_id", user.id)
+          .maybeSingle<{
+            first_name: string | null;
+            last_name: string | null;
+            mobile_number: string | null;
+            date_of_birth: string | null;
+            address_line1: string | null;
+            address_line2: string | null;
+            suburb: string | null;
+            postcode: string | null;
+            state: string | null;
+          }>(),
+        // Verification stores the canonical street address (the one
+        // the nanny submitted with ID). `user_profiles` carries a
+        // separate copy that nannies often skip. Bailey 2026-05-13:
+        // prefer verification's address when present so Stripe gets
+        // the real residential address.
+        admin
+          .from("verifications")
+          .select("address_line, city, state, postcode")
+          .eq("user_id", user.id)
+          .maybeSingle<{
+            address_line: string | null;
+            city: string | null;
+            state: string | null;
+            postcode: string | null;
+          }>(),
+      ]);
+
+      const line1 =
+        verification?.address_line ?? profile?.address_line1 ?? null;
+      const city = verification?.city ?? profile?.suburb ?? null;
+      const stateValue = verification?.state ?? profile?.state ?? null;
+      const postalCode = verification?.postcode ?? profile?.postcode ?? null;
+
       const created = await createExpressAccount({
         email: user.email ?? "",
         country: "AU",
         nannyUserId: user.id,
         metadata: { onboarding_source: "embedded_connect_session" },
+        prefill: {
+          firstName: profile?.first_name ?? null,
+          lastName: profile?.last_name ?? null,
+          phone: profile?.mobile_number ?? null,
+          dateOfBirth: profile?.date_of_birth ?? null,
+          address: {
+            line1,
+            line2: profile?.address_line2 ?? null,
+            city,
+            state: stateValue,
+            postalCode,
+            country: "AU",
+          },
+          // T-020 (2026-05-18): when ABN provided, createExpressAccount
+          // switches to the AU sole_proprietorship branch
+          // (business_type=company + company.tax_id=ABN).
+          abn: input?.abn ?? null,
+        },
       });
       if (!created.success) {
         return { success: false, error: created.error };

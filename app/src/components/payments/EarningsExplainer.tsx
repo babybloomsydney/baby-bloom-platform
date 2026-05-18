@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * EarningsExplainer — S12 collapsible info block.
+ * EarningsExplainer — short summary of how contributions work.
  *
- * Veterans don't need this; new nannies do. Default-collapsed so
- * the dashboard stays scannable. Open it to read how cycles +
- * safeguard windows + frozen states work.
- *
- * Spec: `system/APP/PAYMENTS/FRONTEND/03-build-spec.md` §S12.
+ * T-018 reframing (Bailey 2026-05-15): "Payouts" → "Contributions".
+ * Our framing positions BB's payment to the nanny as a contribution
+ * towards the nanny's developmental support of children — we are
+ * not paying them for the customer; we're rewarding their work for
+ * the betterment of young children.
  *
  * NEVER uses "track" / "tracking" terminology.
  */
 
+import Link from "next/link";
 import { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
@@ -25,7 +26,7 @@ export function EarningsExplainer() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        How payouts work
+        How it works
         {open ? (
           <ChevronUp className="h-4 w-4 text-slate-500" aria-hidden="true" />
         ) : (
@@ -33,43 +34,43 @@ export function EarningsExplainer() {
         )}
       </button>
       {open && (
-        <div className="space-y-3 border-t border-slate-200 px-5 py-4 text-sm text-slate-600">
-          <p>You earn A$100 for each 30-day cycle a family stays subscribed.</p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>Cycle 1 begins the moment the family subscribes.</li>
-            <li>
-              You see your A$100 immediately, but it&apos;s protected by a
-              14-day window before reaching your bank account. This window keeps
-              things safe for everyone.
-            </li>
-            <li>At day 30 the cycle ends; on day 44 your A$100 lands.</li>
-            <li>A fresh A$100 cycle begins on day 31, paid on day 74.</li>
-          </ul>
-          <p className="font-medium text-slate-900">If a family cancels</p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>Past payouts you&apos;ve received are yours permanently.</li>
-            <li>
-              The cycle they cancelled DURING is frozen — not lost. If they
-              resubscribe, frozen earnings unlock.
-            </li>
-          </ul>
-          <p className="font-medium text-slate-900">
-            If a family is on free trial
+        <div className="space-y-4 border-t border-slate-200 px-5 py-4 text-sm text-slate-700">
+          <p className="text-slate-900">
+            Our contribution towards your great work!
           </p>
-          <ul className="list-disc space-y-1 pl-5">
-            <li>
-              You see A$100 &quot;earned&quot; but it&apos;s locked. It converts
-              to a paid cycle the moment they subscribe.
+
+          <ul className="space-y-2 pl-1">
+            <li className="flex gap-2">
+              <span aria-hidden="true" className="select-none">
+                •
+              </span>
+              <span>
+                <span className="font-semibold text-slate-900">A$100</span> for
+                every month of continued developmental support with a family.
+              </span>
             </li>
-            <li>
-              If they don&apos;t subscribe before trial ends, the earnings
-              freeze — still recoverable if they ever come back.
+            <li className="flex gap-2">
+              <span aria-hidden="true" className="select-none">
+                •
+              </span>
+              <span>
+                <span className="font-semibold text-slate-900">A$1,000</span>{" "}
+                for assisting families that pre-plan for long-term development.
+              </span>
             </li>
           </ul>
-          <p className="font-medium text-slate-900">How do I get paid?</p>
+
+          <p className="text-sm italic text-slate-600">
+            You just keep doing what you do best!
+          </p>
+
           <p>
-            Set up your payout account once (Stripe walks you through it). From
-            then on, payouts auto-transfer to your bank.
+            <Link
+              href="/nanny/payouts/terms"
+              className="font-medium text-violet-700 underline-offset-2 hover:underline"
+            >
+              See the full terms →
+            </Link>
           </p>
         </div>
       )}

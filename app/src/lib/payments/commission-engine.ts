@@ -1,37 +1,40 @@
 /**
  * Commission engine — pure cent calculations + scheduling logic.
  *
- * Spec: `system/APP/PAYMENTS/06-commission-system.md` §1.5 + §2.
- *
- * v1 LAUNCH: flat-rate commission. Engagement-based earnings are
- * deferred (see §4 + USAGE BONUS MODEL/). The shadow `earnings_events`
- * table is still written from day 1 for v2 launch, but this engine
- * does NOT read from it — payouts are flat per cycle.
- *
- * Amounts (FINAL for launch 2026-05-05):
- * - Monthly: A$100 = 10,000 cents per cycle (subscription_started OR cycle_completed)
- * - Upfront: A$1,000 = 100,000 cents total split 33,333 / 33,333 / 33,334 over 3 cycles
+ * Schedule (Bailey 2026-05-13 lock-in):
+ * - Monthly: A$100 = 10,000 cents per cycle. Released 14 days
+ *   after EACH parent payment lands.
+ * - Upfront: A$1,000 = 100,000 cents total, split as A$500 / A$300 /
+ *   A$200. Three instalments released 30 / 60 / 90 days after the
+ *   upfront payment lands.
  *
  * NEVER use floating-point money — every input/output is integer cents.
  */
 
 const MONTHLY_COMMISSION_CENTS = 10_000;
-const UPFRONT_TOTAL_COMMISSION_CENTS = 100_000;
-/** floor(100_000 / 3) — exact integer split. */
-const UPFRONT_INSTALMENT_FLOOR = Math.floor(UPFRONT_TOTAL_COMMISSION_CENTS / 3);
-/** Remainder folds into the LAST cycle so all instalments sum to exactly the total. */
-const UPFRONT_LAST_INSTALMENT =
-  UPFRONT_TOTAL_COMMISSION_CENTS - UPFRONT_INSTALMENT_FLOOR * 2;
-/** 14-day post-payment safeguard window before commission is released. */
-const SAFEGUARD_WINDOW_DAYS = 14;
+/** Upfront commission split, front-loaded. Sum = 100,000 cents = A$1,000. */
+const UPFRONT_INSTALMENT_CENTS: Readonly<Record<1 | 2 | 3, number>> = {
+  1: 50_000, // A$500
+  2: 30_000, // A$300
+  3: 20_000, // A$200
+};
+const UPFRONT_TOTAL_COMMISSION_CENTS =
+  UPFRONT_INSTALMENT_CENTS[1] +
+  UPFRONT_INSTALMENT_CENTS[2] +
+  UPFRONT_INSTALMENT_CENTS[3];
+/** Safeguard / release windows from the parent's payment date. */
+const MONTHLY_RELEASE_DAYS = 14;
+const UPFRONT_RELEASE_DAYS_BY_CYCLE: Readonly<Record<1 | 2 | 3, number>> = {
+  1: 30,
+  2: 60,
+  3: 90,
+};
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export type CommissionTrigger = "subscription_started" | "cycle_completed";
 export type CommissionPlan = "monthly" | "upfront";
 
 export interface CalculateCommissionInput {
   plan: CommissionPlan;
-  trigger: CommissionTrigger;
   /** Which cycle index is being scheduled (1-indexed). For monthly,
    *  always 1 since each call schedules the current cycle. For upfront,
    *  1 / 2 / 3 — used to pick which instalment chunk. */
@@ -39,87 +42,70 @@ export interface CalculateCommissionInput {
 }
 
 /**
- * Returns the integer-cent commission for the given plan/trigger/cycle.
+ * Returns the integer-cent commission for the given plan/cycle.
  *
+ * Monthly: flat A$100 per cycle.
+ * Upfront: A$500 (cycle 1) / A$300 (cycle 2) / A$200 (cycle 3).
  * Pure / deterministic / no side effects.
  */
 export function calculateCommissionCents(
   input: CalculateCommissionInput,
 ): number {
+  // Bounds-check cycleIndex for BOTH plans so a future caller that
+  // widens the type (e.g. a cron passing a plain number) doesn't
+  // silently get accepted on the monthly branch. The cycleIndex is
+  // 1-indexed; values outside [1,3] are caller bugs.
+  if (input.cycleIndex < 1 || input.cycleIndex > 3) {
+    throw new Error(
+      `Commission cycleIndex must be 1-3, got ${input.cycleIndex}`,
+    );
+  }
   if (input.plan === "monthly") {
     return MONTHLY_COMMISSION_CENTS;
   }
-  // Upfront: 33,333 / 33,333 / 33,334. The 4th+ cycle should NEVER be
-  // scheduled for upfront — caller bug. Throw rather than silently
-  // returning 0 (would underpay or over-schedule).
-  if (input.cycleIndex < 1 || input.cycleIndex > 3) {
-    throw new Error(
-      `Upfront commission only covers cycles 1-3, got cycleIndex=${input.cycleIndex}`,
-    );
-  }
-  return input.cycleIndex === 3
-    ? UPFRONT_LAST_INSTALMENT
-    : UPFRONT_INSTALMENT_FLOOR;
+  return UPFRONT_INSTALMENT_CENTS[input.cycleIndex];
 }
 
 /**
  * Compute when a commission row's `scheduled_release_at` should be set.
  *
- * - `subscription_started` → paid_period_starts_at + 14 days.
- * - `cycle_completed`      → cycle_end + 14 days.
- *
- * The 14-day window is BB's defence against parent refunds /
- * chargebacks within 30-day Stripe window.
+ * Bailey 2026-05-13:
+ * - Monthly: 14 days after the parent payment lands.
+ * - Upfront cycle 1: 30 days after the upfront payment.
+ * - Upfront cycle 2: 60 days after the upfront payment.
+ * - Upfront cycle 3: 90 days after the upfront payment.
  */
 export function calculateScheduledReleaseAt(input: {
-  trigger: CommissionTrigger;
-  paidPeriodStartsAt: Date;
-  /** End of the cycle just completed (ignored when trigger is
-   *  subscription_started). */
-  cycleEndsAt?: Date;
+  plan: CommissionPlan;
+  paymentLandedAt: Date;
+  cycleIndex: 1 | 2 | 3;
 }): Date {
-  const anchor =
-    input.trigger === "subscription_started"
-      ? input.paidPeriodStartsAt
-      : (input.cycleEndsAt ?? input.paidPeriodStartsAt);
-  return new Date(anchor.getTime() + SAFEGUARD_WINDOW_DAYS * MS_PER_DAY);
+  if (input.plan === "monthly") {
+    return new Date(
+      input.paymentLandedAt.getTime() + MONTHLY_RELEASE_DAYS * MS_PER_DAY,
+    );
+  }
+  const days = UPFRONT_RELEASE_DAYS_BY_CYCLE[input.cycleIndex];
+  return new Date(input.paymentLandedAt.getTime() + days * MS_PER_DAY);
 }
 
 /**
- * Compute the `period_start` and `period_end` for the cycle that this
- * commission row covers. Used to populate `nanny_payouts.period_start`
- * + `period_end`.
- *
- * - subscription_started: covers the trial period (parent_subscriptions.trial_started_at → trial_ends_at).
- *                         For upfront where no trial existed, covers paid_period_starts_at → +30 days.
- * - cycle_completed: covers the cycle_end - 30 days → cycle_end.
+ * Compute the `period_start` and `period_end` for the cycle this
+ * commission row covers. Each monthly cycle is a 30-day window from
+ * the payment date; each upfront cycle is the corresponding 30-day
+ * slice of the 90-day total.
  */
 export function calculateCommissionPeriod(input: {
-  trigger: CommissionTrigger;
-  paidPeriodStartsAt: Date;
-  trialStartedAt?: Date | null;
-  trialEndsAt?: Date | null;
-  cycleEndsAt?: Date;
+  plan: CommissionPlan;
+  paymentLandedAt: Date;
+  cycleIndex: 1 | 2 | 3;
 }): { periodStart: Date; periodEnd: Date } {
-  if (input.trigger === "subscription_started") {
-    if (input.trialStartedAt && input.trialEndsAt) {
-      return {
-        periodStart: input.trialStartedAt,
-        periodEnd: input.trialEndsAt,
-      };
-    }
-    // No trial (rare — upfront direct subscriber) → cover the first 30 days.
-    return {
-      periodStart: input.paidPeriodStartsAt,
-      periodEnd: new Date(input.paidPeriodStartsAt.getTime() + 30 * MS_PER_DAY),
-    };
-  }
-  // cycle_completed
-  const end = input.cycleEndsAt ?? new Date();
-  return {
-    periodStart: new Date(end.getTime() - 30 * MS_PER_DAY),
-    periodEnd: end,
-  };
+  const offsetDays = input.plan === "monthly" ? 0 : (input.cycleIndex - 1) * 30;
+  const start = new Date(
+    input.paymentLandedAt.getTime() + offsetDays * MS_PER_DAY,
+  );
+  const end = new Date(start.getTime() + 30 * MS_PER_DAY);
+  return { periodStart: start, periodEnd: end };
 }
 
 /**
@@ -128,8 +114,8 @@ export function calculateCommissionPeriod(input: {
  */
 export const COMMISSION_CONSTANTS = {
   MONTHLY_COMMISSION_CENTS,
+  UPFRONT_INSTALMENT_CENTS,
   UPFRONT_TOTAL_COMMISSION_CENTS,
-  UPFRONT_INSTALMENT_FLOOR,
-  UPFRONT_LAST_INSTALMENT,
-  SAFEGUARD_WINDOW_DAYS,
+  MONTHLY_RELEASE_DAYS,
+  UPFRONT_RELEASE_DAYS_BY_CYCLE,
 } as const;

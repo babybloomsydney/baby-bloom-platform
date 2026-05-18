@@ -23,6 +23,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ActivityChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { generate, GEMINI_MODELS } from "@/lib/ai/gemini-client";
 import {
   ACTIVITY_SYSTEM_PROMPT,
@@ -338,6 +339,22 @@ export async function applyPlanActivity(
     activityData = { ...activityData, image_url: args.image_url.trim() };
   } else if (args.image_url === null) {
     activityData = { ...activityData, image_url: null };
+  }
+
+  // T-015 media gate.
+  const activityImageUrl =
+    typeof (activityData as { image_url?: unknown }).image_url === "string"
+      ? ((activityData as { image_url?: string }).image_url ?? null)
+      : null;
+  if (activityImageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
   }
 
   const { data: inserted, error: insertErr } = await ctx.supabase
@@ -659,6 +676,18 @@ export async function applyCompleteActivity(
       ),
       warning: "This activity was already marked complete.",
     };
+  }
+
+  // T-015 media gate.
+  if (imageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
   }
 
   // 1. Insert the report log (parent_log_id = activityId)

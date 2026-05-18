@@ -20,10 +20,7 @@ import type Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripeClient } from "@/lib/stripe/client";
 import { scheduleCommissionFor } from "@/lib/payments/commission-scheduler";
-import {
-  freezeInFlightCommissionForSubscription,
-  unfreezeEarningsOnResubscribe,
-} from "@/lib/payments/commission-freeze";
+import { cancelInFlightCommission } from "@/lib/payments/commission-cancel";
 
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -60,6 +57,14 @@ export async function handleCheckoutCompleted(
   const plan = planMetadata;
   const customerId = stringOrNull(session.customer);
 
+  // Single time anchor for every write triggered by this checkout
+  // (H1 from the 2026-05-13 review). Both the subscription upsert
+  // (`paid_period_starts_at`) and the unfreeze update (`period_start`,
+  // `scheduled_release_at`) consume this same instant so the rows
+  // tie together cleanly on reconciliation. Without it the two
+  // writes drift by tens-to-hundreds of ms.
+  const anchorNow = new Date();
+
   // Two-tab race defence: if a non-lapsed subscription exists for this
   // user with a different stripe_subscription_id, refund the duplicate.
   const { data: existing } = await admin
@@ -69,21 +74,49 @@ export async function handleCheckoutCompleted(
     .maybeSingle();
 
   const sessionSubId = stringOrNull(session.subscription);
+  // Two-tab race defence — only fire the duplicate-refund branch when
+  // the existing row represents a CURRENTLY ACTIVE subscription that
+  // would be duplicated by this checkout. The only statuses where
+  // that's true are `active_monthly` and `active_upfront`.
+  //
+  // Trial / cancelled / past_due / lapsed are all states where the
+  // parent SHOULD be able to (re)subscribe — they're not "active
+  // duplicates," they're legitimate next-subscription attempts.
+  //
+  // Bailey bug 2026-05-13 (C): prior code refunded every trial→paid
+  // conversion. Bailey bug 2026-05-14: a narrower fix (exclude
+  // `trial`) still refunded cancelled→resub because cancelled rows
+  // carry a historical `stripe_subscription_id` that the guard
+  // mistook for an active one. Switching to an explicit allow-list
+  // of "active" statuses is the only shape that's safe.
+  const isCurrentlyActive =
+    existing?.status === "active_monthly" ||
+    existing?.status === "active_upfront";
   if (
-    existing &&
-    existing.status !== "lapsed" &&
+    isCurrentlyActive &&
+    existing.stripe_subscription_id !== null &&
     existing.stripe_subscription_id !== sessionSubId
   ) {
     const paymentIntentId = stringOrNull(session.payment_intent);
     if (paymentIntentId) {
+      const stripe = getStripeClient();
+      // C4 (2026-05-13): rethrow on failure rather than swallowing.
+      // The duplicate-refund branch is the ONLY place where a paid
+      // duplicate is reversed — silently swallowing the error
+      // would leave the parent double-charged with no audit trail
+      // beyond a console.error. Letting the webhook fail tells
+      // Stripe to retry (which our idempotency key tolerates) and
+      // surfaces the failure in the dashboard for follow-up.
       try {
-        const stripe = getStripeClient();
         await stripe.refunds.create(
           { payment_intent: paymentIntentId },
           { idempotencyKey: `dup-refund-${session.id}` },
         );
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("[stripe-webhook] duplicate refund failed", err);
+        throw err instanceof Error
+          ? err
+          : new Error(`duplicate refund failed: ${String(err)}`);
       }
     }
     await logActivity(admin, {
@@ -102,6 +135,7 @@ export async function handleCheckoutCompleted(
       sessionSubId,
       customerId,
       existingCycle: existing?.subscription_cycle ?? 0,
+      anchorNow,
     });
   } else {
     await upsertUpfrontSubscription({
@@ -110,6 +144,7 @@ export async function handleCheckoutCompleted(
       sessionId: session.id,
       paymentIntentId: stringOrNull(session.payment_intent),
       customerId,
+      anchorNow,
     });
   }
 
@@ -135,36 +170,58 @@ export async function handleCheckoutCompleted(
     .eq("parent_user_id", userId)
     .maybeSingle<{ id: string }>();
   if (subRow) {
-    // Phase 10.5 — if the parent had previously cancelled and is now
-    // resubscribing, unfreeze any frozen commission rows so the
-    // nanny gets their earnings on the next cycle.
-    try {
-      const { unfrozen } = await unfreezeEarningsOnResubscribe(subRow.id);
-      if (unfrozen > 0) {
-        await logActivity(admin, {
-          action_type: "commission_released",
-          user_id: userId,
-          action_details: {
-            parent_subscription_id: subRow.id,
-            unfrozen_count: unfrozen,
-            reason: "parent_resubscribed",
-          },
-        });
+    // T-018: schedule cycle 1 commission only when the Stripe sub is NOT
+    // in trial. Trial signups produce no commission row — Lock 1 of the
+    // four money-safety invariants (DB row exists ⇔ real money landed).
+    // When the trial converts to paid, invoice.payment_succeeded fires
+    // and that handler schedules the row. Direct-paid signups schedule
+    // here (the same period_start collides with the invoice.* handler's
+    // INSERT, so the unique partial index keeps it at one row).
+    //
+    // Skipping unfreeze entirely (T-016's logic) — under T-018 the
+    // simpler model is: cancel = terminal, resub = fresh row created
+    // by invoice.payment_succeeded.
+    let isInTrial = false;
+    if (plan === "monthly" && sessionSubId) {
+      try {
+        const stripe = getStripeClient();
+        const stripeSub = await stripe.subscriptions.retrieve(sessionSubId);
+        // Direct access — Stripe.Subscription types trial_end as
+        // `number | null` natively. The previous `as` cast hid any
+        // future SDK rename: if `trial_end` ever disappears, this
+        // becomes a typecheck error rather than silently returning
+        // undefined → isInTrial=false → committing a Lock 1
+        // violation (commission row scheduled for trial subscriber).
+        const trialEndUnix = stripeSub.trial_end ?? null;
+        isInTrial =
+          stripeSub.status === "trialing" ||
+          (trialEndUnix !== null && trialEndUnix * 1000 > Date.now());
+      } catch (err: unknown) {
+        // CRITICAL fail-safe: if we can't determine trial state, assume
+        // we ARE in trial and skip commission scheduling. Lock 1 (DB
+        // row ⇔ real money landed) must not depend on a Stripe API
+        // call succeeding. The guaranteed-firing `invoice.payment_succeeded`
+        // path will schedule the row when an actual non-zero payment
+        // lands, which is the only signal that real money exists.
+        console.error(
+          "[stripe-webhook] stripe.subscriptions.retrieve failed — defaulting to isInTrial=true (Lock 1 fail-safe)",
+          err,
+        );
+        isInTrial = true;
       }
-    } catch (err) {
-      console.error("[stripe-webhook] unfreeze on resub failed", err);
     }
 
-    const result = await scheduleCommissionFor({
-      parentSubscriptionId: subRow.id,
-      trigger: "subscription_started",
-      cycleIndex: 1,
-    });
-    if (!result.ok && result.reason === "db_error") {
-      console.error(
-        "[stripe-webhook] scheduleCommissionFor failed",
-        result.detail,
-      );
+    if (!isInTrial) {
+      const result = await scheduleCommissionFor({
+        parentSubscriptionId: subRow.id,
+        cycleIndex: 1,
+      });
+      if (!result.ok && result.reason === "db_error") {
+        console.error(
+          "[stripe-webhook] scheduleCommissionFor failed",
+          result.detail,
+        );
+      }
     }
   }
 }
@@ -176,13 +233,25 @@ interface UpsertMonthlyArgs {
   sessionSubId: string | null;
   customerId: string | null;
   existingCycle: number;
+  /** Shared time anchor for this checkout — see H1 comment in
+   *  handleCheckoutCompleted. Required, NOT optional: a `?? new Date()`
+   *  fallback would silently reintroduce the drift H1 was meant to
+   *  fix (review feedback 2026-05-13). */
+  anchorNow: Date;
 }
 
 async function upsertMonthlySubscription(
   args: UpsertMonthlyArgs,
 ): Promise<void> {
-  const { admin, userId, sessionId, sessionSubId, customerId, existingCycle } =
-    args;
+  const {
+    admin,
+    userId,
+    sessionId,
+    sessionSubId,
+    customerId,
+    existingCycle,
+    anchorNow,
+  } = args;
   if (!sessionSubId) {
     throw new Error(
       `checkout.session.completed monthly missing subscription id (${sessionId})`,
@@ -194,7 +263,7 @@ async function upsertMonthlySubscription(
   if (!periodEndUnix) {
     throw new Error(`Subscription ${sessionSubId} has no current_period_end`);
   }
-  const nowIso = new Date().toISOString();
+  const nowIso = anchorNow.toISOString();
   const periodEndIso = new Date(periodEndUnix * 1000).toISOString();
   const { error } = await admin.from("parent_subscriptions").upsert(
     {
@@ -220,14 +289,18 @@ interface UpsertUpfrontArgs {
   sessionId: string;
   paymentIntentId: string | null;
   customerId: string | null;
+  /** Shared time anchor for this checkout — see H1 comment in
+   *  handleCheckoutCompleted. Required, NOT optional (review
+   *  feedback 2026-05-13). */
+  anchorNow: Date;
 }
 
 async function upsertUpfrontSubscription(
   args: UpsertUpfrontArgs,
 ): Promise<void> {
-  const { admin, userId, paymentIntentId, customerId } = args;
+  const { admin, userId, paymentIntentId, customerId, anchorNow } = args;
   const fifthBirthdayIso = await earliestChildFifthBirthdayIso(admin, userId);
-  const nowIso = new Date().toISOString();
+  const nowIso = anchorNow.toISOString();
   const { error } = await admin.from("parent_subscriptions").upsert(
     {
       parent_user_id: userId,
@@ -358,23 +431,26 @@ export async function handleSubscriptionDeleted(
     // are NEVER touched (those are the nanny's). Reclaimable on
     // resubscription via unfreezeEarningsOnResubscribe.
     try {
-      const { frozen } = await freezeInFlightCommissionForSubscription(
+      const { cancelled } = await cancelInFlightCommission(
         row.id,
         "parent_cancelled",
       );
-      if (frozen > 0) {
+      if (cancelled > 0) {
         await logActivity(admin, {
-          action_type: "commission_held",
+          action_type: "commission_cancelled",
           user_id: row.parent_user_id,
           action_details: {
             parent_subscription_id: row.id,
-            frozen_count: frozen,
+            cancelled_count: cancelled,
             reason: "parent_cancelled",
           },
         });
       }
-    } catch (err) {
-      console.error("[stripe-webhook] freeze on cancel failed", err);
+    } catch (err: unknown) {
+      console.error(
+        "[stripe-webhook] cancel-in-flight on subscription delete failed",
+        err,
+      );
     }
   }
 }
@@ -391,6 +467,14 @@ export async function handleInvoiceSucceeded(
   const subId = stringOrNull(getInvoiceSubscription(invoice));
   if (!subId) {
     // Some invoices (e.g. one-off Stripe Tax) lack a subscription.
+    return;
+  }
+
+  // T-018 Lock 1 enforcement: only proceed if a real, non-zero amount
+  // was paid. Stripe sometimes fires invoice.payment_succeeded for
+  // $0 trial-end-marker invoices; those must not produce commission rows.
+  const amountPaid = invoice.amount_paid ?? 0;
+  if (amountPaid <= 0) {
     return;
   }
 
@@ -412,7 +496,8 @@ export async function handleInvoiceSucceeded(
     .eq("stripe_subscription_id", subId)
     .maybeSingle();
 
-  if (existing?.status === "past_due") {
+  const wasRecoveryFromPastDue = existing?.status === "past_due";
+  if (wasRecoveryFromPastDue) {
     updates.status = "active_monthly";
     updates.past_due_grace_ends_at = null;
   }
@@ -427,12 +512,36 @@ export async function handleInvoiceSucceeded(
     );
   }
 
-  if (existing?.status === "past_due" && existing.parent_user_id) {
+  if (wasRecoveryFromPastDue && existing?.parent_user_id) {
     await logActivity(admin, {
       action_type: "subscription_recovered",
       user_id: existing.parent_user_id,
       action_details: { stripe_subscription_id: subId },
     });
+
+    // T-018: clear past_due_release_deferred tag from in-flight rows so
+    // the dashboard stops showing the amber "deferred" indicator after
+    // the parent has paid. scheduled_release_at stays at the deferred
+    // date (already a safe window after the recovery payment).
+    const { data: recoveredSubRow } = await admin
+      .from("parent_subscriptions")
+      .select("id")
+      .eq("stripe_subscription_id", subId)
+      .maybeSingle<{ id: string }>();
+    if (recoveredSubRow) {
+      const { error: clearErr } = await admin
+        .from("nanny_payouts")
+        .update({ failure_reason: null })
+        .eq("parent_subscription_id", recoveredSubRow.id)
+        .in("status", ["pending", "held"])
+        .eq("failure_reason", "past_due_release_deferred");
+      if (clearErr) {
+        console.error(
+          "[stripe-webhook] past_due recovery — clear deferred tag failed",
+          clearErr,
+        );
+      }
+    }
   } else if (existing?.parent_user_id) {
     await logActivity(admin, {
       action_type: "subscription_renewed",
@@ -449,14 +558,12 @@ export async function handleInvoiceSucceeded(
       .eq("stripe_subscription_id", subId)
       .maybeSingle<{ id: string }>();
     if (subRow) {
-      const cycleEnd = periodEndUnix
-        ? new Date(periodEndUnix * 1000)
-        : new Date();
+      // Monthly always cycle 1 (each renewal is a fresh cycle from
+      // commission's POV). Upfront cycles 2 + 3 fire from a separate
+      // end-of-cycle cron — see C2 in 2026-05-13 review batch.
       const result = await scheduleCommissionFor({
         parentSubscriptionId: subRow.id,
-        trigger: "cycle_completed",
-        cycleIndex: 1, // Monthly always 1; upfront cycles 2/3 fire from a separate end-of-cycle cron.
-        cycleEndsAt: cycleEnd,
+        cycleIndex: 1,
       });
       if (!result.ok && result.reason === "db_error") {
         console.error(
@@ -489,8 +596,8 @@ export async function handleInvoiceFailed(
       past_due_grace_ends_at: graceEndsAtIso,
     })
     .eq("stripe_subscription_id", subId)
-    .select("parent_user_id")
-    .maybeSingle();
+    .select("id, parent_user_id")
+    .maybeSingle<{ id: string; parent_user_id: string | null }>();
   if (error) {
     throw new Error(
       `parent_subscriptions update (invoice.failed) failed: ${error.message}`,
@@ -502,6 +609,38 @@ export async function handleInvoiceFailed(
       user_id: row.parent_user_id,
       action_details: { stripe_subscription_id: subId },
     });
+
+    // T-018: defer any in-flight pending/held nanny_payouts rows by
+    // 14 days from today. Rationale: if the parent recovers (pays
+    // the late invoice), the new release date gives BB the same
+    // 14-day safeguard window. If they lapse, the trigger cancels
+    // the rows when status flips to 'lapsed' via the expire-past-due
+    // cron. Non-fatal — past_due itself is already set above.
+    //
+    // Two writes to avoid clobbering prior `failure_reason` tags
+    // (e.g. `parent_cancelled` or `parent_refunded` from earlier paths):
+    //   1. Always defer the date.
+    //   2. Tag failure_reason ONLY if currently null.
+    const fourteenDaysFromNow = new Date(
+      Date.now() + 14 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { error: deferErr } = await admin
+      .from("nanny_payouts")
+      .update({ scheduled_release_at: fourteenDaysFromNow })
+      .eq("parent_subscription_id", row.id)
+      .in("status", ["pending", "held"]);
+    if (deferErr) {
+      console.error("[stripe-webhook] past_due release defer failed", deferErr);
+    }
+    const { error: tagErr } = await admin
+      .from("nanny_payouts")
+      .update({ failure_reason: "past_due_release_deferred" })
+      .eq("parent_subscription_id", row.id)
+      .in("status", ["pending", "held"])
+      .is("failure_reason", null);
+    if (tagErr) {
+      console.error("[stripe-webhook] past_due defer tag failed", tagErr);
+    }
   }
 }
 
@@ -541,15 +680,17 @@ export async function handleAccountUpdated(
   // is active AND there are no current/past-due/disabled requirements
   // blocking. Stripe consolidates this into payouts_enabled.
   const payoutsEnabled = account.payouts_enabled === true;
+  const chargesEnabled = account.charges_enabled === true;
   const detailsSubmitted = account.details_submitted === true;
 
   // Find the nanny row by the connect account id.
   const { data: nanny } = await admin
     .from("nannies")
-    .select("id, connect_onboarded_at, payout_application_status")
+    .select("id, user_id, connect_onboarded_at, payout_application_status")
     .eq("stripe_connect_account_id", account.id)
     .maybeSingle<{
       id: string;
+      user_id: string;
       connect_onboarded_at: string | null;
       payout_application_status: string | null;
     }>();
@@ -563,6 +704,9 @@ export async function handleAccountUpdated(
 
   // Mark onboarded when first time the account passes both gates.
   // Idempotent: don't overwrite an existing onboarded timestamp.
+  // Also sync the live capability flags onto our row — the
+  // release-cron gates on `nannies.payouts_enabled`, so without
+  // this sync a verified-on-Stripe nanny would never be paid.
   if (payoutsEnabled && detailsSubmitted && !nanny.connect_onboarded_at) {
     const nowIso = new Date().toISOString();
     const { error } = await admin
@@ -570,11 +714,35 @@ export async function handleAccountUpdated(
       .update({
         connect_onboarded_at: nowIso,
         payout_application_status: "verified",
+        payouts_enabled: payoutsEnabled,
+        charges_enabled: chargesEnabled,
       })
       .eq("id", nanny.id);
     if (error) {
       throw new Error(
         `nannies update (account.updated) failed: ${error.message}`,
+      );
+    }
+    // CRITICAL fix (2026-05-18 audit): promote any `held` commission
+    // rows for this nanny to `pending`. Rows scheduled while the
+    // nanny was unverified are stuck at `held` because the
+    // release-cron only picks `pending`. Without this promotion the
+    // commissions are forfeited even though the parent paid + the
+    // nanny is now verified. `paid`/`sending`/`failed`/`cancelled`
+    // rows are untouched (terminal or in-flight states owned elsewhere).
+    const { error: promoteErr } = await admin
+      .from("nanny_payouts")
+      .update({ status: "pending" })
+      .eq("nanny_user_id", nanny.user_id)
+      .eq("status", "held");
+    if (promoteErr) {
+      // Don't fail the verification path on a promotion error — the
+      // nanny IS verified, that side-effect succeeded. Log loud so
+      // admin can manually flip the stuck rows. The cron will resume
+      // releasing once the rows are pending.
+      console.error(
+        "[stripe-webhook] held→pending promotion failed",
+        promoteErr.message,
       );
     }
     await logActivity(admin, {
@@ -603,7 +771,11 @@ export async function handleAccountUpdated(
   ) {
     const { error } = await admin
       .from("nannies")
-      .update({ payout_application_status: "restricted" })
+      .update({
+        payout_application_status: "restricted",
+        payouts_enabled: payoutsEnabled,
+        charges_enabled: chargesEnabled,
+      })
       .eq("id", nanny.id);
     if (error) {
       throw new Error(
@@ -635,11 +807,29 @@ export async function handleAccountUpdated(
   ) {
     const { error } = await admin
       .from("nannies")
-      .update({ payout_application_status: "verified" })
+      .update({
+        payout_application_status: "verified",
+        payouts_enabled: payoutsEnabled,
+        charges_enabled: chargesEnabled,
+      })
       .eq("id", nanny.id);
     if (error) {
       throw new Error(
         `nannies update (account.updated → re-verified) failed: ${error.message}`,
+      );
+    }
+    // Same held→pending promotion on re-verification. Restricted
+    // accounts may have accumulated held rows during the restricted
+    // window; unlock them now.
+    const { error: promoteErr } = await admin
+      .from("nanny_payouts")
+      .update({ status: "pending" })
+      .eq("nanny_user_id", nanny.user_id)
+      .eq("status", "held");
+    if (promoteErr) {
+      console.error(
+        "[stripe-webhook] held→pending promotion (re-verified) failed",
+        promoteErr.message,
       );
     }
     await logActivity(admin, {
@@ -878,6 +1068,58 @@ export async function handleChargeRefunded(
       user_id: row.parent_user_id,
       action_details: { refund_id: refundId, request_id: row.id },
     });
+
+    // M3 (2026-05-13): a processed refund must also freeze the
+    // parent's in-flight commission rows. Spec §"Frozen state on
+    // parent cancellation" calls out BOTH cancellation AND refund as
+    // freeze triggers; previously only cancellation was wired.
+    // Look up the parent's current subscription, then freeze.
+    //
+    // FAIL-LOUD (2026-05-18 audit): previously wrapped in try/catch
+    // that only `console.error`ed. A silent failure here is a real
+    // wallet leak — refund_requests is marked approved (parent got
+    // money back) but the commission row stays pending and the cron
+    // later pays the nanny money BB no longer holds. Now: if the
+    // commission cancel fails, throw → webhook 500s → Stripe retries
+    // (idempotent — re-marking the refund as approved is a no-op,
+    // and cancelInFlightCommission is idempotent via the status
+    // filter). The DB trigger does NOT save us here: refunds don't
+    // necessarily change subscription status.
+    const { data: subRow, error: subLookupErr } = await admin
+      .from("parent_subscriptions")
+      .select("id")
+      .eq("parent_user_id", row.parent_user_id)
+      .in("status", [
+        "trial",
+        "active_monthly",
+        "active_upfront",
+        "past_due",
+        "cancelled",
+      ])
+      .maybeSingle<{ id: string }>();
+    if (subLookupErr) {
+      throw new Error(
+        `refund: parent_subscriptions lookup failed: ${subLookupErr.message}`,
+      );
+    }
+    if (subRow) {
+      const { cancelled } = await cancelInFlightCommission(
+        subRow.id,
+        "parent_refunded",
+      );
+      if (cancelled > 0) {
+        await logActivity(admin, {
+          action_type: "commission_cancelled",
+          user_id: row.parent_user_id,
+          action_details: {
+            parent_subscription_id: subRow.id,
+            cancelled_count: cancelled,
+            reason: "parent_refunded",
+            refund_id: refundId,
+          },
+        });
+      }
+    }
   }
 }
 

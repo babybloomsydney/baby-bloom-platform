@@ -99,6 +99,32 @@ export interface CreateExpressAccountInput {
   metadata: Record<string, string>;
   /** Powers the idempotency key. Must be the BB-side nanny user id. */
   nannyUserId: string;
+  /** Optional pre-fill — anything we know lets Stripe skip that
+   *  question during onboarding. We grab these from `user_profiles`
+   *  before calling. */
+  prefill?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    /** Mobile number — must be E.164-compatible. We pass through
+     *  raw and let Stripe validate / reject as needed. */
+    phone?: string | null;
+    /** ISO date (YYYY-MM-DD). */
+    dateOfBirth?: string | null;
+    address?: {
+      line1?: string | null;
+      line2?: string | null;
+      city?: string | null;
+      state?: string | null;
+      postalCode?: string | null;
+      /** ISO 3166-1 alpha-2. Defaults to the account country. */
+      country?: string | null;
+    } | null;
+    /** 11-digit ABN. Passed to Stripe as `individual.id_number` at
+     *  create time. Stripe's AU sole-trader embed does NOT surface
+     *  ABN as a required step (empirically verified 2026-05-18), so
+     *  BB collects it upfront and pre-passes it here. */
+    abn?: string | null;
+  };
 }
 
 export interface CreateExpressAccountOutput {

@@ -9,6 +9,11 @@ interface ConsentInput {
   agreementId: AgreementId;
   checkpointId: string;
   checkpointText: string;
+  /** Defaults to true (consent given). Pass `false` to record an
+   *  explicit DECLINE / WITHDRAWAL. The gate reads the most-recent
+   *  row's `consent_given` value to determine if a child is in a
+   *  revoked state. T-015 — required for the renewal-decline flow. */
+  consentGiven?: boolean;
 }
 
 export async function recordConsent(
@@ -74,7 +79,7 @@ export async function recordConsent(
         checkpoint_text: cp.checkpointText,
         document_id: docId,
         document_version: docId ? latestVersions[docId] || 1 : null,
-        consent_given: true,
+        consent_given: cp.consentGiven ?? true,
         ip_address: ip,
         user_agent: userAgent,
         related_entity_id: relatedEntityId || null,
@@ -162,7 +167,10 @@ export async function recordInformedAction(data: {
 }
 
 function getDocumentIdForAgreement(agreementId: AgreementId): string | null {
-  const map: Record<string, string> = {
+  // `Partial<Record<AgreementId, string>>` makes future AgreementId
+  // additions surface as compile-time "key not in map" gaps rather
+  // than silently returning null. T-015 reviewer note.
+  const map: Partial<Record<AgreementId, string>> = {
     "AGR-01": "client-tos",
     "AGR-02": "professional-tos",
     "AGR-03": "biometric-notice-client",
@@ -177,6 +185,12 @@ function getDocumentIdForAgreement(agreementId: AgreementId): string | null {
     "AGR-12": "privacy-policy",
     "AGR-13": "cookie-policy",
     "AGR-14": "agr14_nanny_child_add",
+    // T-015 (2026-05-14): Bailey's bundled-consent product call.
+    // Single per-child agreement per party — diverges from T-014's
+    // fragmented AGR-20/21..26 model. See T-015 CONSENT-MODEL-
+    // DIVERGENCE-NOTE.md for the rationale + reconciliation path.
+    "PARENT-APP-CONSENT": "parent-app-consent",
+    "NANNY-ATTESTATION": "nanny-attestation",
   };
   return map[agreementId] || null;
 }

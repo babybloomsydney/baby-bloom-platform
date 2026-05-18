@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath, revalidateTag } from "next/cache";
+import { getChildAgeMonths, validateChildDob } from "@/lib/bapp/child-age";
 import type { ChildClient, ChildClientEvents } from "@/types/bapp";
 import { mintChildInvite } from "@/lib/invite/mint";
 import { invitesDisabled } from "@/lib/invite/flags";
@@ -121,6 +122,14 @@ export async function createChild(data: {
   date_of_birth: string;
   gender: string | null;
   guardian_permission_confirmed: boolean;
+  /**
+   * T-022 — TRUE when the child is added via the onboarding contributions
+   * page (`/nanny/onboarding/add-child`). Forwarded to mintChildInvite
+   * for commission attribution and stamps `nannies.bonus_program_completed_at`
+   * (idempotent — first completion only). Best-effort stamp: a failure
+   * does not unwind the child creation; the child was created successfully.
+   */
+  fromBonusProgram?: boolean;
 }): Promise<{
   success: boolean;
   error: string | null;
@@ -169,20 +178,14 @@ export async function createChild(data: {
     if (data.first_name.trim().length > 100) {
       return { success: false, error: "first_name_too_long", data: null };
     }
-    // Validate date_of_birth is parseable + not in the future. Without
-    // this an invalid date string slips through to Postgres and we
-    // surface a raw constraint error; future dates would also bypass
-    // the under_three flag logic. (M4)
-    const dobAtCreate = new Date(data.date_of_birth);
-    if (Number.isNaN(dobAtCreate.getTime())) {
-      return { success: false, error: "invalid_date_of_birth", data: null };
-    }
-    if (dobAtCreate > new Date()) {
-      return {
-        success: false,
-        error: "date_of_birth_in_future",
-        data: null,
-      };
+    // Validate date_of_birth: parseable, not in the future, and within the
+    // bapp's under-3 age cap (MAX_CHILD_AGE_MONTHS). Without parse/future
+    // checks an invalid string slips through to Postgres and we surface
+    // a raw constraint error; without the age cap a 4-year-old can be
+    // added to an under-three product. (M4 + age-cap 2026-05-15)
+    const dobCheck = validateChildDob(data.date_of_birth);
+    if (!dobCheck.ok) {
+      return { success: false, error: dobCheck.error, data: null };
     }
 
     // 3. Insert child_client. parent_lead_email left NULL — invite flow
@@ -274,6 +277,7 @@ export async function createChild(data: {
         direction: "nanny_to_parent",
         userId: user.id,
         userEmail: user.email ?? "",
+        bonusProgram: data.fromBonusProgram ?? false,
       });
     } catch (mintErr) {
       console.error("createChild mint error:", mintErr);
@@ -282,6 +286,46 @@ export async function createChild(data: {
         error: "Child created but invite mint failed — try regenerating.",
         data: null,
       };
+    }
+
+    // 6.5. T-022 — stamp bonus_program_completed_at when this child was
+    //      added via the onboarding contributions flow. Idempotent (only
+    //      writes when the column is still NULL, so re-runs are no-ops).
+    //      Best-effort: a failure does NOT unwind the child or invite;
+    //      the column drives commission attribution but the source of
+    //      truth is `child_invites.bonus_program=true` (set inside
+    //      mintChildInvite). On failure we ALSO write an activity_logs
+    //      row so a remediation script can find affected nannies + back-
+    //      fill the timestamp without a log-scrape.
+    if (data.fromBonusProgram) {
+      const { error: stampErr } = await admin
+        .from("nannies")
+        .update({ bonus_program_completed_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .is("bonus_program_completed_at", null);
+      if (stampErr) {
+        console.error(
+          "[createChild] bonus_program_completed_at stamp failed:",
+          stampErr,
+        );
+        // Best-effort observability record. If this insert also fails,
+        // the console.error above is the only trace — accept and move on.
+        const { error: logErr } = await admin.from("activity_logs").insert({
+          action_type: "invite_created",
+          user_id: user.id,
+          action_details: {
+            child_id: child.id,
+            bonus_program_stamp_failed: true,
+            stamp_error_code: stampErr.code ?? null,
+          },
+        });
+        if (logErr) {
+          console.warn(
+            "[createChild] stamp-failure activity_log also failed:",
+            logErr.code,
+          );
+        }
+      }
     }
 
     // 7. Audit log. Tolerable failure: log + continue (audit gap only).
@@ -328,7 +372,10 @@ export async function createChild(data: {
         profileErr.code,
       );
     }
-    const ageMonths = monthsBetween(dobAtCreate, new Date());
+    const ageMonths = Math.max(
+      0,
+      getChildAgeMonths(new Date(data.date_of_birth), new Date()),
+    );
     dispatchChildCreated({
       recipientUserId: user.id,
       childId: child.id,
@@ -356,19 +403,6 @@ export async function createChild(data: {
   }
 }
 
-/** Months between two dates, floored. Used for {{child_age_months}}
- *  context in onboarding triggers. Computes whole calendar months
- *  (rather than dividing by avg-day-count) so a child born on Jan 5
- *  rendered against a current date of Jan 4 a year later still counts
- *  as 11 months, not 12. */
-function monthsBetween(earlier: Date, later: Date): number {
-  const yearsDiff = later.getFullYear() - earlier.getFullYear();
-  const monthsDiff = later.getMonth() - earlier.getMonth();
-  let total = yearsDiff * 12 + monthsDiff;
-  if (later.getDate() < earlier.getDate()) total -= 1;
-  return Math.max(0, total);
-}
-
 // ── createChildAsParent (Path B) ─────────────────────────────────────
 //
 // Parent-first child creation. Identical shape to createChild minus the
@@ -379,11 +413,23 @@ export async function createChildAsParent(data: {
   first_name: string;
   date_of_birth: string;
   gender: string | null;
+  /** T-015 — `parent-app-consent` must be ticked on the add-child form
+   *  before the child is created. Required true; the caller's submit
+   *  button is disabled when this is false so we just defensively
+   *  reject if it ever reaches us as false. */
+  parent_app_consent_given?: boolean;
 }): Promise<{
   success: boolean;
   error: string | null;
   data: { id: string; inviteToken: string; inviteUrl: string } | null;
 }> {
+  if (data.parent_app_consent_given === false) {
+    return {
+      success: false,
+      error: "consent_required",
+      data: null,
+    };
+  }
   if (invitesDisabled()) {
     return { success: false, error: "invites_disabled", data: null };
   }
@@ -415,16 +461,9 @@ export async function createChildAsParent(data: {
     if (data.first_name.trim().length > 100) {
       return { success: false, error: "first_name_too_long", data: null };
     }
-    const dobAtCreate = new Date(data.date_of_birth);
-    if (Number.isNaN(dobAtCreate.getTime())) {
-      return { success: false, error: "invalid_date_of_birth", data: null };
-    }
-    if (dobAtCreate > new Date()) {
-      return {
-        success: false,
-        error: "date_of_birth_in_future",
-        data: null,
-      };
+    const dobCheck = validateChildDob(data.date_of_birth);
+    if (!dobCheck.ok) {
+      return { success: false, error: dobCheck.error, data: null };
     }
 
     const { data: child, error: insertError } = await admin
@@ -445,6 +484,32 @@ export async function createChildAsParent(data: {
     if (insertError) {
       console.error("createChildAsParent insert error:", insertError);
       return { success: false, error: "insert_failed", data: null };
+    }
+
+    // T-015 — record PARENT-APP-CONSENT, scoped to the new child.
+    // Best-effort; an audit-row failure here must not unwind the
+    // child creation (the parent's consent intent is captured by
+    // the checkbox state having been true at submit time; the row
+    // is the durable trail). The 12-month renewal cron picks up
+    // missing rows and prompts.
+    try {
+      const { recordConsent } = await import("@/lib/legal/record-consent");
+      await recordConsent(
+        [
+          {
+            agreementId: "PARENT-APP-CONSENT",
+            checkpointId: "add-child-form",
+            checkpointText:
+              "I consent to Baby Bloom collecting, storing, and processing data for this child including photos, observations, diary entries, and sensitive information, in accordance with the Privacy Policy.",
+          },
+        ],
+        child.id,
+      );
+    } catch (consentErr) {
+      console.warn(
+        "[createChildAsParent] consent record failed (non-fatal):",
+        consentErr,
+      );
     }
 
     // Celebration tile — A-08 spec § 'Architecture'. Same fail-fast
@@ -477,6 +542,21 @@ export async function createChildAsParent(data: {
         "[createChildAsParent] child_client_events insert failed:",
         parentEventsErr.code,
       );
+    }
+
+    // Auto-start the 30-day trial the moment a parent creates a child.
+    // The nanny may not have joined yet — that's fine, the parent
+    // shouldn't be paywalled while waiting for them. Idempotent PG
+    // function: no-ops if the parent already has a row with
+    // `has_used_trial=true` or is a test user. Best-effort: a failure
+    // here must not block the child-creation result. (Bailey
+    // product call 2026-05-13: trial begins at child-add time, not
+    // at parent+nanny link time.)
+    const { error: trialErr } = await admin.rpc("start_family_trial_if_first", {
+      p_parent_user_id: user.id,
+    });
+    if (trialErr) {
+      console.warn("[createChildAsParent] trial-start rpc error:", trialErr);
     }
 
     let mintResult: { token: string; url: string };
@@ -584,6 +664,15 @@ export async function onboardChild(
       existing.parent_user_id !== user.id
     ) {
       return { success: false, error: "not_linked_to_child" };
+    }
+
+    // Age cap + parse safety — onboardChild previously trusted whatever
+    // string the sheet sent. Now it shares the same validator as the
+    // create paths so a 3-year-old can't be onboarded into the under-3
+    // bapp.
+    const dobCheck = validateChildDob(data.date_of_birth);
+    if (!dobCheck.ok) {
+      return { success: false, error: dobCheck.error };
     }
 
     const { error: updateError } = await admin
@@ -968,6 +1057,21 @@ export async function updateChildProfilePictureUrl(
       return { success: false, error: "Child not found" };
     }
 
+    // T-015 media gate — block the SET (newUrl != null). Clearing
+    // (newUrl = null) is always allowed. Dynamic import keeps the
+    // existing module's import surface untouched.
+    if (newUrl) {
+      const { requireMediaConsentForImageWrite } =
+        await import("@/lib/legal/require-media-consent");
+      const mediaGate = await requireMediaConsentForImageWrite({
+        childId: childClientId,
+        imageUrl: newUrl,
+      });
+      if (!mediaGate.ok) {
+        return { success: false, error: mediaGate.error };
+      }
+    }
+
     // Authorisation: caller must be parent OR nanny on this child. We
     // use the admin client here because the standard `child_client` RLS
     // policy already gates SELECT to the linked parties, but mixing
@@ -1029,31 +1133,19 @@ export async function updateChildProfilePictureUrl(
 //   - first_name: 1–80 chars after trim. Empty / whitespace-only is
 //     rejected so the hero card never lands in the "Child" fallback.
 //   - date_of_birth: ISO yyyy-mm-dd, must parse, must NOT be in the
-//     future (DOB-in-future would break `ageMonthsFromDob` + every
-//     downstream age-gated rule).
+//     future, and must satisfy the under-3 age cap. Shared validator
+//     `validateChildDob` (lib/bapp/child-age.ts) is the source of
+//     truth — same rules as the add-child / onboard paths so editing
+//     can't bypass the cap.
 // Both fields are optional individually — at least one must be set
 // or the call is a no-op (returns success:false to surface the bug).
 
 const NAME_MAX_LENGTH = 80;
-const DOB_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function isValidFirstName(name: string | undefined): name is string {
   if (typeof name !== "string") return false;
   const trimmed = name.trim();
   return trimmed.length > 0 && trimmed.length <= NAME_MAX_LENGTH;
-}
-
-function isValidDateOfBirth(dob: string | undefined): dob is string {
-  if (typeof dob !== "string") return false;
-  if (!DOB_REGEX.test(dob)) return false;
-  const date = new Date(dob);
-  if (Number.isNaN(date.getTime())) return false;
-  // Reject future dates — a child can't be born tomorrow. Compared
-  // against UTC midnight today so timezone-edge submissions don't
-  // false-reject a valid same-day birth.
-  const todayUtc = new Date();
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  return date.getTime() <= todayUtc.getTime();
 }
 
 export async function updateChildDetails(
@@ -1087,9 +1179,11 @@ export async function updateChildDetails(
     if (fields.date_of_birth !== undefined) {
       if (fields.date_of_birth === null) {
         update.date_of_birth = null;
-      } else if (!isValidDateOfBirth(fields.date_of_birth)) {
-        return { success: false, error: "Invalid date of birth" };
       } else {
+        const dobCheck = validateChildDob(fields.date_of_birth);
+        if (!dobCheck.ok) {
+          return { success: false, error: dobCheck.error };
+        }
         update.date_of_birth = fields.date_of_birth;
       }
     }

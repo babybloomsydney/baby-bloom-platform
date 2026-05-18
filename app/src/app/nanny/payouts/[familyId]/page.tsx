@@ -109,9 +109,7 @@ export default async function FamilyPayoutDetailPage({
 
       <div className="mt-6">
         <Button asChild className="bg-violet-600 hover:bg-violet-700">
-          <Link href="/nanny/payouts/onboarding">
-            Set up your payout account
-          </Link>
+          <Link href="/nanny/payouts/onboarding">Set up payouts</Link>
         </Button>
       </div>
     </div>

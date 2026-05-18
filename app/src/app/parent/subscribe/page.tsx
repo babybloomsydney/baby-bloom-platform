@@ -58,15 +58,19 @@ export default async function ParentSubscribePage({
       has_used_trial: boolean | null;
     }>();
 
-  const isActive =
-    sub?.status === "trial" ||
+  // Already on a paid plan — bounce to the management page; they
+  // can cancel from there. Trial users are intentionally NOT treated
+  // as "active" here (DSS Q1, Bailey 2026-05-12): they MUST be able
+  // to pick a paid plan during trial so it locks in for when the
+  // trial ends. Bailey 2026-05-13: prior "trial counts as active"
+  // logic caused the "Continue Development" CTA to redirect back to
+  // /parent/subscription in a loop.
+  const isPaidActive =
     sub?.status === "active_monthly" ||
     sub?.status === "active_upfront" ||
     sub?.status === "past_due";
 
-  // Already subscribed — bounce to the management page instead of
-  // letting them double-subscribe. They can cancel from the portal.
-  if (isActive) {
+  if (isPaidActive) {
     redirect("/parent/subscription");
   }
 

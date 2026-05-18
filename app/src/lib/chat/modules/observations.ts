@@ -15,6 +15,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ObservationChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import {
   recalculateProgress,
   writeHistorySnapshot,
@@ -281,6 +282,24 @@ export async function applyLogObservation(
     return { ok: false, error: r.error };
   }
   const { child, milestoneId, score, observationData } = r.prepared;
+
+  // T-015 media gate — Katie tile-accept path. If the tile includes
+  // an image_url, the parent must have current `parent-app-consent`
+  // for this child.
+  const imageUrl =
+    typeof (observationData as { image_url?: unknown }).image_url === "string"
+      ? ((observationData as { image_url?: string }).image_url ?? null)
+      : null;
+  if (imageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
 
   const { data: inserted, error: insertError } = await ctx.supabase
     .from("bapp_logs")

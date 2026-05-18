@@ -21,6 +21,13 @@ const state = vi.hoisted(() => ({
   }>,
   dbUpdateError: null as null | { message: string },
   activityLogInserts: [] as Record<string, unknown>[],
+  // T-018 — cancelInFlightCommission call tracking. (Supersedes
+  // T-016's freezeInFlightCommissionForSubscription.) The parent
+  // self-serve cancel path must invoke this so in-flight commission
+  // rows don't survive a cancel+resub cycle.
+  cancelCalls: [] as Array<{ subId: string; reason: string }>,
+  cancelResult: { cancelled: 1 } as { cancelled: number },
+  cancelThrows: false,
 }));
 
 beforeEach(() => {
@@ -37,6 +44,9 @@ beforeEach(() => {
   state.dbUpdateCalls = [];
   state.dbUpdateError = null;
   state.activityLogInserts = [];
+  state.cancelCalls = [];
+  state.cancelResult = { cancelled: 1 };
+  state.cancelThrows = false;
   vi.clearAllMocks();
 });
 
@@ -106,6 +116,14 @@ vi.mock("@/lib/stripe/client", () => ({
   }),
 }));
 
+vi.mock("@/lib/payments/commission-cancel", () => ({
+  cancelInFlightCommission: async (subId: string, reason: string) => {
+    if (state.cancelThrows) throw new Error("cancel failure");
+    state.cancelCalls.push({ subId, reason });
+    return state.cancelResult;
+  },
+}));
+
 import { cancelSubscription } from "./cancelSubscription";
 
 describe("cancelSubscription", () => {
@@ -151,8 +169,11 @@ describe("cancelSubscription", () => {
       cancellation_reason: "too_expensive",
       cancellation_reason_text: "rent went up",
     });
-    expect(state.activityLogInserts).toHaveLength(1);
-    expect(state.activityLogInserts[0]).toMatchObject({
+    const cancelLog = state.activityLogInserts.find(
+      (row) => row.action_type === "subscription_cancelled",
+    );
+    expect(cancelLog).toBeDefined();
+    expect(cancelLog).toMatchObject({
       action_type: "subscription_cancelled",
     });
   });
@@ -233,5 +254,92 @@ describe("cancelSubscription", () => {
     });
     // Status NOT touched in no-op branch
     expect(state.dbUpdateCalls[0]?.payload).not.toHaveProperty("status");
+  });
+
+  // ---------------------------------------------------------------------
+  // T-018 regression — cancel in-flight commission rows.
+  //
+  // Bug 2026-05-14: parent self-serve cancel flipped status='cancelled'
+  // but did NOT call cancelInFlightCommission. If the
+  // parent resubscribed before period-end (Stripe's
+  // customer.subscription.deleted hadn't fired yet), the new commission
+  // row was created alongside the prior `held`/`pending` row →
+  // dashboard summed $200 for one family. Each cancel+resub stacked
+  // another $100.
+  //
+  // Spec: `system/APP/PAYMENTS/06-commission-system.md` §1.5 stage 5.
+  // Webhook handler `handleSubscriptionDeleted` already implements the
+  // same cancel pattern — this brings the self-serve path to parity.
+  // ---------------------------------------------------------------------
+
+  it("monthly active: cancels in-flight commission rows with reason='parent_cancelled' (T-018)", async () => {
+    const r = await cancelSubscription({ reason: "too_expensive" });
+    expect(r.success).toBe(true);
+    expect(state.cancelCalls).toHaveLength(1);
+    expect(state.cancelCalls[0]).toEqual({
+      subId: "sub-row-1",
+      reason: "parent_cancelled",
+    });
+  });
+
+  it("upfront active: cancels in-flight commission rows (T-018)", async () => {
+    state.subRow!.status = "active_upfront";
+    state.subRow!.stripe_subscription_id = null;
+    const r = await cancelSubscription({ reason: "circumstances_changed" });
+    expect(r.success).toBe(true);
+    expect(state.cancelCalls).toHaveLength(1);
+    expect(state.cancelCalls[0]).toEqual({
+      subId: "sub-row-1",
+      reason: "parent_cancelled",
+    });
+  });
+
+  it("commission_cancelled activity log emitted when cancelled > 0 (T-018 — log parity with webhook handler)", async () => {
+    state.cancelResult = { cancelled: 1 };
+    await cancelSubscription({ reason: "service_issue" });
+    const heldLog = state.activityLogInserts.find(
+      (row) => row.action_type === "commission_cancelled",
+    );
+    expect(heldLog).toBeDefined();
+    expect(heldLog?.action_details).toMatchObject({
+      parent_subscription_id: "sub-row-1",
+      cancelled_count: 1,
+      reason: "parent_cancelled",
+    });
+  });
+
+  it("commission_cancelled log NOT emitted when cancelled=0 (no in-flight rows to cancel) (T-018)", async () => {
+    state.cancelResult = { cancelled: 0 };
+    await cancelSubscription({ reason: "not_using" });
+    const heldLog = state.activityLogInserts.find(
+      (row) => row.action_type === "commission_cancelled",
+    );
+    expect(heldLog).toBeUndefined();
+  });
+
+  it("cancel throw is logged but does NOT fail the cancel (T-018 — matches webhook handler best-effort posture)", async () => {
+    state.cancelThrows = true;
+    const r = await cancelSubscription({ reason: "other" });
+    // Cancel still succeeds — cancel-in-flight is best-effort; the DB trigger is
+    // the universal safeguard. App-level cancel call is forensics parity
+    // with the webhook, not a hard dependency.
+    expect(r.success).toBe(true);
+    expect(state.dbUpdateCalls[0]?.payload).toMatchObject({
+      status: "cancelled",
+    });
+  });
+
+  it("no-op branch (already cancelled): does NOT call cancel-in-flight (already idempotent at trigger layer) (T-018)", async () => {
+    state.subRow!.status = "cancelled";
+    await cancelSubscription({ reason: "not_using" });
+    // Sub is already cancelled — the trigger fired at the prior
+    // transition. No need to re-fire from the app layer.
+    expect(state.cancelCalls).toHaveLength(0);
+  });
+
+  it("no-op branch (lapsed): does NOT call cancel-in-flight (T-018)", async () => {
+    state.subRow!.status = "lapsed";
+    await cancelSubscription({ reason: "not_using" });
+    expect(state.cancelCalls).toHaveLength(0);
   });
 });

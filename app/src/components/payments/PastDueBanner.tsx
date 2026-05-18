@@ -21,6 +21,7 @@
 
 import { AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatAuDate } from "@/lib/format/date";
 
 export interface PastDueBannerProps {
   /** ISO timestamp for `parent_subscriptions.past_due_grace_ends_at`. */
@@ -31,24 +32,17 @@ export interface PastDueBannerProps {
    * (via `createPortalSession` server action) so the parent can
    * replace the failing card.
    */
-  onUpdateCard: () => void;
-}
-
-function formatGraceDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  /** Optional — omit when the parent is already on the
+   *  /parent/subscription destination (Customer Portal source)
+   *  so the button doesn't self-navigate. Bailey 2026-05-14. */
+  onUpdateCard?: () => void;
 }
 
 export function PastDueBanner({
   graceEndsAt,
   onUpdateCard,
 }: PastDueBannerProps) {
-  const formatted = formatGraceDate(graceEndsAt);
+  const formatted = formatAuDate(graceEndsAt);
   return (
     <div
       role="status"
@@ -65,13 +59,15 @@ export function PastDueBanner({
         Update your payment method by {formatted} to keep your subscription
         active.
       </p>
-      <Button
-        size="sm"
-        className="shrink-0 bg-violet-600 hover:bg-violet-700"
-        onClick={onUpdateCard}
-      >
-        Update payment method
-      </Button>
+      {onUpdateCard && (
+        <Button
+          size="sm"
+          className="shrink-0 bg-violet-600 hover:bg-violet-700"
+          onClick={onUpdateCard}
+        >
+          Update payment method
+        </Button>
+      )}
     </div>
   );
 }

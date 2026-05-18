@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/dashboard/EmptyState";
@@ -32,7 +39,9 @@ type StatusFilter = "all" | "id_stage" | "wwcc_stage" | "verified" | "rejected";
 
 // ── Level badge variant ──
 
-function getLevelVariant(level: number | null): "inactive" | "pending" | "active" | "verified" | "info" {
+function getLevelVariant(
+  level: number | null,
+): "inactive" | "pending" | "active" | "verified" | "info" {
   if (level === null) return "inactive";
   if (level === 0) return "inactive";
   if (level === 1) return "pending";
@@ -43,11 +52,21 @@ function getLevelVariant(level: number | null): "inactive" | "pending" | "active
 
 // ── Status badge variant ──
 
-function getStatusVariant(status: number | null): "unattempted" | "pending" | "failed" | "verified" | "active" | "info" {
+function getStatusVariant(
+  status: number | null,
+): "unattempted" | "pending" | "failed" | "verified" | "active" | "info" {
   if (status === null) return "unattempted";
   if (status === 0) return "unattempted";
   if (status === 20) return "info";
-  if (status === 12 || status === 22 || status === 23 || status === 26 || status === 27 || status === 28) return "failed";
+  if (
+    status === 12 ||
+    status === 22 ||
+    status === 23 ||
+    status === 26 ||
+    status === 27 ||
+    status === 28
+  )
+    return "failed";
   if (status === 30) return "active";
   if (status === 40) return "verified";
   return "pending";
@@ -67,7 +86,8 @@ function matchesStatusFilter(user: UserData, filter: StatusFilter): boolean {
   if (filter === "id_stage") return s >= 10 && s < 20;
   if (filter === "wwcc_stage") return s >= 20 && s < 30;
   if (filter === "verified") return s >= 30;
-  if (filter === "rejected") return s === 12 || s === 22 || s === 23 || s === 26 || s === 27 || s === 28;
+  if (filter === "rejected")
+    return s === 12 || s === 22 || s === 23 || s === 26 || s === 27 || s === 28;
   return true;
 }
 
@@ -78,17 +98,31 @@ export function UsersTab({ users, stats }: UsersTabProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
 
+  // Auto-open the drawer when `/admin/users?openUser=<id>` is the
+  // entry URL. Lets other admin surfaces deep-link a parent/nanny
+  // profile (e.g. the subscription detail page's quick-access
+  // buttons). Bailey 2026-05-14.
+  const searchParams = useSearchParams();
+  const targetUserId = searchParams.get("openUser");
+  useEffect(() => {
+    if (!targetUserId) return;
+    const match = users.find((u) => u.user_id === targetUserId);
+    if (match) setSelectedUser(match);
+  }, [targetUserId, users]);
+
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const name = `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
+        const name =
+          `${user.first_name || ""} ${user.last_name || ""}`.toLowerCase();
         const email = (user.email || "").toLowerCase();
         if (!name.includes(query) && !email.includes(query)) return false;
       }
       if (roleFilter !== "all") {
         if (roleFilter === "admin") {
-          if (user.role !== "admin" && user.role !== "super_admin") return false;
+          if (user.role !== "admin" && user.role !== "super_admin")
+            return false;
         } else if (user.role !== roleFilter) return false;
       }
       if (!matchesLevelFilter(user, levelFilter)) return false;
@@ -97,7 +131,11 @@ export function UsersTab({ users, stats }: UsersTabProps) {
     });
   }, [users, searchQuery, roleFilter, levelFilter, statusFilter]);
 
-  const hasActiveFilters = searchQuery || roleFilter !== "all" || levelFilter !== "all" || statusFilter !== "all";
+  const hasActiveFilters =
+    searchQuery ||
+    roleFilter !== "all" ||
+    levelFilter !== "all" ||
+    statusFilter !== "all";
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -106,7 +144,8 @@ export function UsersTab({ users, stats }: UsersTabProps) {
     setStatusFilter("all");
   };
 
-  const selectClass = "rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
+  const selectClass =
+    "rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2";
 
   return (
     <div className="space-y-6">
@@ -151,13 +190,21 @@ export function UsersTab({ users, stats }: UsersTabProps) {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <select className={selectClass} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}>
+            <select
+              className={selectClass}
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+            >
               <option value="all">All Roles</option>
               <option value="nanny">Nannies</option>
               <option value="parent">Parents</option>
               <option value="admin">Admins</option>
             </select>
-            <select className={selectClass} value={levelFilter} onChange={(e) => setLevelFilter(e.target.value as LevelFilter)}>
+            <select
+              className={selectClass}
+              value={levelFilter}
+              onChange={(e) => setLevelFilter(e.target.value as LevelFilter)}
+            >
               <option value="all">All Levels</option>
               <option value="0">Signed Up (0)</option>
               <option value="1">Registered (1)</option>
@@ -165,7 +212,11 @@ export function UsersTab({ users, stats }: UsersTabProps) {
               <option value="3">Provisional (3)</option>
               <option value="4">Fully Verified (4)</option>
             </select>
-            <select className={selectClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}>
+            <select
+              className={selectClass}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            >
               <option value="all">All Status</option>
               <option value="id_stage">ID Stage (10-12)</option>
               <option value="wwcc_stage">WWCC Stage (20-28)</option>
@@ -196,96 +247,111 @@ export function UsersTab({ users, stats }: UsersTabProps) {
         <CardContent>
           {filteredUsers.length > 0 ? (
             <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>User</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>BSR</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Joined</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => {
-                  const name = `${user.first_name || ""} ${user.last_name || ""}`.trim() || "Unknown";
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>User</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Level</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>BSR</TableHead>
+                    <TableHead>Location</TableHead>
+                    <TableHead>Joined</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => {
+                    const name =
+                      `${user.first_name || ""} ${user.last_name || ""}`.trim() ||
+                      "Unknown";
 
-                  return (
-                    <TableRow
-                      key={user.user_id}
-                      className="cursor-pointer hover:bg-slate-50"
-                      onClick={() => setSelectedUser(user)}
-                    >
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <UserAvatar
-                            name={name}
-                            imageUrl={user.profile_picture_url || undefined}
-                            className="h-8 w-8"
-                          />
-                          <div>
-                            <p className="font-medium">{name}</p>
-                            <p className="text-sm text-slate-500">{user.email}</p>
+                    return (
+                      <TableRow
+                        key={user.user_id}
+                        className="cursor-pointer hover:bg-slate-50"
+                        onClick={() => setSelectedUser(user)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <UserAvatar
+                              name={name}
+                              imageUrl={user.profile_picture_url || undefined}
+                              className="h-8 w-8"
+                            />
+                            <div>
+                              <p className="font-medium">{name}</p>
+                              <p className="text-sm text-slate-500">
+                                {user.email}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className="capitalize">{user.role.replace("_", " ")}</span>
-                      </TableCell>
-                      <TableCell>
-                        {user.role === "nanny" ? (
-                          <StatusBadge variant={getLevelVariant(user.verification_level)}>
-                            {LEVEL_LABELS[user.verification_level ?? 0] || `Unknown (${user.verification_level})`}
-                          </StatusBadge>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {user.role === "nanny" && user.verification_status !== null ? (
-                          <StatusBadge variant={getStatusVariant(user.verification_status)}>
-                            {STATUS_LABELS[user.verification_status] || `Unknown (${user.verification_status})`}
-                          </StatusBadge>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {user.role === "nanny" ? (
-                          user.babysitter_eligible ? (
-                            <span className="flex items-center gap-1 text-xs font-medium text-green-700">
-                              <Baby className="h-3.5 w-3.5" />
-                              Yes
+                        </TableCell>
+                        <TableCell>
+                          <span className="capitalize">
+                            {user.role.replace("_", " ")}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {user.role === "nanny" ? (
+                            <StatusBadge
+                              variant={getLevelVariant(user.verification_level)}
+                            >
+                              {LEVEL_LABELS[user.verification_level ?? 0] ||
+                                `Unknown (${user.verification_level})`}
+                            </StatusBadge>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.role === "nanny" &&
+                          user.verification_status !== null ? (
+                            <StatusBadge
+                              variant={getStatusVariant(
+                                user.verification_status,
+                              )}
+                            >
+                              {STATUS_LABELS[user.verification_status] ||
+                                `Unknown (${user.verification_status})`}
+                            </StatusBadge>
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.role === "nanny" ? (
+                            user.babysitter_eligible ? (
+                              <span className="flex items-center gap-1 text-xs font-medium text-green-700">
+                                <Baby className="h-3.5 w-3.5" />
+                                Yes
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-400">No</span>
+                            )
+                          ) : (
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {user.suburb ? (
+                            <span className="text-sm">
+                              {user.suburb}
+                              {user.postcode && ` (${user.postcode})`}
                             </span>
                           ) : (
-                            <span className="text-xs text-slate-400">No</span>
-                          )
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {user.suburb ? (
-                          <span className="text-sm">
-                            {user.suburb}
-                            {user.postcode && ` (${user.postcode})`}
+                            <span className="text-slate-400">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-slate-500">
+                            {formatRelativeTime(user.created_at)}
                           </span>
-                        ) : (
-                          <span className="text-slate-400">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <span className="text-sm text-slate-500">
-                          {formatRelativeTime(user.created_at)}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             </div>
           ) : (
             <EmptyState

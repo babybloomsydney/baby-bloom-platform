@@ -9,6 +9,7 @@ import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
 import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { requireMediaConsentForImageWrite } from "@/lib/legal/require-media-consent";
 
 // ---------------------------------------------------------------------------
 // Helper: transition child to active_nanny on first action
@@ -71,6 +72,17 @@ export async function logObservation(
     const gate = await requireChildFamilyAccess(childId);
     if (!gate.hasAccess) {
       return { success: false, error: "subscription_required" };
+    }
+
+    // Media consent gate (T-015) — block image writes when parent
+    // hasn't given current consent on this child. Text observations
+    // still work; the image_url is what's gated.
+    const mediaGate = await requireMediaConsentForImageWrite({
+      childId,
+      imageUrl: data.image_url,
+    });
+    if (!mediaGate.ok) {
+      return { success: false, error: mediaGate.error };
     }
 
     const admin = createAdminClient();
@@ -199,6 +211,15 @@ export async function logBulkProgress(
     const gate = await requireChildFamilyAccess(childId);
     if (!gate.hasAccess) {
       return { success: false, error: "subscription_required" };
+    }
+
+    // Media consent gate (T-015).
+    const mediaGate = await requireMediaConsentForImageWrite({
+      childId,
+      imageUrl,
+    });
+    if (!mediaGate.ok) {
+      return { success: false, error: mediaGate.error };
     }
 
     const admin = createAdminClient();

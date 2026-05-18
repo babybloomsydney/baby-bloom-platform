@@ -6,6 +6,11 @@ import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 import { createSubscribeInvite } from "@/lib/actions/payments/createSubscribeInvite";
+import {
+  hasChildConsent,
+  NANNY_ATTESTATION_AGREEMENT_ID,
+} from "@/lib/legal/media-consent-gate";
+import { ConsentRenewalModal } from "@/components/legal/ConsentRenewalModal";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function DevelopmentLayout({
@@ -97,6 +102,31 @@ export default async function DevelopmentLayout({
         />
       )}
       {children}
+      {c.nanny_user_id === user.id &&
+        (await (async () => {
+          const nannyGate = await hasChildConsent(
+            {
+              childId: c.id,
+              agreementId: NANNY_ATTESTATION_AGREEMENT_ID,
+            },
+            { admin },
+          );
+          if (
+            (nannyGate.state === "nearing_expiry" ||
+              nannyGate.state === "expired") &&
+            nannyGate.expiresAt
+          ) {
+            return (
+              <ConsentRenewalModal
+                childId={c.id}
+                childFirstName={c.first_name ?? "the child"}
+                role="nanny"
+                expiresAt={nannyGate.expiresAt}
+              />
+            );
+          }
+          return null;
+        })())}
     </BAppLayout>
   );
 }

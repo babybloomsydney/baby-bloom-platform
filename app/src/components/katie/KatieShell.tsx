@@ -41,6 +41,9 @@ import {
  *  one place to be added. */
 const DISTRACTION_FREE_PATHS = [
   "/nanny/onboarding-verification",
+  // T-022 — onboarding contributions page is part of the same focused
+  // signup flow; same hide-DashboardNav-and-Katie-tabs treatment.
+  "/nanny/onboarding/add-child",
   "/parent/request",
 ];
 

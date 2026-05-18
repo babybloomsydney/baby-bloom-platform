@@ -116,4 +116,24 @@ describe("CancelledInPeriodBanner", () => {
     const text = document.body.textContent ?? "";
     expect(text.toLowerCase()).not.toMatch(/\btrack(ing|ed|s)?\b/);
   });
+
+  it("hides the Resubscribe CTA when onPrimaryCta is omitted (Bailey 2026-05-14)", () => {
+    // Banner still renders the date + dismiss button, but the
+    // CTA button is gone. Used by ParentStateBannerHub when the
+    // parent is already on /parent/subscribe so the button can't
+    // self-navigate.
+    const props = makeProps();
+    delete (props as { onPrimaryCta?: () => void }).onPrimaryCta;
+    render(<CancelledInPeriodBanner {...props} />);
+    expect(
+      screen.getByText(/your subscription has ended/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^resubscribe$/i }),
+    ).not.toBeInTheDocument();
+    // Dismiss button stays — the user can still dismiss the banner.
+    expect(
+      screen.getByRole("button", { name: /dismiss|close/i }),
+    ).toBeInTheDocument();
+  });
 });

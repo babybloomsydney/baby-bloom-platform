@@ -14,6 +14,11 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { onboardChild } from "@/lib/actions/bapp/child-clients";
 import type { ChildClient } from "@/types/bapp";
+import {
+  earliestAllowedDobIso,
+  todayIso,
+  validateChildDob,
+} from "@/lib/bapp/child-age";
 
 interface OnboardSheetProps {
   child: ChildClient;
@@ -39,6 +44,18 @@ export function OnboardSheet({ child, open, onOpenChange }: OnboardSheetProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!firstName.trim() || !dob) return;
+
+    const localCheck = validateChildDob(dob);
+    if (!localCheck.ok) {
+      setError(
+        localCheck.error === "child_too_old"
+          ? "Baby Bloom supports children under 3."
+          : localCheck.error === "date_of_birth_in_future"
+            ? "Date of birth can't be in the future."
+            : "Please enter a valid date of birth.",
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -99,8 +116,13 @@ export function OnboardSheet({ child, open, onOpenChange }: OnboardSheetProps) {
               type="date"
               value={dob}
               onChange={(e) => setDob(e.target.value)}
+              min={earliestAllowedDobIso()}
+              max={todayIso()}
               required
             />
+            <p className="mt-1 text-xs text-slate-500">
+              Baby Bloom supports children under 3.
+            </p>
           </div>
 
           <div>

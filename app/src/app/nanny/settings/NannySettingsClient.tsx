@@ -54,6 +54,12 @@ import {
 import { requestPasswordChange } from "@/lib/actions/account-security";
 import { ChildManagementCard } from "@/components/bapp/ChildManagementCard";
 import type { ChildClient } from "@/types/bapp";
+import { UpcomingPayoutsView } from "@/components/payments/UpcomingPayoutsView";
+import { PayoutHistoryView } from "@/components/payments/PayoutHistoryView";
+import { PayoutOnboardingPageClient } from "../payouts/onboarding/PayoutOnboardingPageClient";
+import type { PayoutsDashboardData } from "@/lib/payments/queryPayoutsDashboard";
+import type { PayoutHistoryRow } from "@/lib/payments/queryPayoutHistory";
+import type { PayoutApplicationStatus } from "@/lib/payments/payout-application-status";
 import { SettingsShell } from "@/components/settings/SettingsShell";
 import { IdentityCard } from "@/components/settings/IdentityCard";
 import { SettingsSubsection } from "@/components/settings/SettingsSubsection";
@@ -85,6 +91,15 @@ interface Props {
     expiryDate: string | null;
   } | null;
   managedChildren?: ChildClient[];
+  // Pre-fetched payouts data — passed in by the server page so the
+  // three Payouts leaves render inline without extra round-trips.
+  payoutsDashboard: PayoutsDashboardData | null;
+  payoutHistory: PayoutHistoryRow[] | null;
+  payoutOnboarding: {
+    status: PayoutApplicationStatus;
+    email: string | null;
+    bankSummary: { last4: string | null; bankName: string | null } | null;
+  };
 }
 
 function publicIdentityStatus(level: number): {
@@ -197,11 +212,21 @@ function buildTree(args: {
           ? { label: String(childCount), tone: "neutral" }
           : undefined,
     },
-    // Per FRONTEND/03-build-spec.md line 1114 + UX-FIX-PLAN FIX-4
-    // (2026-05-12 audit). The /nanny/payouts dashboard is the
-    // loss-aversion engine — must be reachable from a default-tab
-    // surface, not only via direct URL.
-    { id: "payouts", label: "Payouts", icon: Wallet },
+    // Multi-level Contributions (Bailey 2026-05-13, relabelled
+    // 2026-05-15). Settings is the canonical home for the contributions
+    // surfaces — three siblings under a shared Contributions parent.
+    // Standalone routes (under /nanny/payouts/) still work; the URLs
+    // are intentionally unchanged (backend identifiers stay the same).
+    {
+      id: "contributions",
+      label: "Contributions",
+      icon: Wallet,
+      children: [
+        { id: "upcoming-contributions", label: "Upcoming Contributions" },
+        { id: "contribution-history", label: "Contribution History" },
+        { id: "contribution-settings", label: "Contribution Settings" },
+      ],
+    },
     { id: "contact-us", label: "Contact Us", icon: LifeBuoy },
     // Hidden danger leaf — reached only via the small link at the
     // bottom of Account's drill-down menu.
@@ -214,6 +239,9 @@ export function NannySettingsClient({
   verificationLevel,
   wwcc,
   managedChildren = [],
+  payoutsDashboard,
+  payoutHistory,
+  payoutOnboarding,
 }: Props) {
   const params = useSearchParams();
   const activeId = params.get("s") ?? "";
@@ -277,8 +305,26 @@ export function NannySettingsClient({
             return <SecuritySection />;
           case "linked-children":
             return <ChildrenSection items={managedChildren} />;
-          case "payouts":
-            return <PayoutsLinkSection />;
+          case "upcoming-contributions":
+            return (
+              <UpcomingPayoutsView
+                data={payoutsDashboard}
+                payoutApplicationStatus={payoutOnboarding.status}
+                setupHref="/nanny/settings?s=contribution-settings"
+                embedded
+              />
+            );
+          case "contribution-history":
+            return <PayoutHistoryView rows={payoutHistory} embedded />;
+          case "contribution-settings":
+            return (
+              <PayoutOnboardingPageClient
+                status={payoutOnboarding.status}
+                email={payoutOnboarding.email}
+                bankSummary={payoutOnboarding.bankSummary}
+                embedded
+              />
+            );
           case "contact-us":
             return <ContactSection />;
           case "close-account":

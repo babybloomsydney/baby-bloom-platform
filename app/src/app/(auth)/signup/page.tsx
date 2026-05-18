@@ -25,14 +25,23 @@ import {
   ShieldCheck,
   CheckCircle,
   ArrowRight,
+  Check,
 } from "lucide-react";
+import { formatAuMobile, isAuMobile } from "@/lib/au-contact";
 
 const signupSchema = z
   .object({
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     email: z.string().email("Please enter a valid email address"),
-    password: z.string()
+    mobile: z
+      .string()
+      .min(1, "Mobile number is required")
+      .refine((v) => isAuMobile(v), {
+        message: "Please enter a valid Australian mobile (04XX XXX XXX)",
+      }),
+    password: z
+      .string()
       .min(8, "Password must be at least 8 characters")
       .regex(/[0-9]/, "Password must include a number")
       .regex(/[^A-Za-z0-9]/, "Password must include a special character"),
@@ -49,9 +58,13 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>(
+    {},
+  );
 
-  const allConsentsChecked = AGR01_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+  const allConsentsChecked = AGR01_CHECKPOINTS.every(
+    (cp) => consentChecked[cp.id],
+  );
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -65,6 +78,7 @@ export default function SignupPage() {
       firstName: "",
       lastName: "",
       email: "",
+      mobile: "",
       password: "",
       confirmPassword: "",
     },
@@ -79,27 +93,30 @@ export default function SignupPage() {
     formData.append("password", data.password);
     formData.append("firstName", data.firstName);
     formData.append("lastName", data.lastName);
+    // Send raw user input — server is the canonical normalisation point
+    // (signUp() calls normaliseAuMobile + isAuMobile defence-in-depth).
+    formData.append("mobile_number", data.mobile);
     formData.append("role", "parent");
 
     // Determine signup source from referrer
-    const ref = document.referrer || '';
-    let source = 'direct';
-    if (/\/nannies\/[^/]+/.test(ref)) source = 'profile';
-    else if (ref.includes('/nannies')) source = 'browse';
-    else if (ref.includes('/matchmaking/results')) source = 'quick_match';
-    else if (ref.includes('/matchmaking')) source = 'advanced_match';
-    else if (ref.includes('/babysitting/')) source = 'bsr';
-    else if (ref.includes('/position/')) source = 'position';
-    else if (ref.includes('/pricing')) source = 'pricing';
+    const ref = document.referrer || "";
+    let source = "direct";
+    if (/\/nannies\/[^/]+/.test(ref)) source = "profile";
+    else if (ref.includes("/nannies")) source = "browse";
+    else if (ref.includes("/matchmaking/results")) source = "quick_match";
+    else if (ref.includes("/matchmaking")) source = "advanced_match";
+    else if (ref.includes("/babysitting/")) source = "bsr";
+    else if (ref.includes("/position/")) source = "position";
+    else if (ref.includes("/pricing")) source = "pricing";
     formData.append("signupSource", source);
 
     try {
       await recordConsent(
         AGR01_CHECKPOINTS.map((cp) => ({
-          agreementId: 'AGR-01',
+          agreementId: "AGR-01",
           checkpointId: cp.id,
           checkpointText: cp.text,
-        }))
+        })),
       );
     } catch {
       // Consent recording failed (DB tables may not exist yet) — don't block signup
@@ -120,9 +137,7 @@ export default function SignupPage() {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
         <Loader2 className="h-8 w-8 animate-spin text-violet-500 mb-3" />
-        <p className="text-sm text-slate-500">
-          Setting up your account...
-        </p>
+        <p className="text-sm text-slate-500">Setting up your account...</p>
       </div>
     );
   }
@@ -218,6 +233,63 @@ export default function SignupPage() {
                       <FormMessage />
                     </FormItem>
                   )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="mobile"
+                  render={({ field, fieldState }) => {
+                    const valid = isAuMobile(field.value);
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-xs text-slate-500">
+                          Mobile number
+                        </FormLabel>
+                        <div className="flex gap-2">
+                          <div
+                            aria-hidden="true"
+                            className="flex h-10 flex-shrink-0 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700"
+                          >
+                            +61
+                          </div>
+                          <FormControl>
+                            <Input
+                              type="tel"
+                              inputMode="numeric"
+                              autoComplete="tel-national"
+                              placeholder="04XX XXX XXX"
+                              maxLength={12}
+                              disabled={isLoading}
+                              aria-invalid={fieldState.invalid}
+                              {...field}
+                              onChange={(e) => {
+                                const cleaned = e.target.value.replace(
+                                  /[^0-9 ]/g,
+                                  "",
+                                );
+                                field.onChange(cleaned);
+                              }}
+                            />
+                          </FormControl>
+                        </div>
+                        {valid && (
+                          <p
+                            className="flex items-center gap-1 text-xs font-medium text-green-700"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            {formatAuMobile(field.value)}
+                            <span className="sr-only">
+                              {" "}
+                              is a valid mobile number
+                            </span>
+                            <Check className="h-3 w-3" aria-hidden="true" />
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <FormField
@@ -328,7 +400,6 @@ export default function SignupPage() {
               </Link>
             </p>
           </div>
-
         </div>
       </div>
     </div>

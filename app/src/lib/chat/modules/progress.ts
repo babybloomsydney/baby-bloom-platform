@@ -16,6 +16,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ProgressChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { isChildNameInPreloadProfiles } from "@/lib/chat/preload/predicates";
 import {
   recalculateProgress,
@@ -407,6 +408,18 @@ export async function applyUpdateProgress(
     return { ok: false, error: r.error };
   }
   const { child, cleaned, progressData } = r.prepared;
+
+  // T-015 media gate — block image_url writes without parent consent.
+  if (progressData.image_url) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
 
   // Mirror logBulkProgress: write the progress row first so the
   // child's feed shows this update, then recalc + snapshot. Shape

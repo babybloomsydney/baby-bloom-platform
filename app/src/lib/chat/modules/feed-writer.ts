@@ -16,6 +16,7 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { KatieNoteTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BAppLogInsert } from "@/types/bapp";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { resolveChild } from "./utils";
 
 interface PreparedCustom {
@@ -154,6 +155,22 @@ export async function applyCreateTile(
   const r = prepareCustom(args, ctx.children);
   if (!r.ok) return { ok: false, error: r.error };
   const { child, data, tilePreview, internalNotes } = r.prepared;
+
+  // T-015 media gate.
+  const tileImage =
+    typeof (data as { image_url?: unknown }).image_url === "string"
+      ? ((data as { image_url?: string }).image_url ?? null)
+      : null;
+  if (tileImage) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
 
   // Insert payload typed against `BAppLogInsert` so it stays in
   // sync with the canonical `BAppLog` row shape. Adding a column

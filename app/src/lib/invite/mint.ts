@@ -49,6 +49,12 @@ export interface MintInviteParams {
   userEmail: string;
   /** Optional: carry over recipient_user_id from a revoked invite. */
   recipientUserId?: string | null;
+  /**
+   * T-022 — TRUE when this invite was minted via the bonus-program
+   * onboarding flow. Persisted onto `child_invites.bonus_program` for
+   * commission-attribution by the payouts engine. Defaults to false.
+   */
+  bonusProgram?: boolean;
 }
 
 export async function mintChildInvite(
@@ -65,6 +71,7 @@ export async function mintChildInvite(
     direction: params.direction,
     status: "pending",
     recipient_user_id: params.recipientUserId ?? null,
+    bonus_program: params.bonusProgram ?? false,
   });
 
   if (error) {

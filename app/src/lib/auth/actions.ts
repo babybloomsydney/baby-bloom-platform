@@ -11,6 +11,7 @@ import { buildWelcomeParentEmail } from "@/lib/email/templates/welcome-parent";
 import { buildWelcomeInviteParentEmail } from "@/lib/email/templates/welcome-invite-parent";
 import { capitalizeName } from "@/lib/utils";
 import { signupViaInvite } from "@/lib/actions/bapp/child-invites";
+import { isAuMobile, normaliseAuMobile } from "@/lib/au-contact";
 
 const INVITE_TOKEN_REGEX = /^[A-HJKMN-Z2-9]{4}-[A-HJKMN-Z2-9]{4}$/;
 
@@ -153,6 +154,7 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   const role = formData.get("role") as UserRole;
   const rawInviteToken =
     (formData.get("invite_token") as string | null) ?? null;
+  const rawMobile = (formData.get("mobile_number") as string | null) ?? null;
 
   // Resolve invite context up-front so we can override signup_source.
   // Invalid / mismatched tokens are silently dropped — the standard signup
@@ -190,6 +192,24 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
   // Validate role
   if (!["nanny", "parent"].includes(role)) {
     return { error: "Invalid role" };
+  }
+
+  // T-021 — parent mobile collection at signup. Required + AU-format only
+  // when role=parent. Nanny side collects mobile via the apply funnel and
+  // writes it to user_profiles via that path; signUp() must NOT require it
+  // for role=nanny or `/signup/nanny` + the apply→signup chain breaks.
+  // Server-side defence in depth: even if a UI bypasses validation, the
+  // request is rejected here before any auth user is created.
+  // `isAuMobile` internally normalises before regex-matching, and the regex
+  // rejects empty strings, so a single normalise + validate is sufficient.
+  let normalisedMobile: string | null = null;
+  if (role === "parent") {
+    normalisedMobile = normaliseAuMobile(rawMobile ?? "");
+    if (!isAuMobile(normalisedMobile)) {
+      return {
+        error: "A valid Australian mobile number is required (04XX XXX XXX)",
+      };
+    }
   }
 
   // 1. Create auth user
@@ -236,6 +256,8 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
     }
 
     // 3. Insert user profile
+    // mobile_number is the normalised AU mobile for parents (validated above)
+    // or null for nannies (their apply funnel writes it via a separate path).
     const { error: profileError } = await adminClient
       .from("user_profiles")
       .insert({
@@ -243,6 +265,7 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
         first_name: capitalizeName(firstName),
         last_name: capitalizeName(lastName),
         email: email,
+        mobile_number: normalisedMobile,
       });
 
     if (profileError) {

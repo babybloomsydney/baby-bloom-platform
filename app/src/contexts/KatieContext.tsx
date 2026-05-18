@@ -61,6 +61,10 @@ function deriveFeature(pathname: string): string {
   if (second === "babysitting") return "bsr";
   if (second === "verification" || second === "onboarding-verification")
     return "verification";
+  // T-022 — `/nanny/onboarding/add-child` (and any future nested
+  // onboarding routes) map to the same "verification" feature for
+  // Katie context purposes — they're part of the same signup arc.
+  if (second === "onboarding") return "verification";
   if (second === "profile") return "profile";
   if (second === "connections") return "connections";
   if (second === "inbox") return "inbox";
