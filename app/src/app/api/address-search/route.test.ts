@@ -221,4 +221,73 @@ describe("GET /api/address-search", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
   });
+
+  it("splits '5/12 George St' into unit + base query and re-prepends the unit on every result", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "12",
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+              osm_id: 999,
+              osm_type: "N",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("5/12 George St");
+    expect(res.status).toBe(200);
+    // Upstream URL should have been called with the base query, not the
+    // raw "5/12 George St" — Photon doesn't index AU flat-number syntax.
+    const upstreamUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(upstreamUrl).toContain("q=12%20George%20St");
+    expect(upstreamUrl).not.toContain("5%2F12");
+    // The unit prefix is re-prepended to every result's SLA + PID.
+    const data = (await res.json()) as Array<{ sla: string; pid: string }>;
+    expect(data[0].sla).toBe("5/12 GEORGE STREET, SYDNEY NSW 2000");
+    expect(data[0].pid).toBe("5/N/999");
+  });
+
+  it("splits 'Unit 5, 12 George St' into unit + base", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "12",
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await callRoute("Unit 5, 12 George St");
+    const upstreamUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(upstreamUrl).toContain("q=12%20George%20St");
+  });
+
+  it("biases Photon search toward Sydney via lat/lon params", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ features: [] }), { status: 200 }),
+    );
+    await callRoute("12 george street");
+    const upstreamUrl = fetchMock.mock.calls[0]?.[0] as string;
+    expect(upstreamUrl).toContain("lat=-33.87");
+    expect(upstreamUrl).toContain("lon=151.21");
+    expect(upstreamUrl).toContain("limit=50");
+  });
 });

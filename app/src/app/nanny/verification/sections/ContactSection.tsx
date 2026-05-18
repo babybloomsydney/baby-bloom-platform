@@ -47,9 +47,7 @@ interface ContactSectionProps {
 }
 
 function toTitleCase(str: string): string {
-  return str
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return str.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /** Parse GNAF single-line address into street, suburb, postcode */
@@ -58,7 +56,10 @@ function parseGnafAddress(sla: string): ParsedAddress | null {
   if (!match) return null;
 
   const postcode = match[3];
-  const fullBeforeState = sla.substring(0, sla.lastIndexOf("NSW")).trim().replace(/,\s*$/, "");
+  const fullBeforeState = sla
+    .substring(0, sla.lastIndexOf("NSW"))
+    .trim()
+    .replace(/,\s*$/, "");
   const lastComma = fullBeforeState.lastIndexOf(",");
   if (lastComma < 0) return null;
 
@@ -72,7 +73,11 @@ function parseGnafAddress(sla: string): ParsedAddress | null {
   };
 }
 
-export function ContactSection({ verification, locked, onSaved }: ContactSectionProps) {
+export function ContactSection({
+  verification,
+  locked,
+  onSaved,
+}: ContactSectionProps) {
   const status = verification?.contact_status ?? "not_started";
   const isCompleted = status === "saved";
 
@@ -84,11 +89,17 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
   const [phone, setPhone] = useState(verification?.phone_number ?? "");
 
   // GNAF address autocomplete — single field
-  const [addressQuery, setAddressQuery] = useState(verification?.address_line ?? "");
+  const [addressQuery, setAddressQuery] = useState(
+    verification?.address_line ?? "",
+  );
   const [selectedAddress, setSelectedAddress] = useState<ParsedAddress | null>(
     verification?.address_line && verification?.city && verification?.postcode
-      ? { street: verification.address_line, suburb: verification.city, postcode: verification.postcode }
-      : null
+      ? {
+          street: verification.address_line,
+          suburb: verification.city,
+          postcode: verification.postcode,
+        }
+      : null,
   );
   const [addressResults, setAddressResults] = useState<AddressrResult[]>([]);
   const [showAddressDropdown, setShowAddressDropdown] = useState(false);
@@ -98,7 +109,9 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // sydney_postcodes for service area validation
-  const [sydneyPostcodes, setSydneyPostcodes] = useState<Set<string>>(new Set());
+  const [sydneyPostcodes, setSydneyPostcodes] = useState<Set<string>>(
+    new Set(),
+  );
   useEffect(() => {
     fetch("/api/sydney-postcodes")
       .then((res) => res.json())
@@ -111,7 +124,10 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
   // Close dropdown on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (addressDropdownRef.current && !addressDropdownRef.current.contains(e.target as Node)) {
+      if (
+        addressDropdownRef.current &&
+        !addressDropdownRef.current.contains(e.target as Node)
+      ) {
         setShowAddressDropdown(false);
       }
     }
@@ -133,7 +149,7 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
       setAddressLoading(true);
       try {
         const res = await fetch(
-          `/api/address-search?q=${encodeURIComponent(query)}`
+          `/api/address-search?q=${encodeURIComponent(query)}`,
         );
         if (!res.ok) {
           setAddressResults([]);
@@ -150,7 +166,7 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
       } finally {
         setAddressLoading(false);
       }
-    }, 300);
+    }, 180);
   }, []);
 
   function handleAddressChange(val: string) {
@@ -206,7 +222,12 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
           postcode: selectedAddress!.postcode,
           country: "Australia",
         }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Save timed out — please try again")), 15000)),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Save timed out — please try again")),
+            15000,
+          ),
+        ),
       ]);
 
       if (!result.success) {
@@ -217,12 +238,14 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
 
       setIsSaving(false);
       setIsVerifying(true);
-      await new Promise(resolve => setTimeout(resolve, 1200));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
       setIsVerifying(false);
       setEditing(false);
       onSaved();
     } catch (err) {
-      setError(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setError(
+        `Error: ${err instanceof Error ? err.message : "Unknown error"}`,
+      );
       setIsSaving(false);
     }
   }
@@ -236,7 +259,11 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
       <div className="space-y-4">
         <div className="space-y-1 text-sm text-green-700">
           {displayAddress && <p>{displayAddress}</p>}
-          {displaySuburb && <p>{displaySuburb}, NSW {displayPostcode}</p>}
+          {displaySuburb && (
+            <p>
+              {displaySuburb}, NSW {displayPostcode}
+            </p>
+          )}
         </div>
         <Button
           type="button"
@@ -253,12 +280,19 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
   return (
     <div className="space-y-6">
       {error && (
-        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">{error}</div>
+        <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          {error}
+        </div>
       )}
 
       <div className="space-y-2">
         <div className="flex items-baseline justify-between">
-          <Label htmlFor="address" className="text-sm font-medium text-slate-700">Address</Label>
+          <Label
+            htmlFor="address"
+            className="text-sm font-medium text-slate-700"
+          >
+            Address
+          </Label>
           <span className="text-xs text-slate-400">NSW only</span>
         </div>
         <div className="relative" ref={addressDropdownRef}>
@@ -279,7 +313,9 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
             )}
           </div>
           {showAddressDropdown && (
-            <div className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}>
+            <div
+              className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}
+            >
               {addressResults.map((r) => (
                 <button
                   key={r.pid}
@@ -294,13 +330,15 @@ export function ContactSection({ verification, locked, onSaved }: ContactSection
           )}
           {selectedAddress && (
             <p className="text-xs text-green-600 font-medium mt-1.5 flex items-center gap-1">
-              {selectedAddress.street}, {selectedAddress.suburb} NSW {selectedAddress.postcode}
+              {selectedAddress.street}, {selectedAddress.suburb} NSW{" "}
+              {selectedAddress.postcode}
               <Check className="h-3 w-3" />
             </p>
           )}
           {notInArea && (
             <p className="text-xs text-amber-600 mt-1.5">
-              This address is outside our service area. We currently only operate in Greater Sydney, NSW.
+              This address is outside our service area. We currently only
+              operate in Greater Sydney, NSW.
             </p>
           )}
         </div>

@@ -827,7 +827,7 @@ function LocationStep({
       } finally {
         setAddressLoading(false);
       }
-    }, 300);
+    }, 180);
   }, []);
 
   function handleAddressChange(val: string) {

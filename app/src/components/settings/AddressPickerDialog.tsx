@@ -153,7 +153,7 @@ export function AddressPickerDialog({
       } finally {
         setLoading(false);
       }
-    }, 300);
+    }, 180);
   }, []);
 
   function onChange(val: string) {
