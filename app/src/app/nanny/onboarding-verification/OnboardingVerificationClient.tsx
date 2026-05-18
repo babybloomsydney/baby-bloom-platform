@@ -6,7 +6,6 @@ import {
   Upload,
   CheckCircle2,
   ShieldCheck,
-  ChevronLeft,
   Loader2,
   Camera,
   AlertCircle,
@@ -2347,14 +2346,9 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
-            <button
-              type="button"
-              onClick={() => setStep(0)}
-              className="absolute top-3 left-0 p-1.5 text-slate-400 hover:text-slate-600 transition-colors z-10"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
+            {/* No back nav — verification steps must complete in order
+                so the nanny doesn't accidentally regress from an applied
+                document upload back to the previous step. Bailey 2026-05-18. */}
             <div className="flex-1 pt-10 pb-6">
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">
@@ -2394,14 +2388,7 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="absolute top-3 left-0 p-1.5 text-slate-400 hover:text-slate-600 transition-colors z-10"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
+            {/* No back nav per Bailey 2026-05-18 — see Step 1 above. */}
             <div className="flex-1 pt-10 pb-6">
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">
@@ -2484,14 +2471,7 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
-            <button
-              type="button"
-              onClick={() => setStep(2)}
-              className="absolute top-3 left-0 p-1.5 text-slate-400 hover:text-slate-600 transition-colors z-10"
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-
+            {/* No back nav per Bailey 2026-05-18 — see Step 1 above. */}
             <div className="flex-1 pt-10 pb-6">
               <div className="text-center mb-6">
                 <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">

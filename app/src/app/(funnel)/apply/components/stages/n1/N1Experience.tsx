@@ -71,13 +71,25 @@ export function N1Experience({
 
     const hasEnoughExp = experience.total_experience !== null && totalExp >= 1;
 
+    // The newborn-experience flow is "complete" once the user has answered
+    // the newborn yes/no, AND if they said yes, supplied a years value. We
+    // use this to gate the T-023 question below so it reveals AFTER the
+    // newborn flow — matching the progressive reveal pattern of every
+    // other sub-question on this page (Bailey 2026-05-18 smoke).
+    const newbornComplete =
+      experience.newborn_experience_yn === false ||
+      (experience.newborn_experience_yn === true &&
+        experience.newborn_experience !== null);
+
     // T-023 — The external U3 position question only appears when the user
     // has confirmed substantive under-3 experience (yn === true AND > 0
-    // years on the slider). When shown, the answer is required to continue.
+    // years) AND has completed the newborn flow above. When shown, the
+    // answer is required to continue.
     const externalU3Required =
       experience.under_3_experience_yn === true &&
       experience.under_3_experience !== null &&
-      experience.under_3_experience > 0;
+      experience.under_3_experience > 0 &&
+      newbornComplete;
 
     const canContinue =
       experience.date_of_birth !== null &&
@@ -249,27 +261,6 @@ export function N1Experience({
             </div>
           </ProgressiveReveal>
 
-          {/* T-023 — current employment qualifier (backend-only signal for
-              hot-lead scoring; not in AI bio, not in matching, not parent-
-              facing). Same reveal condition as the newborn yn block below
-              so they appear together in visual order. */}
-          <ProgressiveReveal show={externalU3Required}>
-            <div className="flex flex-col gap-2 pt-2">
-              <Label className="text-sm font-medium text-slate-700">
-                Are you currently a nanny for any children under 3?
-              </Label>
-              <YesNoTags
-                selected={state.lead_signals.external_u3_position}
-                onChange={(val) =>
-                  dispatch({
-                    type: "UPDATE_LEAD_SIGNALS",
-                    payload: { external_u3_position: val },
-                  })
-                }
-              />
-            </div>
-          </ProgressiveReveal>
-
           {/* Newborn experience yes/no */}
           <ProgressiveReveal
             show={
@@ -318,6 +309,28 @@ export function N1Experience({
                     : "years"}
                 </span>
               </div>
+            </div>
+          </ProgressiveReveal>
+
+          {/* T-023 — current employment qualifier (backend-only signal for
+              hot-lead scoring; not in AI bio, not in matching, not parent-
+              facing). Reveals AFTER the newborn flow completes so the
+              progressive-reveal cadence matches every other sub-question
+              on this page (Bailey 2026-05-18 smoke). */}
+          <ProgressiveReveal show={externalU3Required}>
+            <div className="flex flex-col gap-2 pt-2">
+              <Label className="text-sm font-medium text-slate-700">
+                Are you currently a nanny for any children under 3?
+              </Label>
+              <YesNoTags
+                selected={state.lead_signals.external_u3_position}
+                onChange={(val) =>
+                  dispatch({
+                    type: "UPDATE_LEAD_SIGNALS",
+                    payload: { external_u3_position: val },
+                  })
+                }
+              />
             </div>
           </ProgressiveReveal>
 

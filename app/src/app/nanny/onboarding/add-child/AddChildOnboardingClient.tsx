@@ -398,12 +398,15 @@ export function AddChildOnboardingClient({
         </div>
       </main>
 
+      {/* No `successHref` override: when the nanny successfully adds a child
+          we want them to land on that child's feed (the default AddChildSheet
+          behaviour: /nanny/development/<childId>). Verification is reserved
+          for the "Add child later" escape above. */}
       <AddChildSheet
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         hideGuardianCheckbox
         title="Add child to start their journey"
-        successHref={VERIFICATION_RESUME_HREF}
         fromBonusProgram
       />
     </div>

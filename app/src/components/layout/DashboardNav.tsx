@@ -5,6 +5,7 @@ import { Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { useAuth } from "@/contexts/AuthContext";
+import { displayName, displayFullName } from "@/lib/auth/display-name";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,12 +22,10 @@ interface DashboardNavProps {
 }
 
 export function DashboardNav({ role }: DashboardNavProps) {
-  const { profile, role: authRole, signOut } = useAuth();
+  const { user, profile, role: authRole, signOut } = useAuth();
 
-  const fullName = profile
-    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-    : "";
-  const firstName = profile?.first_name || "User";
+  const fullName = displayFullName(profile, user);
+  const firstName = displayName(profile, user);
 
   // No border-b on <header> below: the violet horizontal divider on
   // the tab strip (KatieShell → KatieTabs) is the only line between

@@ -1,0 +1,224 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+// Mock global fetch BEFORE importing the route under test
+const fetchMock = vi.fn();
+beforeEach(() => {
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  fetchMock.mockReset();
+});
+
+async function callRoute(q: string | null) {
+  const { GET } = await import("./route");
+  const url =
+    q === null
+      ? "http://localhost/api/address-search"
+      : `http://localhost/api/address-search?q=${encodeURIComponent(q)}`;
+  const req = new NextRequest(url);
+  return GET(req);
+}
+
+function photonFeature(
+  props: Partial<{
+    housenumber: string;
+    street: string;
+    suburb: string;
+    city: string;
+    district: string;
+    state: string;
+    postcode: string;
+    countrycode: string;
+    country: string;
+    osm_id: number;
+    osm_type: string;
+  }>,
+) {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [151, -33] },
+    properties: props,
+  };
+}
+
+describe("GET /api/address-search", () => {
+  it("returns [] when q is missing", async () => {
+    const res = await callRoute(null);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("returns [] when q is shorter than 4 chars", async () => {
+    const res = await callRoute("abc");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("maps a full Photon address into the legacy AddressResult shape", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "12",
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+              osm_id: 999,
+              osm_type: "N",
+            }),
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    const res = await callRoute("12 george street sydney");
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as Array<{
+      sla: string;
+      ssla?: string;
+      pid: string;
+      score: number;
+    }>;
+    expect(data).toHaveLength(1);
+    expect(data[0].sla).toBe("12 GEORGE STREET, SYDNEY NSW 2000");
+    // ssla matches sla so consumers using `r.ssla || r.sla` get the same legible form
+    expect(data[0].ssla).toBe("12 GEORGE STREET, SYDNEY NSW 2000");
+    // pid namespaces osm_id by osm_type to avoid cross-type collisions
+    expect(data[0].pid).toBe("N/999");
+    // first result keeps the highest score so consumers that sort on `score`
+    // see Photon's relevance order intact
+    expect(data[0].score).toBe(1);
+  });
+
+  it("filters out non-AU features", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "5",
+              street: "Foo Street",
+              suburb: "London",
+              state: "Greater London",
+              postcode: "SW1A",
+              countrycode: "GB",
+            }),
+            photonFeature({
+              housenumber: "12",
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("george street");
+    const data = (await res.json()) as Array<{ sla: string }>;
+    expect(data).toHaveLength(1);
+    expect(data[0].sla).toContain(" NSW ");
+  });
+
+  it("falls back to `city` then `district` when `suburb` is missing", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "1",
+              street: "Pitt Street",
+              city: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("1 pitt street sydney");
+    const data = (await res.json()) as Array<{ sla: string }>;
+    expect(data[0].sla).toBe("1 PITT STREET, SYDNEY NSW 2000");
+  });
+
+  it("drops features without a street, suburb, state, or postcode", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+            }), // no street
+            photonFeature({
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              countrycode: "AU",
+            }), // no postcode
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("sydney");
+    expect(await res.json()).toEqual([]);
+  });
+
+  it("omits housenumber when not present (street-only matches)", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              street: "George Street",
+              suburb: "Sydney",
+              state: "New South Wales",
+              postcode: "2000",
+              countrycode: "AU",
+              osm_id: 42,
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("george street sydney");
+    const data = (await res.json()) as Array<{ sla: string }>;
+    expect(data[0].sla).toBe("GEORGE STREET, SYDNEY NSW 2000");
+  });
+
+  it("returns [] (not 5xx) when upstream errors so the UI degrades gracefully", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("upstream down", { status: 503 }),
+    );
+    const res = await callRoute("12 george street");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+
+  it("returns [] when fetch throws (network error)", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("network unreachable"));
+    const res = await callRoute("12 george street");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual([]);
+  });
+});

@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { displayName, displayFullName } from "@/lib/auth/display-name";
 import { SidebarItem } from "./SidebarItem";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -107,10 +108,8 @@ export function Sidebar({ role: propRole, collapsed, onToggle }: SidebarProps) {
   const isGuest = role === "guest";
   const navItems = navItemsByRole[role] || publicNavItems;
 
-  const fullName = profile
-    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-    : "";
-  const firstName = profile?.first_name || "User";
+  const fullName = displayFullName(profile, user);
+  const firstName = displayName(profile, user);
 
   return (
     <aside

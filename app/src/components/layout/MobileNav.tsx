@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { displayName, displayFullName } from "@/lib/auth/display-name";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,10 +116,8 @@ export function MobileNav({
   const isGuest = role === "guest";
   const navItems = navItemsByRole[role] || publicNavItems;
 
-  const fullName = profile
-    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-    : "";
-  const firstName = profile?.first_name || "User";
+  const fullName = displayFullName(profile, user);
+  const firstName = displayName(profile, user);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
