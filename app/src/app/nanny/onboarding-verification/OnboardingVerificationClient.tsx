@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { uploadFileWithProgress } from "@/lib/supabase/storage";
+import { VerifyLaterEscape } from "./VerifyLaterEscape";
 import {
   submitIdentitySection,
   submitContactSection,
@@ -2294,7 +2295,8 @@ export function OnboardingVerificationClient({
     return (
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
-          <div className="flex flex-col min-h-[calc(100vh-10rem)]">
+          <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
+            <VerifyLaterEscape />
             <div className="text-center pt-10 mb-2">
               <h2 className="text-xl sm:text-2xl font-semibold text-slate-800 leading-snug">
                 Account secured!
@@ -2346,6 +2348,7 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
+            <VerifyLaterEscape />
             {/* No back nav — verification steps must complete in order
                 so the nanny doesn't accidentally regress from an applied
                 document upload back to the previous step. Bailey 2026-05-18. */}
@@ -2388,6 +2391,7 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
+            <VerifyLaterEscape />
             {/* No back nav per Bailey 2026-05-18 — see Step 1 above. */}
             <div className="flex-1 pt-10 pb-6">
               <div className="text-center mb-6">
@@ -2471,6 +2475,7 @@ export function OnboardingVerificationClient({
       <div className="min-h-screen bg-white">
         <main className="max-w-2xl mx-auto px-4 lg:px-6 pt-4">
           <div className="relative flex flex-col min-h-[calc(100vh-10rem)]">
+            <VerifyLaterEscape />
             {/* No back nav per Bailey 2026-05-18 — see Step 1 above. */}
             <div className="flex-1 pt-10 pb-6">
               <div className="text-center mb-6">

@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-05-18T10:35:02.641Z",
+  "generated_at": "2026-05-19T02:38:27.927Z",
   "summary": {
     "route_count": 64,
     "page_count": 114,
     "cron_count": 15,
-    "migration_count": 35,
+    "migration_count": 36,
     "server_action_file_count": 45
   },
   "routes": [
@@ -889,6 +889,11 @@
       "filename": "cancel-inflight-trigger-v2.sql",
       "bytes": 4028,
       "modified_at": "2026-05-14T10:49:31.901Z"
+    },
+    {
+      "filename": "delete-test-user.sql",
+      "bytes": 20107,
+      "modified_at": "2026-05-19T00:35:26.175Z"
     },
     {
       "filename": "education-app.sql",
