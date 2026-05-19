@@ -50,6 +50,19 @@ export async function POST(request: NextRequest) {
     // consented. Covers Katie + FAB + any future surface that POSTs
     // here — the upload route is the canonical entry point.
     const mediaGate = await hasParentMediaConsent({ childId }, { admin });
+    // TEMP DEBUG (2026-05-19 V2.1 launch — diagnosing FAB upload 403):
+    // log the gate's full decision for every request so we can see
+    // exactly which child + state is hitting the rejection path in prod.
+    // Remove once the root cause is fixed.
+    console.log("[upload/development-image] gate result", {
+      childId,
+      userId: user.id,
+      allowed: mediaGate.allowed,
+      state: mediaGate.state,
+      signedAt: mediaGate.signedAt ?? null,
+      expiresAt: mediaGate.expiresAt ?? null,
+      consentingUserId: mediaGate.consentingUserId ?? null,
+    });
     if (!mediaGate.allowed) {
       return NextResponse.json(
         { error: "media_consent_required", reason: mediaGate.state },
