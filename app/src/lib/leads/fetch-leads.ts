@@ -688,6 +688,21 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
     tabFiltered = tabFiltered.filter((r) => r.external_u3_position !== true);
   }
 
+  // Apply derived children + linked_children filters (post-fetch — counts come
+  // from hydrateAggregates).
+  if (state.filters.children === "has") {
+    tabFiltered = tabFiltered.filter((r) => r.children_linked_count > 0);
+  } else if (state.filters.children === "missing") {
+    tabFiltered = tabFiltered.filter((r) => r.children_linked_count === 0);
+  }
+  if (state.filters.linked_children === "has") {
+    tabFiltered = tabFiltered.filter((r) => r.parent_linked_children_count > 0);
+  } else if (state.filters.linked_children === "missing") {
+    tabFiltered = tabFiltered.filter(
+      (r) => r.parent_linked_children_count === 0,
+    );
+  }
+
   // Apply status filter post-fetch when 'untouched' is requested (need to
   // include rows without contact_state) OR when status is multi-select
   // mixing untouched + concrete states.
@@ -699,10 +714,26 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
     });
   }
 
-  // Apply total_contacts sort post-fetch since it's derived.
+  // Apply derived-value sorts post-fetch.
   if (state.sort === "total_contacts_desc") {
     tabFiltered = [...tabFiltered].sort(
       (a, b) => b.total_contacts_derived - a.total_contacts_derived,
+    );
+  } else if (state.sort === "children_desc") {
+    tabFiltered = [...tabFiltered].sort(
+      (a, b) => b.children_linked_count - a.children_linked_count,
+    );
+  } else if (state.sort === "children_asc") {
+    tabFiltered = [...tabFiltered].sort(
+      (a, b) => a.children_linked_count - b.children_linked_count,
+    );
+  } else if (state.sort === "linked_children_desc") {
+    tabFiltered = [...tabFiltered].sort(
+      (a, b) => b.parent_linked_children_count - a.parent_linked_children_count,
+    );
+  } else if (state.sort === "linked_children_asc") {
+    tabFiltered = [...tabFiltered].sort(
+      (a, b) => a.parent_linked_children_count - b.parent_linked_children_count,
     );
   }
 
@@ -714,7 +745,11 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
   // the operator. Fall back to the post-filter count when post-filtering ran.
   const tabApplyingPostFilter = state.filters.tab !== "all";
   const usedDerivedFilter =
-    state.filters.responded !== "any" || state.filters.status.length > 0;
+    state.filters.responded !== "any" ||
+    state.filters.status.length > 0 ||
+    state.filters.external_u3 !== "any" ||
+    state.filters.children !== "any" ||
+    state.filters.linked_children !== "any";
   const total =
     tabApplyingPostFilter || usedDerivedFilter
       ? (state.page - 1) * state.pageSize + tabFiltered.length

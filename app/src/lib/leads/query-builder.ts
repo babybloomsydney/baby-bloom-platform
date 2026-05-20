@@ -118,6 +118,8 @@ export function parseLeadQueryState(
     photo: parseTriState(get("photo")),
     abn: parseTriState(get("abn")),
     external_u3: parseTriState(get("external_u3")),
+    children: parseTriState(get("children")),
+    linked_children: parseTriState(get("linked_children")),
     level: parseLevels(get("level")),
     contributions: parseContributions(get("contributions")),
     status: parseStatuses(get("status")),
@@ -154,6 +156,12 @@ export function serialiseLeadQueryState(
   if (state.filters.abn !== "any") params.set("abn", state.filters.abn);
   if (state.filters.external_u3 !== "any") {
     params.set("external_u3", state.filters.external_u3);
+  }
+  if (state.filters.children !== "any") {
+    params.set("children", state.filters.children);
+  }
+  if (state.filters.linked_children !== "any") {
+    params.set("linked_children", state.filters.linked_children);
   }
   if (state.filters.level.length > 0) {
     params.set("level", state.filters.level.join(","));
@@ -347,8 +355,13 @@ export function buildSortSpec(sort: LeadSort): SortSpec {
         foreignTable: "nanny_contact_state",
       };
     case "total_contacts_desc":
-      // Derived value — we'll sort in-app after pagination if needed; for the
-      // initial query, fall back to signup_newest. Marked separately.
+    case "children_desc":
+    case "children_asc":
+    case "linked_children_desc":
+    case "linked_children_asc":
+      // Derived values — DB can't sort on aggregates pre-hydration; fall back
+      // to signup_newest at the query layer + re-sort the page post-hydration
+      // in fetch-leads.ts (see "sort by derived value" block).
       return { column: "created_at", ascending: false };
     case "next_action_soonest":
       return {

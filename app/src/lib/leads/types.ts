@@ -166,6 +166,10 @@ export const LEAD_SORTS = [
   "last_contact_never_first",
   "total_contacts_desc",
   "next_action_soonest",
+  "children_desc",
+  "children_asc",
+  "linked_children_desc",
+  "linked_children_asc",
 ] as const;
 export type LeadSort = (typeof LEAD_SORTS)[number];
 
@@ -182,6 +186,10 @@ export interface LeadFilters {
    * - `any` = no filter
    */
   external_u3: TriState;
+  /** Tri-state: any / has (≥1 child on account) / missing (zero children). */
+  children: TriState;
+  /** Tri-state: any / has (≥1 parent-linked child) / missing (zero parent-linked). */
+  linked_children: TriState;
   level: number[]; // multi-select of verification_level values
   contributions: ContributionsFilter;
   status: LeadStatus[]; // multi-select

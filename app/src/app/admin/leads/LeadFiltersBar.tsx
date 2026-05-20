@@ -82,6 +82,10 @@ const SORT_LABEL: Record<LeadSort, string> = {
   last_contact_never_first: "Last contact (never first)",
   total_contacts_desc: "Total contacts ↓",
   next_action_soonest: "Next action (soonest)",
+  children_desc: "Children ↓",
+  children_asc: "Children ↑",
+  linked_children_desc: "Linked children ↓",
+  linked_children_asc: "Linked children ↑",
 };
 
 export function LeadFiltersBar({
@@ -105,6 +109,8 @@ export function LeadFiltersBar({
         photo: "any",
         abn: "any",
         external_u3: "any",
+        children: "any",
+        linked_children: "any",
         level: [],
         contributions: "any",
         status: [],
@@ -131,6 +137,8 @@ export function LeadFiltersBar({
     state.filters.photo !== "any" ||
     state.filters.abn !== "any" ||
     state.filters.external_u3 !== "any" ||
+    state.filters.children !== "any" ||
+    state.filters.linked_children !== "any" ||
     state.filters.level.length > 0 ||
     state.filters.contributions !== "any" ||
     state.filters.status.length > 0 ||
@@ -177,6 +185,27 @@ export function LeadFiltersBar({
           value={state.filters.external_u3}
           onCycle={() =>
             update({ external_u3: nextTriState(state.filters.external_u3) })
+          }
+          disabled={disabled}
+        />
+        <span className="ml-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Family:
+        </span>
+        <TriChip
+          label="Children"
+          value={state.filters.children}
+          onCycle={() =>
+            update({ children: nextTriState(state.filters.children) })
+          }
+          disabled={disabled}
+        />
+        <TriChip
+          label="Linked"
+          value={state.filters.linked_children}
+          onCycle={() =>
+            update({
+              linked_children: nextTriState(state.filters.linked_children),
+            })
           }
           disabled={disabled}
         />
