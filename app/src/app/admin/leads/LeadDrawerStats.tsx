@@ -23,17 +23,7 @@ interface LeadDrawerStatsProps {
   onLocalPatch: (next: LeadDetail) => void;
 }
 
-function relDays(iso: string | null): string {
-  if (!iso) return "—";
-  const days = Math.floor(
-    (Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000),
-  );
-  if (days < 0) return `in ${-days}d`;
-  if (days === 0) return "today";
-  if (days < 30) return `${days}d ago`;
-  const mo = Math.floor(days / 30);
-  return mo < 12 ? `${mo}mo ago` : `${Math.floor(days / 365)}y ago`;
-}
+import { formatSydneyDateTime, formatSydneyDate } from "@/lib/leads/format";
 
 interface StatProps {
   label: string;
@@ -67,9 +57,7 @@ export function LeadDrawerStats({
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
       <Stat
         label="Signed up"
-        value={
-          detail.nanny?.created_at ? relDays(detail.nanny.created_at) : "—"
-        }
+        value={formatSydneyDateTime(detail.nanny?.created_at)}
       />
       <Stat
         label="Level"
@@ -77,25 +65,40 @@ export function LeadDrawerStats({
       />
       <Stat
         label="Children"
-        value={
-          detail.children_linked.filter((c) => c.status === "connected").length
-        }
+        value={(() => {
+          const total = detail.children_linked.length;
+          const linked = detail.children_linked.filter(
+            (c) => c.parent_connected,
+          ).length;
+          if (total === 0) return 0;
+          return `${total}${linked < total ? ` (${linked} linked)` : ""}`;
+        })()}
       />
       <Stat
         label="Contributions"
-        value={
-          <span
-            className={
-              detail.nanny?.bonus_program_completed_at
-                ? "text-green-700"
-                : "text-slate-500"
-            }
-          >
-            {detail.nanny?.bonus_program_completed_at
-              ? "Complete"
-              : "Incomplete"}
-          </span>
-        }
+        value={(() => {
+          const tsSet =
+            detail.nanny?.bonus_program_completed_at !== null &&
+            detail.nanny?.bonus_program_completed_at !== undefined;
+          const bonusInviteCount = detail.children_linked.filter(
+            (c) => c.bonus_program,
+          ).length;
+          const complete = tsSet || bonusInviteCount > 0;
+          return (
+            <span
+              className={complete ? "text-green-700" : "text-slate-500"}
+              title={
+                tsSet
+                  ? `bonus_program_completed_at: ${detail.nanny?.bonus_program_completed_at}`
+                  : bonusInviteCount > 0
+                    ? `${bonusInviteCount} bonus invite(s) found (timestamp not set)`
+                    : "No bonus contributions detected"
+              }
+            >
+              {complete ? "Complete" : "Incomplete"}
+            </span>
+          );
+        })()}
       />
       <Stat
         label="Contacts"
@@ -113,15 +116,11 @@ export function LeadDrawerStats({
         }
         edit={<OverrideResponded detail={detail} onLocalPatch={onLocalPatch} />}
       />
-      <Stat label="Last contact" value={relDays(cs?.last_contact_at ?? null)} />
       <Stat
-        label="Next action"
-        value={
-          cs?.next_action_at
-            ? new Date(cs.next_action_at).toLocaleDateString()
-            : "—"
-        }
+        label="Last contact"
+        value={formatSydneyDateTime(cs?.last_contact_at)}
       />
+      <Stat label="Next action" value={formatSydneyDate(cs?.next_action_at)} />
     </div>
   );
 }

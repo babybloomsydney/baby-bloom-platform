@@ -111,12 +111,28 @@ export interface LeadRow {
   profile_picture_url: string | null;
   signup_at: string;
   verification: VerificationSnapshot;
+  /** All children on the nanny's account (child_client.nanny_user_id, non-closed). */
   children_linked_count: number;
+  /** Subset of children_linked_count whose parent has a Baby Bloom account (parent_user_id NOT NULL). */
+  parent_linked_children_count: number;
+  /** Subset added via T-022 bonus contributions program (child_invites.bonus_program=true, connected). */
   bonus_children_count: number;
   bonus_program_completed_at: string | null;
+  /**
+   * Derived: nanny has completed bonus contributions setup.
+   * TRUE when EITHER nannies.bonus_program_completed_at is set OR
+   * bonus_children_count > 0 (defensive against unapplied T-022 migration).
+   */
+  contributions_complete_derived: boolean;
   contact_state: NannyContactState | null;
   total_contacts_derived: number;
   responded_ever_derived: boolean;
+  /**
+   * T-023 lead signal — nanny currently nannies an under-3 child OUTSIDE
+   * Baby Bloom. Sourced from `nanny_leads.lead_signals.external_u3_position`.
+   * Null when unknown (no nanny_leads row OR signal key absent).
+   */
+  external_u3_position: boolean | null;
 }
 
 // ── Filter + sort + worklist state (drives URLSearchParams) ──
@@ -159,6 +175,13 @@ export interface LeadFilters {
   gov_id: TriState;
   photo: TriState;
   abn: TriState;
+  /**
+   * Tri-state for T-023 external_u3_position lead signal.
+   * - `has` = nanny currently nannies an under-3 outside BB
+   * - `missing` = explicitly false OR signal unknown
+   * - `any` = no filter
+   */
+  external_u3: TriState;
   level: number[]; // multi-select of verification_level values
   contributions: ContributionsFilter;
   status: LeadStatus[]; // multi-select

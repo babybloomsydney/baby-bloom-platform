@@ -6,6 +6,7 @@ import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { EmptyState } from "@/components/dashboard/EmptyState";
 import { Users } from "lucide-react";
 import type { LeadRow } from "@/lib/leads/types";
+import { formatSydneyDateTime, formatSydneyDate } from "@/lib/leads/format";
 import { LeadStatusPill } from "./LeadStatusPill";
 import { VerificationMiniChip } from "./VerificationMiniChip";
 
@@ -14,29 +15,6 @@ interface LeadsListTableProps {
   onRowClick: (nannyUserId: string) => void;
   openLeadId: string | null;
   isPending?: boolean;
-}
-
-function relTime(iso: string | null): string {
-  if (!iso) return "—";
-  const now = Date.now();
-  const t = new Date(iso).getTime();
-  const diffMs = now - t;
-  if (diffMs < 0) {
-    const days = Math.ceil(-diffMs / (24 * 60 * 60 * 1000));
-    return `in ${days}d`;
-  }
-  const sec = Math.floor(diffMs / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day}d ago`;
-  const mo = Math.floor(day / 30);
-  if (mo < 12) return `${mo}mo ago`;
-  const yr = Math.floor(day / 365);
-  return `${yr}y ago`;
 }
 
 function fullName(row: LeadRow): string {
@@ -79,6 +57,12 @@ export function LeadsListTable({
             <th className="px-3 py-2 font-medium">Signed up</th>
             <th className="px-3 py-2 font-medium">Verification</th>
             <th className="px-3 py-2 font-medium">Level</th>
+            <th
+              className="px-3 py-2 font-medium text-center"
+              title="External U3 position — nanny currently nannies an under-3 child outside Baby Bloom"
+            >
+              U3
+            </th>
             <th className="px-3 py-2 font-medium text-center">Children</th>
             <th className="px-3 py-2 font-medium">Contributions</th>
             <th className="px-3 py-2 font-medium">Last contact</th>
@@ -132,13 +116,34 @@ export function LeadsListTable({
                   className="px-3 py-2 whitespace-nowrap text-xs text-slate-600"
                   title={row.signup_at}
                 >
-                  {relTime(row.signup_at)}
+                  {formatSydneyDateTime(row.signup_at)}
                 </td>
                 <td className="px-3 py-2">
                   <VerificationMiniChip verification={row.verification} />
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-xs">
                   {levelLabel(row.verification.verification_level)}
+                </td>
+                <td className="px-3 py-2 text-center text-xs">
+                  {row.external_u3_position === true ? (
+                    <span
+                      className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700"
+                      title="Currently nannies an under-3 outside Baby Bloom"
+                    >
+                      U3
+                    </span>
+                  ) : row.external_u3_position === false ? (
+                    <span
+                      className="text-slate-400"
+                      title="Confirmed no external U3 position"
+                    >
+                      —
+                    </span>
+                  ) : (
+                    <span className="text-slate-400" title="Unknown">
+                      ·
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-center text-sm">
                   {row.children_linked_count}
@@ -167,7 +172,7 @@ export function LeadsListTable({
                   title={row.contact_state?.last_contact_at ?? "Never"}
                 >
                   {row.contact_state?.last_contact_at ? (
-                    relTime(row.contact_state.last_contact_at)
+                    formatSydneyDateTime(row.contact_state.last_contact_at)
                   ) : (
                     <em className="text-slate-500">Never</em>
                   )}
@@ -190,11 +195,7 @@ export function LeadsListTable({
                   <LeadStatusPill status={status} />
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-600">
-                  {row.contact_state?.next_action_at
-                    ? new Date(
-                        row.contact_state.next_action_at,
-                      ).toLocaleDateString()
-                    : "—"}
+                  {formatSydneyDate(row.contact_state?.next_action_at)}
                 </td>
                 <td className="px-3 py-2 text-xs text-slate-600">
                   {row.suburb ?? "—"}

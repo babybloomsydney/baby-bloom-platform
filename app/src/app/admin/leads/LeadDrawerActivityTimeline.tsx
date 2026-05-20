@@ -38,15 +38,9 @@ const CATEGORY_ICON: Record<
   other: Activity,
 };
 
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatSydneyDateTime } from "@/lib/leads/format";
+
+const fmt = formatSydneyDateTime;
 
 export function LeadDrawerActivityTimeline({
   events,

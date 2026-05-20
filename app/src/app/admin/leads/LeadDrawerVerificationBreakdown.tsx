@@ -7,10 +7,9 @@ interface LeadDrawerVerificationBreakdownProps {
   detail: LeadDetail;
 }
 
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString();
-}
+import { formatSydneyDate } from "@/lib/leads/format";
+
+const fmtDate = formatSydneyDate;
 
 interface RowProps {
   label: string;

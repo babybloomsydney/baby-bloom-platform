@@ -117,6 +117,7 @@ export function parseLeadQueryState(
     gov_id: parseTriState(get("gov_id")),
     photo: parseTriState(get("photo")),
     abn: parseTriState(get("abn")),
+    external_u3: parseTriState(get("external_u3")),
     level: parseLevels(get("level")),
     contributions: parseContributions(get("contributions")),
     status: parseStatuses(get("status")),
@@ -151,6 +152,9 @@ export function serialiseLeadQueryState(
     params.set("gov_id", state.filters.gov_id);
   if (state.filters.photo !== "any") params.set("photo", state.filters.photo);
   if (state.filters.abn !== "any") params.set("abn", state.filters.abn);
+  if (state.filters.external_u3 !== "any") {
+    params.set("external_u3", state.filters.external_u3);
+  }
   if (state.filters.level.length > 0) {
     params.set("level", state.filters.level.join(","));
   }

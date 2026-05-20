@@ -248,7 +248,9 @@ async function hydrateAggregates(userIds: string[]): Promise<
       total_contacts: number;
       responded_ever: boolean;
       children_linked: number;
+      parent_linked_children: number;
       bonus_children: number;
+      external_u3_position: boolean | null;
     }
   >
 > {
@@ -259,58 +261,140 @@ async function hydrateAggregates(userIds: string[]): Promise<
       total_contacts: number;
       responded_ever: boolean;
       children_linked: number;
+      parent_linked_children: number;
       bonus_children: number;
+      external_u3_position: boolean | null;
     }
   >();
   if (userIds.length === 0) return result;
 
-  const [contactsRes, inboundRes, childrenRes, bonusChildrenRes] =
-    await Promise.all([
+  // Children: canonical link is `child_client.nanny_user_id` (the entity that
+  // represents an actual child→nanny relationship — not `child_invites` which
+  // is the invite/handoff intermediary and uses a different status enum).
+  // child_invites.bonus_program is still the source for bonus-program attribution
+  // since the flag lives on the invite.
+  // Helper: run a Supabase query, swallow column-not-found (42703) so a
+  // missing T-022 / T-020 / T-023 column degrades to zero rows rather than
+  // crashing the whole aggregate hydration.
+  async function safeFetch<T>(
+    queryFn: () => PromiseLike<{ data: T[] | null; error: unknown }>,
+  ): Promise<T[]> {
+    try {
+      const { data, error } = await queryFn();
+      if (error) return [];
+      return data ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  const [
+    contactsRes,
+    inboundRes,
+    childClientsRes,
+    bonusChildrenRes,
+    leadSignalsRes,
+  ] = await Promise.all([
+    safeFetch<{ nanny_user_id: string }>(() =>
       supa
         .from("lead_contacts")
         .select("nanny_user_id")
         .in("nanny_user_id", userIds),
+    ),
+    safeFetch<{ nanny_user_id: string }>(() =>
       supa
         .from("lead_contacts")
         .select("nanny_user_id")
         .in("nanny_user_id", userIds)
         .eq("direction", "inbound"),
+    ),
+    // Canonical nanny→child link. Exclude `closed` children. We also pull
+    // parent_user_id so we can compute the "of those, how many have a parent
+    // on BB" subset (linked children) without a second query.
+    safeFetch<{
+      nanny_user_id: string;
+      status: string;
+      parent_user_id: string | null;
+    }>(() =>
       supa
-        .from("child_invites")
-        .select("nanny_user_id")
+        .from("child_client")
+        .select("nanny_user_id, status, parent_user_id")
         .in("nanny_user_id", userIds)
-        .eq("status", "connected"),
+        .neq("status", "closed"),
+    ),
+    // Bonus-program attribution from child_invites. The `bonus_program`
+    // column is T-022 — if the migration isn't applied this query returns
+    // [] via safeFetch (column-not-found 42703 → empty). The "contributions
+    // complete" check below ALSO falls back to nannies.bonus_program_completed_at,
+    // so completeness is detected as long as either signal is populated.
+    safeFetch<{ nanny_user_id: string }>(() =>
       supa
         .from("child_invites")
         .select("nanny_user_id")
         .in("nanny_user_id", userIds)
         .eq("status", "connected")
         .eq("bonus_program", true),
-    ]);
+    ),
+    // T-023 lead signal — nanny currently nannies an under-3 outside BB.
+    // Lives in `nanny_leads.lead_signals` JSONB keyed by `auth_user_id`.
+    safeFetch<{
+      auth_user_id: string;
+      lead_signals: Record<string, unknown> | null;
+    }>(() =>
+      supa
+        .from("nanny_leads")
+        .select("auth_user_id, lead_signals")
+        .in("auth_user_id", userIds),
+    ),
+  ]);
 
   // Tally counts per user_id.
   const tally = new Map<
     string,
-    { total: number; inbound: number; children: number; bonus: number }
+    {
+      total: number;
+      inbound: number;
+      children: number;
+      parent_linked: number;
+      bonus: number;
+      external_u3: boolean | null;
+    }
   >();
   for (const id of userIds) {
-    tally.set(id, { total: 0, inbound: 0, children: 0, bonus: 0 });
+    tally.set(id, {
+      total: 0,
+      inbound: 0,
+      children: 0,
+      parent_linked: 0,
+      bonus: 0,
+      external_u3: null,
+    });
   }
-  for (const r of contactsRes.data ?? []) {
+  for (const r of contactsRes) {
     const t = tally.get(r.nanny_user_id);
     if (t) t.total += 1;
   }
-  for (const r of inboundRes.data ?? []) {
+  for (const r of inboundRes) {
     const t = tally.get(r.nanny_user_id);
     if (t) t.inbound += 1;
   }
-  for (const r of childrenRes.data ?? []) {
+  for (const r of childClientsRes) {
     const t = tally.get(r.nanny_user_id);
-    if (t) t.children += 1;
+    if (!t) continue;
+    t.children += 1;
+    if (r.parent_user_id) t.parent_linked += 1;
   }
-  for (const r of bonusChildrenRes.data ?? []) {
+  for (const r of bonusChildrenRes) {
     const t = tally.get(r.nanny_user_id);
     if (t) t.bonus += 1;
+  }
+  for (const r of leadSignalsRes) {
+    const t = tally.get(r.auth_user_id);
+    if (!t) continue;
+    const value = r.lead_signals?.external_u3_position;
+    if (typeof value === "boolean") {
+      t.external_u3 = value;
+    }
   }
 
   for (const [id, t] of tally.entries()) {
@@ -318,7 +402,9 @@ async function hydrateAggregates(userIds: string[]): Promise<
       total_contacts: t.total,
       responded_ever: t.inbound > 0,
       children_linked: t.children,
+      parent_linked_children: t.parent_linked,
       bonus_children: t.bonus,
+      external_u3_position: t.external_u3,
     });
   }
   return result;
@@ -572,11 +658,15 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
       signup_at: r.created_at,
       verification,
       children_linked_count: agg?.children_linked ?? 0,
+      parent_linked_children_count: agg?.parent_linked_children ?? 0,
       bonus_children_count: agg?.bonus_children ?? 0,
       bonus_program_completed_at: r.bonus_program_completed_at,
+      contributions_complete_derived:
+        r.bonus_program_completed_at !== null || (agg?.bonus_children ?? 0) > 0,
       contact_state: contactState,
       total_contacts_derived: totalDerived,
       responded_ever_derived: respondedDerived,
+      external_u3_position: agg?.external_u3_position ?? null,
     };
   });
 
@@ -588,6 +678,14 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
     tabFiltered = tabFiltered.filter((r) => r.responded_ever_derived);
   } else if (state.filters.responded === "no") {
     tabFiltered = tabFiltered.filter((r) => !r.responded_ever_derived);
+  }
+
+  // Apply derived external_u3 filter (post-fetch — signal lives in nanny_leads
+  // JSONB so can't be expressed as a server-side WHERE here).
+  if (state.filters.external_u3 === "has") {
+    tabFiltered = tabFiltered.filter((r) => r.external_u3_position === true);
+  } else if (state.filters.external_u3 === "missing") {
+    tabFiltered = tabFiltered.filter((r) => r.external_u3_position !== true);
   }
 
   // Apply status filter post-fetch when 'untouched' is requested (need to

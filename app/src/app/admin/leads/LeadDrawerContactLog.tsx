@@ -16,15 +16,9 @@ interface LeadDrawerContactLogProps {
   onLocalPatch: (next: LeadDetail) => void;
 }
 
-function fmtDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatSydneyDateTime } from "@/lib/leads/format";
+
+const fmtDate = formatSydneyDateTime;
 
 export function LeadDrawerContactLog({
   detail,

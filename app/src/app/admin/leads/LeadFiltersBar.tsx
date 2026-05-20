@@ -104,6 +104,7 @@ export function LeadFiltersBar({
         gov_id: "any",
         photo: "any",
         abn: "any",
+        external_u3: "any",
         level: [],
         contributions: "any",
         status: [],
@@ -129,6 +130,7 @@ export function LeadFiltersBar({
     state.filters.gov_id !== "any" ||
     state.filters.photo !== "any" ||
     state.filters.abn !== "any" ||
+    state.filters.external_u3 !== "any" ||
     state.filters.level.length > 0 ||
     state.filters.contributions !== "any" ||
     state.filters.status.length > 0 ||
@@ -165,6 +167,17 @@ export function LeadFiltersBar({
           label="ABN"
           value={state.filters.abn}
           onCycle={() => update({ abn: nextTriState(state.filters.abn) })}
+          disabled={disabled}
+        />
+        <span className="ml-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          U3 outside BB:
+        </span>
+        <TriChip
+          label="External U3"
+          value={state.filters.external_u3}
+          onCycle={() =>
+            update({ external_u3: nextTriState(state.filters.external_u3) })
+          }
           disabled={disabled}
         />
         <span className="ml-3 text-xs font-semibold uppercase tracking-wide text-slate-500">

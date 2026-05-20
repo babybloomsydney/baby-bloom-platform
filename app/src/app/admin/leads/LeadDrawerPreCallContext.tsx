@@ -6,21 +6,14 @@ interface LeadDrawerPreCallContextProps {
   detail: LeadDetail;
 }
 
-function relDays(iso: string | null | undefined): string | null {
-  if (!iso) return null;
-  const days = Math.floor(
-    (Date.now() - new Date(iso).getTime()) / (24 * 60 * 60 * 1000),
-  );
-  if (days < 0) return `in ${-days}d`;
-  if (days === 0) return "today";
-  return `${days}d ago`;
-}
+import { formatSydneyDateTime } from "@/lib/leads/format";
 
 function composeContext(detail: LeadDetail): string {
   const parts: string[] = [];
 
-  const signupAge = relDays(detail.nanny?.created_at);
-  if (signupAge) parts.push(`Signed up ${signupAge}`);
+  if (detail.nanny?.created_at) {
+    parts.push(`Signed up ${formatSydneyDateTime(detail.nanny.created_at)}`);
+  }
 
   const v = detail.verifications;
   const verBadges: string[] = [];
@@ -31,12 +24,33 @@ function composeContext(detail: LeadDetail): string {
   if (verBadges.length > 0) parts.push(`${verBadges.join(" + ")} done`);
   else parts.push("no verification yet");
 
-  const childrenCount = detail.children_linked.filter(
-    (c) => c.status === "connected",
+  const childrenTotal = detail.children_linked.length;
+  const childrenLinked = detail.children_linked.filter(
+    (c) => c.parent_connected,
   ).length;
-  parts.push(
-    `${childrenCount} ${childrenCount === 1 ? "child" : "children"} linked`,
-  );
+  if (childrenTotal > 0) {
+    parts.push(
+      `${childrenTotal} ${childrenTotal === 1 ? "child" : "children"} on account` +
+        (childrenLinked < childrenTotal
+          ? ` (${childrenLinked} parent-linked)`
+          : ""),
+    );
+  } else {
+    parts.push("no children on account");
+  }
+
+  // T-023 lead signal — surface prominently if the nanny already nannies an
+  // under-3 outside BB. That makes them a warm bonus-program upsell candidate
+  // and the operator should know before the call starts.
+  const leadSignals = (detail.nanny_lead as Record<string, unknown> | null)
+    ?.lead_signals;
+  const externalU3 =
+    leadSignals && typeof leadSignals === "object"
+      ? (leadSignals as Record<string, unknown>).external_u3_position
+      : undefined;
+  if (externalU3 === true) {
+    parts.push("⚡ external U3 position");
+  }
 
   const positionsCount = detail.interview_requests.length;
   if (positionsCount > 0) {
