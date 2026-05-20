@@ -63,7 +63,18 @@ export function LeadsListTable({
             >
               U3
             </th>
-            <th className="px-3 py-2 font-medium text-center">Children</th>
+            <th
+              className="px-3 py-2 font-medium text-center"
+              title="All children on the nanny's account (child_client.nanny_user_id, non-closed)"
+            >
+              Children
+            </th>
+            <th
+              className="px-3 py-2 font-medium text-center"
+              title="Of those children, how many have a parent connected to Baby Bloom"
+            >
+              Linked
+            </th>
             <th className="px-3 py-2 font-medium">Contributions</th>
             <th className="px-3 py-2 font-medium">Last contact</th>
             <th className="px-3 py-2 font-medium text-center">Contacts</th>
@@ -147,6 +158,9 @@ export function LeadsListTable({
                 </td>
                 <td className="px-3 py-2 text-center text-sm">
                   {row.children_linked_count}
+                </td>
+                <td className="px-3 py-2 text-center text-sm">
+                  {row.parent_linked_children_count}
                   {row.bonus_children_count > 0 && (
                     <span
                       className="ml-1 text-[10px] font-medium text-violet-600"
@@ -159,12 +173,21 @@ export function LeadsListTable({
                 <td className="px-3 py-2 whitespace-nowrap">
                   <span
                     className={`rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                      row.bonus_program_completed_at
+                      row.contributions_complete_derived
                         ? "bg-green-50 text-green-700 ring-green-200"
                         : "bg-slate-50 text-slate-500 ring-slate-200"
                     }`}
+                    title={
+                      row.bonus_program_completed_at
+                        ? `Bonus program completed at ${row.bonus_program_completed_at}`
+                        : row.bonus_children_count > 0
+                          ? `${row.bonus_children_count} bonus invite(s) connected (timestamp not set)`
+                          : "No bonus contributions detected"
+                    }
                   >
-                    {row.bonus_program_completed_at ? "Complete" : "Incomplete"}
+                    {row.contributions_complete_derived
+                      ? "Complete"
+                      : "Incomplete"}
                   </span>
                 </td>
                 <td
