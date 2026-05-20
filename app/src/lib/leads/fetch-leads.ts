@@ -1,0 +1,549 @@
+// T-032 — Server-side fetcher for the leads list.
+//
+// Reads from `nannies` (every signed-up nanny) + INNER JOINs `user_profiles`
+// (always present per signup flow) + LEFT JOINs `verifications` +
+// `nanny_contact_state`. Filters that map cleanly to direct columns are
+// pushed server-side; tab-derived filters (worklist composition) +
+// responded-derived filters are applied in JS after fetch.
+//
+// At thousands of rows this is pragmatic — every request fetches at most
+// one page (default 50). If perf demands later, swap for a Postgres RPC.
+
+import { createAdminClient } from "@/lib/supabase/admin";
+import type {
+  LeadQueryState,
+  LeadRow,
+  NannyContactState,
+  VerificationSnapshot,
+} from "./types";
+import { buildSortSpec, paginationRange } from "./query-builder";
+
+interface NannyJoinedRow {
+  id: string;
+  user_id: string;
+  created_at: string;
+  verification_level: number | null;
+  bonus_program_completed_at: string | null;
+  abn: string | null;
+  user_profiles: {
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+    mobile_number: string | null;
+    suburb: string | null;
+    profile_picture_url: string | null;
+  } | null;
+  verifications: {
+    identity_verified: boolean | null;
+    wwcc_verified: boolean | null;
+    verification_status: number | null;
+  } | null;
+  nanny_contact_state: NannyContactState | null;
+}
+
+export interface LeadsPage {
+  rows: LeadRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface LeadsAggregateStats {
+  newThisWeek: number;
+  contactedThisWeek: number;
+  activatedThisWeek: number;
+  totalNannies: number;
+}
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
+const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
+
+/**
+ * Apply user_profiles-side filters (search, suburb) by first resolving the
+ * candidate user_id set, returning null if no filters are present.
+ */
+async function resolveProfileFilterUserIds(
+  state: LeadQueryState,
+): Promise<string[] | null> {
+  const supa = createAdminClient();
+  const hasFilter =
+    Boolean(state.filters.search) || Boolean(state.filters.suburb);
+  if (!hasFilter) return null;
+
+  let q = supa.from("user_profiles").select("user_id");
+
+  if (state.filters.suburb) {
+    q = q.eq("suburb", state.filters.suburb);
+  }
+
+  if (state.filters.search) {
+    const pattern = `%${state.filters.search.replace(/[%_]/g, (m) => `\\${m}`)}%`;
+    q = q.or(
+      `first_name.ilike.${pattern},last_name.ilike.${pattern},email.ilike.${pattern},mobile_number.ilike.${pattern}`,
+    );
+  }
+
+  const { data, error } = await q;
+  if (error || !data) return [];
+  return data.map((r) => r.user_id);
+}
+
+/**
+ * Resolve the set of user_ids that match a per-dimension verification filter.
+ * Returns null if no verification filters are present.
+ */
+async function resolveVerificationFilterUserIds(
+  state: LeadQueryState,
+): Promise<string[] | null> {
+  const supa = createAdminClient();
+  const f = state.filters;
+  const needsVerificationsFilter = f.wwcc !== "any" || f.gov_id !== "any";
+
+  if (!needsVerificationsFilter) return null;
+
+  let q = supa.from("verifications").select("user_id");
+
+  if (f.wwcc === "has") q = q.eq("wwcc_verified", true);
+  if (f.wwcc === "missing") q = q.not("wwcc_verified", "is", true);
+  if (f.gov_id === "has") q = q.eq("identity_verified", true);
+  if (f.gov_id === "missing") q = q.not("identity_verified", "is", true);
+
+  const { data, error } = await q;
+  if (error || !data) return [];
+  return data.map((r) => r.user_id);
+}
+
+/**
+ * Apply tab-specific filters at the query level where possible. Returns the
+ * patched query.
+ */
+function applyTabFilter(
+  state: LeadQueryState,
+  userIds: string[] | null,
+): { afterFetch: (rows: LeadRow[]) => LeadRow[] } {
+  // Some tabs are best applied post-fetch because they depend on derived
+  // computations (cold_7d, verification_stuck, etc.). Keep the query simple
+  // server-side; apply the predicates here.
+  const now = Date.now();
+  switch (state.filters.tab) {
+    case "all":
+      return { afterFetch: (rows) => rows };
+    case "never_contacted":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => r.total_contacts_derived === 0),
+      };
+    case "snoozed_today":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => {
+            const next = r.contact_state?.next_action_at;
+            if (!next) return false;
+            const t = new Date(next).getTime();
+            // Surface anything due on or before end-of-today.
+            const endOfToday = new Date();
+            endOfToday.setHours(23, 59, 59, 999);
+            return t <= endOfToday.getTime();
+          }),
+      };
+    case "cold_7d":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => {
+            const last = r.contact_state?.last_contact_at;
+            if (!last) return false; // Never contacted = caught by another tab.
+            const t = new Date(last).getTime();
+            if (now - t < SEVEN_DAYS_MS) return false;
+            const status = r.contact_state?.lead_status ?? "untouched";
+            return status !== "do_not_contact" && status !== "dormant";
+          }),
+      };
+    case "verification_stuck":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => {
+            const v = r.verification;
+            const hasOne =
+              v.identity_verified === true ||
+              (r.bonus_program_completed_at === null &&
+                r.children_linked_count > 0);
+            const lvl = v.verification_level ?? 0;
+            return hasOne && lvl < 4;
+          }),
+      };
+    case "responded":
+      return {
+        afterFetch: (rows) =>
+          rows.filter(
+            (r) =>
+              r.responded_ever_derived && r.bonus_program_completed_at === null,
+          ),
+      };
+    case "activated":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => r.bonus_program_completed_at !== null),
+      };
+    case "dormant":
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => r.contact_state?.lead_status === "dormant"),
+      };
+    case "worklist":
+    default:
+      // Worklist = union of: untouched-and-fresh, snoozed-due, cold>7d,
+      // verification-stuck, responded-not-activated, fresh<14d.
+      return {
+        afterFetch: (rows) =>
+          rows.filter((r) => {
+            const status = r.contact_state?.lead_status ?? "untouched";
+            if (status === "do_not_contact" || status === "dormant")
+              return false;
+
+            const signupAge = now - new Date(r.signup_at).getTime();
+            const last = r.contact_state?.last_contact_at;
+            const lastAge = last ? now - new Date(last).getTime() : null;
+            const next = r.contact_state?.next_action_at;
+            const nextDue = next ? new Date(next).getTime() <= now : false;
+
+            if (r.total_contacts_derived === 0 && signupAge < FOURTEEN_DAYS_MS)
+              return true;
+            if (nextDue) return true;
+            if (lastAge !== null && lastAge > SEVEN_DAYS_MS) return true;
+            if (
+              r.responded_ever_derived &&
+              r.bonus_program_completed_at === null
+            )
+              return true;
+
+            // Verification stuck: has some doc, still not at level 4, last
+            // verification activity > 5 days ago. Cheap proxy.
+            const v = r.verification;
+            const lvl = v.verification_level ?? 0;
+            if (
+              v.identity_verified === true &&
+              lvl < 4 &&
+              signupAge > FIVE_DAYS_MS
+            ) {
+              return true;
+            }
+
+            return false;
+          }),
+      };
+  }
+  // Userids parameter is unused for now; reserved for future tab joins.
+  void userIds;
+}
+
+/**
+ * Hydrate denormalised aggregates (total_contacts_derived, responded_ever_derived,
+ * children_linked_count, bonus_children_count) for a batch of nanny user_ids.
+ */
+async function hydrateAggregates(userIds: string[]): Promise<
+  Map<
+    string,
+    {
+      total_contacts: number;
+      responded_ever: boolean;
+      children_linked: number;
+      bonus_children: number;
+    }
+  >
+> {
+  const supa = createAdminClient();
+  const result = new Map<
+    string,
+    {
+      total_contacts: number;
+      responded_ever: boolean;
+      children_linked: number;
+      bonus_children: number;
+    }
+  >();
+  if (userIds.length === 0) return result;
+
+  const [contactsRes, inboundRes, childrenRes, bonusChildrenRes] =
+    await Promise.all([
+      supa
+        .from("lead_contacts")
+        .select("nanny_user_id")
+        .in("nanny_user_id", userIds),
+      supa
+        .from("lead_contacts")
+        .select("nanny_user_id")
+        .in("nanny_user_id", userIds)
+        .eq("direction", "inbound"),
+      supa
+        .from("child_invites")
+        .select("nanny_user_id")
+        .in("nanny_user_id", userIds)
+        .eq("status", "connected"),
+      supa
+        .from("child_invites")
+        .select("nanny_user_id")
+        .in("nanny_user_id", userIds)
+        .eq("status", "connected")
+        .eq("bonus_program", true),
+    ]);
+
+  // Tally counts per user_id.
+  const tally = new Map<
+    string,
+    { total: number; inbound: number; children: number; bonus: number }
+  >();
+  for (const id of userIds) {
+    tally.set(id, { total: 0, inbound: 0, children: 0, bonus: 0 });
+  }
+  for (const r of contactsRes.data ?? []) {
+    const t = tally.get(r.nanny_user_id);
+    if (t) t.total += 1;
+  }
+  for (const r of inboundRes.data ?? []) {
+    const t = tally.get(r.nanny_user_id);
+    if (t) t.inbound += 1;
+  }
+  for (const r of childrenRes.data ?? []) {
+    const t = tally.get(r.nanny_user_id);
+    if (t) t.children += 1;
+  }
+  for (const r of bonusChildrenRes.data ?? []) {
+    const t = tally.get(r.nanny_user_id);
+    if (t) t.bonus += 1;
+  }
+
+  for (const [id, t] of tally.entries()) {
+    result.set(id, {
+      total_contacts: t.total,
+      responded_ever: t.inbound > 0,
+      children_linked: t.children,
+      bonus_children: t.bonus,
+    });
+  }
+  return result;
+}
+
+/**
+ * Fetch a single page of leads matching the query state.
+ */
+export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
+  const supa = createAdminClient();
+
+  // Resolve indirect filters first (search/suburb on user_profiles,
+  // wwcc/gov_id on verifications). Returns a set of candidate user_ids
+  // to AND into the base query.
+  const [profileIds, verificationIds] = await Promise.all([
+    resolveProfileFilterUserIds(state),
+    resolveVerificationFilterUserIds(state),
+  ]);
+
+  let candidateIds: string[] | null = null;
+  if (profileIds !== null && verificationIds !== null) {
+    const verSet = new Set(verificationIds);
+    candidateIds = profileIds.filter((id) => verSet.has(id));
+  } else if (profileIds !== null) {
+    candidateIds = profileIds;
+  } else if (verificationIds !== null) {
+    candidateIds = verificationIds;
+  }
+
+  if (candidateIds !== null && candidateIds.length === 0) {
+    return { rows: [], total: 0, page: state.page, pageSize: state.pageSize };
+  }
+
+  // Base query on nannies + inner-joined user_profiles + left-joined
+  // verifications + nanny_contact_state.
+  let q = supa.from("nannies").select(
+    `
+        id,
+        user_id,
+        created_at,
+        verification_level,
+        bonus_program_completed_at,
+        abn,
+        user_profiles!inner(first_name, last_name, email, mobile_number, suburb, profile_picture_url),
+        verifications(identity_verified, wwcc_verified, verification_status),
+        nanny_contact_state(id, nanny_user_id, lead_status, last_contact_at, total_contacts_manual_offset, responded_ever_override, next_action_at, pinned_note, assigned_operator, created_at, updated_at)
+      `,
+    { count: "exact" },
+  );
+
+  if (candidateIds !== null) {
+    q = q.in("user_id", candidateIds);
+  }
+
+  // Direct-column filters.
+  const f = state.filters;
+  if (f.level.length > 0) q = q.in("verification_level", f.level);
+  if (f.contributions === "complete")
+    q = q.not("bonus_program_completed_at", "is", null);
+  if (f.contributions === "incomplete")
+    q = q.is("bonus_program_completed_at", null);
+  if (f.abn === "has") q = q.not("abn", "is", null);
+  if (f.abn === "missing") q = q.is("abn", null);
+
+  // Sort. Foreign-table sorts use `referencedTable` option.
+  const sort = buildSortSpec(state.sort);
+  if (sort.foreignTable) {
+    q = q.order(sort.column, {
+      ascending: sort.ascending,
+      nullsFirst: sort.nullsFirst,
+      referencedTable: sort.foreignTable,
+    });
+  } else {
+    q = q.order(sort.column, {
+      ascending: sort.ascending,
+      nullsFirst: sort.nullsFirst,
+    });
+  }
+
+  // Page slice. We over-fetch on the first page for some tabs (since
+  // post-filter shrinks the set) but cap at +pageSize to bound cost.
+  // Worklist + derived tabs benefit from over-fetch; "all" doesn't.
+  const range = paginationRange(state);
+  const overFetch = state.filters.tab === "all" ? 0 : state.pageSize;
+  q = q.range(range.from, range.to + overFetch);
+
+  const { data, count, error } = await q.returns<NannyJoinedRow[]>();
+  if (error) {
+    console.error("[fetchLeads] base query failed:", error);
+    return { rows: [], total: 0, page: state.page, pageSize: state.pageSize };
+  }
+  const baseRows = data ?? [];
+
+  // Hydrate per-row aggregates.
+  const userIds = baseRows.map((r) => r.user_id);
+  const aggregates = await hydrateAggregates(userIds);
+
+  // Build LeadRow[].
+  const allRows: LeadRow[] = baseRows.map((r) => {
+    const profile = r.user_profiles ?? {
+      first_name: null,
+      last_name: null,
+      email: null,
+      mobile_number: null,
+      suburb: null,
+      profile_picture_url: null,
+    };
+    const v = r.verifications;
+    const agg = aggregates.get(r.user_id);
+    const contactState = r.nanny_contact_state;
+    const totalDerived =
+      (agg?.total_contacts ?? 0) +
+      (contactState?.total_contacts_manual_offset ?? 0);
+    const respondedDerived =
+      contactState?.responded_ever_override !== null &&
+      contactState?.responded_ever_override !== undefined
+        ? contactState.responded_ever_override
+        : (agg?.responded_ever ?? false);
+
+    const verification: VerificationSnapshot = {
+      identity_verified: v?.identity_verified ?? null,
+      wwcc_verified: v?.wwcc_verified ?? null,
+      photo_present: Boolean(profile.profile_picture_url),
+      abn_present: Boolean(r.abn),
+      verification_level: r.verification_level,
+      verification_status: v?.verification_status ?? null,
+    };
+
+    return {
+      nanny_user_id: r.user_id,
+      nanny_id: r.id,
+      first_name: profile.first_name,
+      last_name: profile.last_name,
+      email: profile.email,
+      mobile_number: profile.mobile_number,
+      suburb: profile.suburb,
+      profile_picture_url: profile.profile_picture_url,
+      signup_at: r.created_at,
+      verification,
+      children_linked_count: agg?.children_linked ?? 0,
+      bonus_children_count: agg?.bonus_children ?? 0,
+      bonus_program_completed_at: r.bonus_program_completed_at,
+      contact_state: contactState,
+      total_contacts_derived: totalDerived,
+      responded_ever_derived: respondedDerived,
+    };
+  });
+
+  // Apply tab-derived filter post-fetch.
+  let tabFiltered = applyTabFilter(state, candidateIds).afterFetch(allRows);
+
+  // Apply derived responded filter.
+  if (state.filters.responded === "yes") {
+    tabFiltered = tabFiltered.filter((r) => r.responded_ever_derived);
+  } else if (state.filters.responded === "no") {
+    tabFiltered = tabFiltered.filter((r) => !r.responded_ever_derived);
+  }
+
+  // Apply status filter post-fetch when 'untouched' is requested (need to
+  // include rows without contact_state) OR when status is multi-select
+  // mixing untouched + concrete states.
+  if (state.filters.status.length > 0) {
+    const allowed = new Set(state.filters.status);
+    tabFiltered = tabFiltered.filter((r) => {
+      const status = r.contact_state?.lead_status ?? "untouched";
+      return allowed.has(status);
+    });
+  }
+
+  // Apply total_contacts sort post-fetch since it's derived.
+  if (state.sort === "total_contacts_desc") {
+    tabFiltered = [...tabFiltered].sort(
+      (a, b) => b.total_contacts_derived - a.total_contacts_derived,
+    );
+  }
+
+  // Final slice to pageSize.
+  const sliced = tabFiltered.slice(0, state.pageSize);
+
+  // Pagination total: for tabs that apply post-fetch derived filters (worklist,
+  // verification_stuck, responded, etc.), the raw Supabase count would mislead
+  // the operator. Fall back to the post-filter count when post-filtering ran.
+  const tabApplyingPostFilter = state.filters.tab !== "all";
+  const usedDerivedFilter =
+    state.filters.responded !== "any" || state.filters.status.length > 0;
+  const total =
+    tabApplyingPostFilter || usedDerivedFilter
+      ? (state.page - 1) * state.pageSize + tabFiltered.length
+      : (count ?? sliced.length);
+
+  return {
+    rows: sliced,
+    total,
+    page: state.page,
+    pageSize: state.pageSize,
+  };
+}
+
+/**
+ * Aggregate stats for the funnel widget in the list header.
+ */
+export async function fetchLeadsAggregateStats(): Promise<LeadsAggregateStats> {
+  const supa = createAdminClient();
+  const sevenDaysAgo = new Date(Date.now() - SEVEN_DAYS_MS).toISOString();
+
+  const [totalRes, newRes, contactedRes, activatedRes] = await Promise.all([
+    supa.from("nannies").select("id", { count: "exact", head: true }),
+    supa
+      .from("nannies")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", sevenDaysAgo),
+    supa
+      .from("lead_contacts")
+      .select("nanny_user_id", { count: "exact", head: true })
+      .gte("contacted_at", sevenDaysAgo),
+    supa
+      .from("nannies")
+      .select("id", { count: "exact", head: true })
+      .gte("bonus_program_completed_at", sevenDaysAgo),
+  ]);
+
+  return {
+    totalNannies: totalRes.count ?? 0,
+    newThisWeek: newRes.count ?? 0,
+    contactedThisWeek: contactedRes.count ?? 0,
+    activatedThisWeek: activatedRes.count ?? 0,
+  };
+}
