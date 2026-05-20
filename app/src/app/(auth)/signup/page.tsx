@@ -153,7 +153,7 @@ export default function SignupPage() {
           {/* Form card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
             <h2 className="text-xl font-bold text-slate-900 text-center mb-1">
-              Create your account
+              Create your parent account
             </h2>
             <p className="text-sm text-slate-400 text-center mb-5">
               Sign up to find the best childcare for your family
