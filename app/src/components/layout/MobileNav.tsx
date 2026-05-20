@@ -36,6 +36,7 @@ import {
   CreditCard,
   Wallet,
   LifeBuoy,
+  Phone,
 } from "lucide-react";
 
 type UserRole = "nanny" | "parent" | "admin" | "super_admin" | "guest";
@@ -79,6 +80,7 @@ const parentNavItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { href: "/admin/dashboard", icon: Home, label: "Dashboard" },
   { href: "/admin/pipeline", icon: Filter, label: "User Pipeline" },
+  { href: "/admin/leads", icon: Phone, label: "Contacts" },
   { href: "/admin/verifications", icon: ShieldCheck, label: "Verifications" },
   { href: "/admin/users", icon: Users, label: "User Management" },
   { href: "/admin/subscriptions", icon: CreditCard, label: "Subscriptions" },
