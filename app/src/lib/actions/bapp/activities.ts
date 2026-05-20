@@ -133,26 +133,19 @@ export async function generateActivity(
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
 
-    // 4. Call OpenAI (async — don't block the response)
-    callOpenAI(logId, childId, childName, ageMonths, promptContext).catch(
-      (err) => console.error("OpenAI call failed:", err),
-    );
-
-    // Email the linked parent that a new tile landed (non-fatal — internal
-    // errors are absorbed, never cause action failure). Skip rules + lookups
-    // are inside the helper.
-    //
-    // NOTE: tile is still `status='pending'` here — callOpenAI updates it to
-    // 'ready' asynchronously. Parent's email link still resolves to the feed
-    // page either way; on a fast tap the tile briefly renders as a
-    // "Generating Plan..." skeleton. Flagged as a KEY decision for BAI at
-    // Phase D smoke per T-033 PROGRESS § decisions.
-    await notifyParentOfFeedPost({
+    // 4. Call OpenAI (async — don't block the response). The parent-
+    // notification email fires INSIDE callOpenAI's success branch (after
+    // the status='ready' update) so the email's CTA always resolves to a
+    // fully-rendered tile, not a "Generating Plan..." skeleton. Per T-033
+    // KEY decision option A (BAI 2026-05-20).
+    callOpenAI(
+      logId,
       childId,
-      authorId: user.id,
-      logType: "activity",
-      logContext: "adhoc",
-    });
+      user.id,
+      childName,
+      ageMonths,
+      promptContext,
+    ).catch((err) => console.error("OpenAI call failed:", err));
 
     return { success: true, error: null };
   } catch (err) {
@@ -164,6 +157,7 @@ export async function generateActivity(
 async function callOpenAI(
   logId: string,
   childId: string,
+  authorId: string,
   childName: string,
   ageMonths: number,
   promptContext: { domain: string; age: string; desc: string }[],
@@ -212,9 +206,25 @@ async function callOpenAI(
         },
       })
       .eq("id", logId);
+
+    // Email the linked parent NOW that the tile is renderable (non-fatal —
+    // helper absorbs its own errors). Per T-033 KEY decision option A
+    // (BAI 2026-05-20): notify fires AFTER the status='ready' update so
+    // the email's CTA always lands on a fully-rendered activity, not a
+    // "Generating Plan..." skeleton. Skipped on OpenAI failure (the catch
+    // below) — there's no point summoning a parent to a tile that never
+    // resolved.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId,
+      logType: "activity",
+      logContext: "adhoc",
+    });
   } catch (err) {
     console.error("OpenAI activity generation failed:", err);
-    // Status stays 'pending' — frontend will keep polling
+    // Status stays 'pending' — frontend will keep polling. Email is NOT
+    // sent because the parent shouldn't be summoned to a tile that won't
+    // render.
   }
 }
 
