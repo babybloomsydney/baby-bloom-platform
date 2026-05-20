@@ -95,7 +95,7 @@ export default async function ParentDevelopmentLayout({
         <InviteBanner
           childId={c.id}
           childFirstName={c.first_name ?? "your child"}
-          inviteUrl={inviteResult.data.url}
+          inviteToken={inviteResult.data.token}
           role="parent"
         />
       )}

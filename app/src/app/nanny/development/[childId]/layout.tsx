@@ -97,7 +97,7 @@ export default async function DevelopmentLayout({
         <InviteBanner
           childId={c.id}
           childFirstName={c.first_name ?? "your child"}
-          inviteUrl={inviteResult.data.url}
+          inviteToken={inviteResult.data.token}
           role="nanny"
         />
       )}

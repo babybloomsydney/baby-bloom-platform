@@ -43,9 +43,17 @@ import { InviteBanner } from "./InviteBanner";
 const props = {
   childId: "child-1",
   childFirstName: "Oliver",
-  inviteUrl: "https://babybloomsydney.com.au/invite/ABCD-2345",
+  inviteToken: "ABCD-2345",
   role: "nanny" as const,
 };
+
+// The component composes the share URL from `window.location.origin`
+// at render time. Mirror that here so the assertions match regardless
+// of the jsdom default origin.
+const expectedInviteUrl = () =>
+  `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${
+    props.inviteToken
+  }`;
 
 beforeEach(() => {
   // Stub navigator.share + clipboard. Default = share present.
@@ -96,7 +104,7 @@ describe("InviteBanner — share + copy", () => {
     fireEvent.click(screen.getByRole("button", { name: /share invite/i }));
     await waitFor(() => {
       expect(state.shareCalls.length).toBe(1);
-      expect(state.shareCalls[0]?.url).toBe(props.inviteUrl);
+      expect(state.shareCalls[0]?.url).toBe(expectedInviteUrl());
     });
   });
 
@@ -110,7 +118,7 @@ describe("InviteBanner — share + copy", () => {
     render(<InviteBanner {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /share invite/i }));
     await waitFor(() => {
-      expect(state.clipboardWrites).toEqual([props.inviteUrl]);
+      expect(state.clipboardWrites).toEqual([expectedInviteUrl()]);
     });
     expect(screen.getByText(/link copied/i)).toBeInTheDocument();
   });
@@ -134,7 +142,7 @@ describe("InviteBanner — share + copy", () => {
     render(<InviteBanner {...props} />);
     fireEvent.click(screen.getByRole("button", { name: /share invite/i }));
     await waitFor(() => {
-      expect(state.clipboardWrites).toEqual([props.inviteUrl]);
+      expect(state.clipboardWrites).toEqual([expectedInviteUrl()]);
     });
   });
 });

@@ -15,7 +15,13 @@ import { revokeChildInvite } from "@/lib/actions/bapp/child-invites";
 interface InviteBannerProps {
   childId: string;
   childFirstName: string;
-  inviteUrl: string;
+  /**
+   * The invite token (XXXX-XXXX). The full share URL is composed
+   * client-side from `window.location.origin` so the link is always
+   * clean regardless of NEXT_PUBLIC_INVITE_BASE_URL env-paste
+   * artefacts. Mirrors the pattern in BsrShareClient et al.
+   */
+  inviteToken: string;
   role: "nanny" | "parent";
 }
 
@@ -49,7 +55,7 @@ function focusMainContent() {
 export function InviteBanner({
   childId,
   childFirstName,
-  inviteUrl,
+  inviteToken,
   role,
 }: InviteBannerProps) {
   const router = useRouter();
@@ -61,6 +67,14 @@ export function InviteBanner({
   const [confirmingRevoke, setConfirmingRevoke] = useState(false);
 
   if (dismissed) return null;
+
+  // Compose the share URL from the current browser origin. SSR guard
+  // returns a relative path during initial render; hydration upgrades
+  // it to the absolute URL before any user click fires. Mirrors the
+  // pattern in BsrShareClient / PositionShareClient / NannyShareClient.
+  const inviteUrl = `${
+    typeof window !== "undefined" ? window.location.origin : ""
+  }/invite/${inviteToken}`;
 
   const headline =
     role === "nanny"

@@ -127,7 +127,18 @@ export function AddChildSheet({
       return;
     }
 
-    setInviteResult({ childId: result.data.id, url: result.data.inviteUrl });
+    // Compose the share URL from the current browser origin instead of
+    // the server-returned `inviteUrl` (which depends on
+    // NEXT_PUBLIC_INVITE_BASE_URL — sensitive to env-paste artefacts
+    // like a trailing newline). Mirrors how every other share surface
+    // in the app builds links (BsrShareClient, PositionShareClient,
+    // NannyShareClient). The token half is what the server actually
+    // controls; the host half is whatever the user is currently on
+    // (prod, preview, localhost — same code, all environments).
+    const inviteUrl = `${
+      typeof window !== "undefined" ? window.location.origin : ""
+    }/invite/${result.data.inviteToken}`;
+    setInviteResult({ childId: result.data.id, url: inviteUrl });
   }
 
   async function handleCopy() {
