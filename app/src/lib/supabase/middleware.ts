@@ -3,18 +3,23 @@ import { NextResponse, type NextRequest } from "next/server";
 import { UserRole } from "@/lib/auth/types";
 
 const PROTECTED_ROUTES: Record<string, UserRole[]> = {
-  '/nanny': ['nanny'],
-  '/parent': ['parent'],
-  '/admin': ['admin', 'super_admin'],
+  "/nanny": ["nanny"],
+  "/parent": ["parent"],
+  "/admin": ["admin", "super_admin"],
 };
 
-const AUTH_ROUTES = ['/login', '/signup', '/forgot-password', '/reset-password'];
+const AUTH_ROUTES = [
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+];
 
 const ROLE_DASHBOARDS: Record<UserRole, string> = {
-  nanny: '/nanny',
-  parent: '/parent',
-  admin: '/admin/dashboard',
-  super_admin: '/admin/dashboard',
+  nanny: "/nanny",
+  parent: "/parent",
+  admin: "/admin/dashboard",
+  super_admin: "/admin/dashboard",
 };
 
 function getRequiredRolesForPath(pathname: string): UserRole[] | null {
@@ -27,15 +32,18 @@ function getRequiredRolesForPath(pathname: string): UserRole[] | null {
 }
 
 function isAuthRoute(pathname: string): boolean {
-  return AUTH_ROUTES.some(route => pathname.startsWith(route));
+  return AUTH_ROUTES.some((route) => pathname.startsWith(route));
 }
 
-async function getUserRole(supabase: ReturnType<typeof createServerClient>, userId: string): Promise<UserRole | null> {
+async function getUserRole(
+  supabase: ReturnType<typeof createServerClient>,
+  userId: string,
+): Promise<UserRole | null> {
   try {
     const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
       .single();
 
     if (error || !data?.role) return null;
@@ -60,17 +68,17 @@ export async function updateSession(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
+            request.cookies.set(name, value),
           );
           supabaseResponse = NextResponse.next({
             request,
           });
           cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, options),
           );
         },
       },
-    }
+    },
   );
 
   // Refresh session - wrapped in try/catch to prevent middleware crashes
@@ -89,17 +97,36 @@ export async function updateSession(request: NextRequest) {
 
   // Protected route - no session → redirect to login
   if (requiredRoles && !user) {
-    const redirectUrl = new URL('/login', request.url);
-    redirectUrl.searchParams.set('redirect', pathname);
+    const redirectUrl = new URL("/login", request.url);
+    redirectUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(redirectUrl);
   }
 
   // Auth route with existing session → redirect to dashboard
   // Exceptions: /reset-password needs a session, /signup clears session itself
-  if (isAuth && user && !pathname.startsWith('/reset-password') && !pathname.startsWith('/signup')) {
+  if (
+    isAuth &&
+    user &&
+    !pathname.startsWith("/reset-password") &&
+    !pathname.startsWith("/signup")
+  ) {
     const role = await getUserRole(supabase, user.id);
     if (role) {
       return NextResponse.redirect(new URL(ROLE_DASHBOARDS[role], request.url));
+    }
+  }
+
+  // Narrow predicate: only `/` exactly — other public routes (/about,
+  // /babysitting/[id], etc.) intentionally remain viewable when logged in.
+  if (pathname === "/" && user) {
+    const role = await getUserRole(supabase, user.id);
+    // Guard the lookup against role strings outside the UserRole union
+    // (dirty DB value would otherwise yield `new URL(undefined, ...)`
+    // and a 307 to /undefined). Fall through on any unmappable value —
+    // same fail-soft posture as the getUser() try/catch above.
+    const dashboard = role ? ROLE_DASHBOARDS[role] : null;
+    if (dashboard) {
+      return NextResponse.redirect(new URL(dashboard, request.url));
     }
   }
 
@@ -107,7 +134,7 @@ export async function updateSession(request: NextRequest) {
   if (requiredRoles && user) {
     const role = await getUserRole(supabase, user.id);
     if (!role || !requiredRoles.includes(role)) {
-      const dashboardPath = role ? ROLE_DASHBOARDS[role] : '/login';
+      const dashboardPath = role ? ROLE_DASHBOARDS[role] : "/login";
       return NextResponse.redirect(new URL(dashboardPath, request.url));
     }
   }
