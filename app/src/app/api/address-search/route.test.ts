@@ -131,7 +131,7 @@ describe("GET /api/address-search", () => {
     expect(data[0].sla).toContain(" NSW ");
   });
 
-  it("falls back to `city` then `district` when `suburb` is missing", async () => {
+  it("falls back to `city` when both `suburb` and `district` are missing", async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -153,6 +153,66 @@ describe("GET /api/address-search", () => {
     const res = await callRoute("1 pitt street sydney");
     const data = (await res.json()) as Array<{ sla: string }>;
     expect(data[0].sla).toBe("1 PITT STREET, SYDNEY NSW 2000");
+  });
+
+  it("prefers `district` over `city` for inner-Sydney addresses (T-035 regression fix)", async () => {
+    // Photon's `city` field is the metro-area catch-all — for the Sydney
+    // metro it's always "Sydney" regardless of the actual suburb. The actual
+    // suburb name lives in `district`. Before this fix, the fallback order
+    // `suburb ?? city ?? district` picked "Sydney" for every Potts Point /
+    // Elizabeth Bay / Surry Hills / etc. address — overwriting users'
+    // canonical suburb in `user_profiles` via the verification flow.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "5",
+              street: "Bayswater Road",
+              district: "Potts Point",
+              city: "Sydney",
+              state: "New South Wales",
+              postcode: "2011",
+              countrycode: "AU",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("5 bayswater road potts point");
+    const data = (await res.json()) as Array<{ sla: string }>;
+    expect(data[0].sla).toBe("5 BAYSWATER ROAD, POTTS POINT NSW 2011");
+  });
+
+  it("uses `suburb` when present, even if `district` and `city` are also set", async () => {
+    // `p.suburb` is rarely populated by Photon for AU data, but when it is
+    // it's the most explicit signal — trust it over `district` (a coarser
+    // neighbourhood field).
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          features: [
+            photonFeature({
+              housenumber: "12",
+              street: "Some Street",
+              suburb: "Specific Suburb",
+              district: "Different District",
+              city: "Sydney",
+              state: "New South Wales",
+              postcode: "2099",
+              countrycode: "AU",
+            }),
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const res = await callRoute("12 some street");
+    const data = (await res.json()) as Array<{ sla: string }>;
+    expect(data[0].sla).toBe("12 SOME STREET, SPECIFIC SUBURB NSW 2099");
   });
 
   it("drops features without a street, suburb, state, or postcode", async () => {

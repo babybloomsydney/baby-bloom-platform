@@ -156,7 +156,15 @@ function mapToAddressResult(
   if (!p) return null;
 
   const street = (p.street ?? "").trim().toUpperCase();
-  const suburb = (p.suburb ?? p.city ?? p.district ?? "").trim().toUpperCase();
+  // Field order: prefer the most-specific Photon field first. `p.suburb` is
+  // rarely populated for AU data but trust it when present. `p.district`
+  // reliably carries the actual suburb name for inner-Sydney addresses
+  // (Potts Point, Elizabeth Bay, Surry Hills, etc.). `p.city` is the metro-
+  // area catch-all — for Sydney it's always "Sydney" regardless of the actual
+  // suburb, so it MUST come last. (`p.name` is intentionally excluded — for
+  // street-level results it's often a POI/business/transit name like "Kings
+  // Cross Station, Stand D", not a suburb.)
+  const suburb = (p.suburb ?? p.district ?? p.city ?? "").trim().toUpperCase();
   const stateAbbr = stateToAbbr(p.state ?? "");
   const postcode = (p.postcode ?? "").trim();
 
