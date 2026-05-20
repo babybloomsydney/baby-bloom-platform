@@ -39,7 +39,9 @@ function parseTab(raw: string | null): WorklistTab {
   if (raw && (WORKLIST_TABS as readonly string[]).includes(raw)) {
     return raw as WorklistTab;
   }
-  return "worklist";
+  // Default to "all" so first-load shows every signed-up nanny.
+  // Operators can switch to "worklist" for the curated triage view.
+  return "all";
 }
 
 function parseSort(raw: string | null): LeadSort {
@@ -140,7 +142,8 @@ export function serialiseLeadQueryState(
 ): URLSearchParams {
   const params = new URLSearchParams();
 
-  if (state.filters.tab !== "worklist") {
+  // Default tab is "all" — only serialise non-default tab into the URL.
+  if (state.filters.tab !== "all") {
     params.set("tab", state.filters.tab);
   }
   if (state.filters.wwcc !== "any") params.set("wwcc", state.filters.wwcc);

@@ -13,7 +13,7 @@ import {
 describe("parseLeadQueryState", () => {
   it("returns sane defaults for empty input", () => {
     const state = parseLeadQueryState(new URLSearchParams());
-    expect(state.filters.tab).toBe("worklist");
+    expect(state.filters.tab).toBe("all");
     expect(state.filters.wwcc).toBe("any");
     expect(state.filters.gov_id).toBe("any");
     expect(state.filters.photo).toBe("any");

@@ -325,7 +325,106 @@ async function hydrateAggregates(userIds: string[]): Promise<
 }
 
 /**
+ * Hydrate the base nanny rows with their user_profiles + verifications +
+ * nanny_contact_state. Three parallel queries keyed on user_id; stitched in JS.
+ * Required because PostgREST cannot derive the nannies ↔ user_profiles
+ * relationship through the shared auth.users FK.
+ */
+async function hydrateBaseRows(
+  nannies: Array<{
+    id: string;
+    user_id: string;
+    created_at: string;
+    verification_level: number | null;
+    bonus_program_completed_at: string | null;
+    abn: string | null;
+  }>,
+  userIds: string[],
+): Promise<NannyJoinedRow[]> {
+  const supa = createAdminClient();
+  if (userIds.length === 0) return [];
+
+  const [profilesRes, verificationsRes, contactStateRes] = await Promise.all([
+    supa
+      .from("user_profiles")
+      .select(
+        "user_id, first_name, last_name, email, mobile_number, suburb, profile_picture_url",
+      )
+      .in("user_id", userIds),
+    supa
+      .from("verifications")
+      .select("user_id, identity_verified, wwcc_verified, verification_status")
+      .in("user_id", userIds),
+    supa
+      .from("nanny_contact_state")
+      .select(
+        "id, nanny_user_id, lead_status, last_contact_at, total_contacts_manual_offset, responded_ever_override, next_action_at, pinned_note, assigned_operator, created_at, updated_at",
+      )
+      .in("nanny_user_id", userIds),
+  ]);
+
+  type ProfileRow = NonNullable<NannyJoinedRow["user_profiles"]> & {
+    user_id: string;
+  };
+  type VerificationRow = NonNullable<NannyJoinedRow["verifications"]> & {
+    user_id: string;
+  };
+
+  const profileMap = new Map<string, ProfileRow>();
+  for (const p of (profilesRes.data ?? []) as ProfileRow[]) {
+    profileMap.set(p.user_id, p);
+  }
+  const verificationMap = new Map<string, VerificationRow>();
+  for (const v of (verificationsRes.data ?? []) as VerificationRow[]) {
+    verificationMap.set(v.user_id, v);
+  }
+  const contactStateMap = new Map<string, NannyContactState>();
+  for (const cs of (contactStateRes.data ?? []) as NannyContactState[]) {
+    contactStateMap.set(cs.nanny_user_id, cs);
+  }
+
+  return nannies.map((n) => {
+    const profile = profileMap.get(n.user_id);
+    const verification = verificationMap.get(n.user_id);
+    const contactState = contactStateMap.get(n.user_id) ?? null;
+    return {
+      id: n.id,
+      user_id: n.user_id,
+      created_at: n.created_at,
+      verification_level: n.verification_level,
+      bonus_program_completed_at: n.bonus_program_completed_at,
+      abn: n.abn,
+      user_profiles: profile
+        ? {
+            first_name: profile.first_name,
+            last_name: profile.last_name,
+            email: profile.email,
+            mobile_number: profile.mobile_number,
+            suburb: profile.suburb,
+            profile_picture_url: profile.profile_picture_url,
+          }
+        : null,
+      verifications: verification
+        ? {
+            identity_verified: verification.identity_verified,
+            wwcc_verified: verification.wwcc_verified,
+            verification_status: verification.verification_status,
+          }
+        : null,
+      nanny_contact_state: contactState,
+    };
+  });
+}
+
+/**
  * Fetch a single page of leads matching the query state.
+ *
+ * Implementation note: `nannies` ↔ `user_profiles` are both FK'd to
+ * `auth.users`, so PostgREST cannot auto-join them via the nested-select
+ * syntax (PGRST200: "Could not find a relationship between 'nannies' and
+ * 'user_profiles'"). Instead we fetch the base nanny page, then hydrate
+ * user_profiles + verifications + nanny_contact_state via separate parallel
+ * queries keyed on user_id. Same pattern the admin/users page uses.
  */
 export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
   const supa = createAdminClient();
@@ -352,28 +451,19 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
     return { rows: [], total: 0, page: state.page, pageSize: state.pageSize };
   }
 
-  // Base query on nannies + inner-joined user_profiles + left-joined
-  // verifications + nanny_contact_state.
-  let q = supa.from("nannies").select(
-    `
-        id,
-        user_id,
-        created_at,
-        verification_level,
-        bonus_program_completed_at,
-        abn,
-        user_profiles!inner(first_name, last_name, email, mobile_number, suburb, profile_picture_url),
-        verifications(identity_verified, wwcc_verified, verification_status),
-        nanny_contact_state(id, nanny_user_id, lead_status, last_contact_at, total_contacts_manual_offset, responded_ever_override, next_action_at, pinned_note, assigned_operator, created_at, updated_at)
-      `,
-    { count: "exact" },
-  );
+  // Base query on nannies only — direct-column filters + sort + paginate.
+  // SELECT * so missing columns from un-applied migrations (T-020 abn,
+  // T-022 bonus_program_completed_at) gracefully resolve to undefined
+  // rather than failing the whole query. Nullish-coalesce when reading.
+  let q = supa.from("nannies").select("*", { count: "exact" });
 
   if (candidateIds !== null) {
     q = q.in("user_id", candidateIds);
   }
 
-  // Direct-column filters.
+  // Direct-column filters. Skip filters whose column may not exist when
+  // the value is the default ("any" / empty array). Apply only when the
+  // operator opted in.
   const f = state.filters;
   if (f.level.length > 0) q = q.in("verification_level", f.level);
   if (f.contributions === "complete")
@@ -383,14 +473,13 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
   if (f.abn === "has") q = q.not("abn", "is", null);
   if (f.abn === "missing") q = q.is("abn", null);
 
-  // Sort. Foreign-table sorts use `referencedTable` option.
+  // Sort. Foreign-table sorts (last_contact / next_action) can't apply at
+  // the nannies query — fall back to created_at and re-sort the page in
+  // JS after hydration. Page boundaries are then signup-ordered, not
+  // last-contact-ordered; acceptable trade-off for V1.
   const sort = buildSortSpec(state.sort);
   if (sort.foreignTable) {
-    q = q.order(sort.column, {
-      ascending: sort.ascending,
-      nullsFirst: sort.nullsFirst,
-      referencedTable: sort.foreignTable,
-    });
+    q = q.order("created_at", { ascending: false });
   } else {
     q = q.order(sort.column, {
       ascending: sort.ascending,
@@ -398,19 +487,43 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
     });
   }
 
-  // Page slice. We over-fetch on the first page for some tabs (since
-  // post-filter shrinks the set) but cap at +pageSize to bound cost.
-  // Worklist + derived tabs benefit from over-fetch; "all" doesn't.
+  // Page slice. We over-fetch on tabs that apply post-fetch filters so the
+  // visible page-of-N doesn't shrink below pageSize when some rows are
+  // filtered out. "all" tab doesn't need over-fetch.
   const range = paginationRange(state);
   const overFetch = state.filters.tab === "all" ? 0 : state.pageSize;
   q = q.range(range.from, range.to + overFetch);
 
-  const { data, count, error } = await q.returns<NannyJoinedRow[]>();
+  const { data: nannyData, count, error } = await q;
   if (error) {
     console.error("[fetchLeads] base query failed:", error);
     return { rows: [], total: 0, page: state.page, pageSize: state.pageSize };
   }
-  const baseRows = data ?? [];
+  // Pick only the columns we actually use. Anything missing from the
+  // database (e.g. T-020 abn, T-022 bonus_program_completed_at if those
+  // migrations aren't applied yet) gracefully resolves to null.
+  const nannyRows = ((nannyData ?? []) as Array<Record<string, unknown>>).map(
+    (r) => ({
+      id: r.id as string,
+      user_id: r.user_id as string,
+      created_at: r.created_at as string,
+      verification_level:
+        typeof r.verification_level === "number" ? r.verification_level : null,
+      bonus_program_completed_at:
+        typeof r.bonus_program_completed_at === "string"
+          ? r.bonus_program_completed_at
+          : null,
+      abn: typeof r.abn === "string" ? r.abn : null,
+    }),
+  );
+
+  // Hydrate user_profiles + verifications + nanny_contact_state in parallel
+  // for this page's nanny user_ids. Stitch back into NannyJoinedRow shape.
+  const pageUserIds = nannyRows.map((r) => r.user_id);
+  const baseRows: NannyJoinedRow[] = await hydrateBaseRows(
+    nannyRows,
+    pageUserIds,
+  );
 
   // Hydrate per-row aggregates.
   const userIds = baseRows.map((r) => r.user_id);
@@ -519,31 +632,55 @@ export async function fetchLeads(state: LeadQueryState): Promise<LeadsPage> {
 
 /**
  * Aggregate stats for the funnel widget in the list header.
+ * Each sub-query is independently error-tolerant so a single missing
+ * column (e.g. un-applied T-022 `bonus_program_completed_at`) doesn't
+ * blank out the whole widget.
  */
 export async function fetchLeadsAggregateStats(): Promise<LeadsAggregateStats> {
   const supa = createAdminClient();
   const sevenDaysAgo = new Date(Date.now() - SEVEN_DAYS_MS).toISOString();
 
-  const [totalRes, newRes, contactedRes, activatedRes] = await Promise.all([
-    supa.from("nannies").select("id", { count: "exact", head: true }),
-    supa
-      .from("nannies")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", sevenDaysAgo),
-    supa
-      .from("lead_contacts")
-      .select("nanny_user_id", { count: "exact", head: true })
-      .gte("contacted_at", sevenDaysAgo),
-    supa
-      .from("nannies")
-      .select("id", { count: "exact", head: true })
-      .gte("bonus_program_completed_at", sevenDaysAgo),
-  ]);
+  async function safeCount(
+    queryFn: () => PromiseLike<{ count: number | null; error: unknown }>,
+  ): Promise<number> {
+    try {
+      const { count, error } = await queryFn();
+      if (error) return 0;
+      return count ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  const [totalNannies, newThisWeek, contactedThisWeek, activatedThisWeek] =
+    await Promise.all([
+      safeCount(() =>
+        supa.from("nannies").select("id", { count: "exact", head: true }),
+      ),
+      safeCount(() =>
+        supa
+          .from("nannies")
+          .select("id", { count: "exact", head: true })
+          .gte("created_at", sevenDaysAgo),
+      ),
+      safeCount(() =>
+        supa
+          .from("lead_contacts")
+          .select("nanny_user_id", { count: "exact", head: true })
+          .gte("contacted_at", sevenDaysAgo),
+      ),
+      safeCount(() =>
+        supa
+          .from("nannies")
+          .select("id", { count: "exact", head: true })
+          .gte("bonus_program_completed_at", sevenDaysAgo),
+      ),
+    ]);
 
   return {
-    totalNannies: totalRes.count ?? 0,
-    newThisWeek: newRes.count ?? 0,
-    contactedThisWeek: contactedRes.count ?? 0,
-    activatedThisWeek: activatedRes.count ?? 0,
+    totalNannies,
+    newThisWeek,
+    contactedThisWeek,
+    activatedThisWeek,
   };
 }
