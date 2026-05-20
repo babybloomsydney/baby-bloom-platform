@@ -10,6 +10,7 @@ import {
 } from "@/lib/ai/prompts/bapp-activity-generation";
 import type { ActivityPlan } from "@/types/bapp";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 /** Transition child to active_nanny on first action */
 async function maybeActivateChild(childId: string): Promise<void> {
@@ -136,6 +137,22 @@ export async function generateActivity(
     callOpenAI(logId, childId, childName, ageMonths, promptContext).catch(
       (err) => console.error("OpenAI call failed:", err),
     );
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    //
+    // NOTE: tile is still `status='pending'` here — callOpenAI updates it to
+    // 'ready' asynchronously. Parent's email link still resolves to the feed
+    // page either way; on a fast tap the tile briefly renders as a
+    // "Generating Plan..." skeleton. Flagged as a KEY decision for BAI at
+    // Phase D smoke per T-033 PROGRESS § decisions.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "activity",
+      logContext: "adhoc",
+    });
 
     return { success: true, error: null };
   } catch (err) {

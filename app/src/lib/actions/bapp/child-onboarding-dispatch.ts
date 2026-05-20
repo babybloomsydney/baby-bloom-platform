@@ -22,6 +22,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 interface CelebrationTileInput {
   admin: SupabaseClient;
@@ -88,6 +89,20 @@ export async function recordCelebrationTile(
       error: "celebration_tile_failed",
     };
   }
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never propagate to the calling action). In practice
+  // this is almost always a no-op at this point: on the nanny-creation path
+  // the child likely has no parent_user_id yet (skip rule 1); on the parent-
+  // creation path the author IS the parent (skip rule 2). The wire-up exists
+  // so the rare cross-path edge cases still notify correctly.
+  await notifyParentOfFeedPost({
+    childId: input.childClientId,
+    authorId: input.authorId,
+    logType: "custom",
+    logContext: "adhoc",
+  });
+
   return { ok: true };
 }
 

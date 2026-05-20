@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BAppLogInsert } from "@/types/bapp";
 import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { resolveChild } from "./utils";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 interface PreparedCustom {
   child: ChildSummary;
@@ -202,6 +203,16 @@ export async function applyCreateTile(
     };
   }
   const logId = (inserted as { id: string }).id;
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Katie writes on behalf of the nanny (ctx.userId).
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "custom",
+    logContext: "adhoc",
+  });
 
   // INSIGHTS — A-09 deferred-by-design.
   //

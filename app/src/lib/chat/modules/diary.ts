@@ -27,6 +27,7 @@ import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import type { DiaryChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 type MealType = (typeof MEAL_TYPES)[number];
@@ -87,6 +88,23 @@ async function insertLog(
     console.error("[diary insertLog] bapp_logs insert failed:", error);
     return null;
   }
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never propagate). Every diary apply path flows
+  // through this helper, so the wire-up sits here once. Row literals are
+  // pinned to diary / adhoc on the BappLogInsert interface above.
+  //
+  // PLACEMENT INVARIANT: this call must remain AFTER every early-return
+  // path above (media-consent gate + DB-error gate) so the email fires
+  // ONLY on a confirmed successful insert. Any future gate added inside
+  // `insertLog` MUST be placed above this point.
+  await notifyParentOfFeedPost({
+    childId: row.child_client_id,
+    authorId: row.author_id,
+    logType: "diary",
+    logContext: "adhoc",
+  });
+
   return data as { id: string };
 }
 

@@ -20,6 +20,7 @@ import {
   recalculateProgress,
   writeHistorySnapshot,
 } from "@/lib/actions/bapp/progress";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 const OBSERVATION_DOMAINS = [
   "General",
@@ -350,6 +351,19 @@ export async function applyLogObservation(
       }. Your observation is in the feed.`;
     }
   }
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Placed AFTER the cascade block for readability:
+  // the cascade is wrapped in its own try/catch, so placement does NOT
+  // affect exception safety — the email semantically belongs at the end,
+  // after the post-insert side-effects have settled.
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "observation",
+    logContext: "adhoc",
+  });
 
   const nowIso = new Date().toISOString();
   return {

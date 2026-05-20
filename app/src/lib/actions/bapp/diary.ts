@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 import { requireMediaConsentForImageWrite } from "@/lib/legal/require-media-consent";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 /** Transition child to active_nanny on first action */
 async function maybeActivateChild(childId: string): Promise<void> {
@@ -88,6 +89,17 @@ export async function logDiaryEntry(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "diary",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("logDiaryEntry unexpected error:", err);

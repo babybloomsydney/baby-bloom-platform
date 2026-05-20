@@ -25,6 +25,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
 import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { generate, GEMINI_MODELS } from "@/lib/ai/gemini-client";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 import {
   ACTIVITY_SYSTEM_PROMPT,
   buildActivityUserPrompt,
@@ -377,6 +378,24 @@ export async function applyPlanActivity(
     };
   }
   const logId = (inserted as { id: string }).id;
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper.
+  //
+  // NOTE — Katie-path is the GOOD case: the activity tile lands at
+  // `status='ready'` because Gemini ran inline at propose time, so the
+  // parent's email link resolves to a fully-rendered tile. (The bapp-side
+  // `actions/bapp/activities.ts:generateActivity` path has the opposite
+  // shape — it inserts at `status='pending'` and the email arrives before
+  // OpenAI finishes. KEY decision deferred to BAI at Phase D smoke per
+  // T-033 PROGRESS § decisions.)
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "activity",
+    logContext: "adhoc",
+  });
 
   const title =
     typeof activityData.title === "string"
@@ -793,6 +812,19 @@ export async function applyCompleteActivity(
       ? `${cascadeWarning} Activity also couldn't be marked completed.`
       : `Couldn't mark the activity completed: ${updateErr.message}.`;
   }
+
+  // 5. Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Only the HEAD `report` insert (context='adhoc')
+  // triggers an email — the progress + observation sub-tiles above carry
+  // context='activity', which the helper's 4th skip rule would short-
+  // circuit anyway, so we don't wire them.
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "report",
+    logContext: "adhoc",
+  });
 
   const nowIso = new Date().toISOString();
   return {

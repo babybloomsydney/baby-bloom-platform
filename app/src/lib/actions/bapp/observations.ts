@@ -10,6 +10,7 @@ import type { MasteryScore } from "@/lib/bapp-constants";
 import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
 import { requireMediaConsentForImageWrite } from "@/lib/legal/require-media-consent";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 // ---------------------------------------------------------------------------
 // Helper: transition child to active_nanny on first action
@@ -177,6 +178,17 @@ export async function logObservation(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "observation",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("logObservation unexpected error:", err);
@@ -290,6 +302,17 @@ export async function logBulkProgress(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "progress",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("logBulkProgress unexpected error:", err);
