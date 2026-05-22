@@ -13,6 +13,38 @@ import {
 } from "@/lib/actions/legal/get-policy";
 
 /**
+ * Author-frontmatter prefixes to hide from end users. These are
+ * bold-leading lines that authors put at the top of body_md while
+ * the document is being drafted — they track slug / version /
+ * effective-date / status / author, none of which is meaningful for
+ * a parent ticking a consent box. The line filter is permissive:
+ * any line whose trimmed start matches one of these prefixes gets
+ * dropped. If/when a row's body_md ships with clean legal-finalised
+ * copy that doesn't include these markers, the filter naturally
+ * no-ops.
+ */
+const AUTHOR_METADATA_PREFIXES = [
+  "**Document slug",
+  "**Version",
+  "**Effective",
+  "**Author",
+  "**Status",
+] as const;
+
+function stripAuthorFrontmatter(body: string): string {
+  return body
+    .split("\n")
+    .filter((line) => {
+      const start = line.trimStart();
+      return !AUTHOR_METADATA_PREFIXES.some((prefix) =>
+        start.startsWith(prefix),
+      );
+    })
+    .join("\n")
+    .replace(/^\s+/, "");
+}
+
+/**
  * Modal that renders a legal document's `body_md` as plaintext when
  * the user taps a "terms of use" hyperlink.
  *
@@ -74,7 +106,7 @@ export function PolicyModal({
           )}
           {state && state.body_md && (
             <pre className="whitespace-pre-wrap break-words font-sans">
-              {state.body_md}
+              {stripAuthorFrontmatter(state.body_md)}
             </pre>
           )}
           {state && !state.body_md && (
