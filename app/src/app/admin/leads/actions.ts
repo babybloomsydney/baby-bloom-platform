@@ -397,6 +397,54 @@ export async function bulkMoveToDormant(
   }
 }
 
+// ── fetchRecentLogs ──
+// Fetches recent contact log entries for a single nanny — used by the
+// "Logs" popup on the list view so an operator can scan history without
+// opening the full drawer.
+
+const fetchRecentLogsSchema = z.object({
+  nanny_user_id: uuidSchema,
+  limit: z.number().int().min(1).max(50).optional(),
+});
+
+export type RecentLogEntry = {
+  id: string;
+  contacted_at: string;
+  method: ContactMethod;
+  direction: ContactDirection;
+  outcome: ContactOutcome | null;
+  purpose: string | null;
+  note: string | null;
+  operator_handle: string;
+};
+
+export async function fetchRecentLogs(
+  rawInput: unknown,
+): Promise<ActionResult<{ logs: RecentLogEntry[] }>> {
+  try {
+    const input = fetchRecentLogsSchema.parse(rawInput);
+    await requireAdmin();
+    const supa = createAdminClient();
+
+    const { data, error } = await supa
+      .from("lead_contacts")
+      .select(
+        "id, contacted_at, method, direction, outcome, purpose, note, operator_handle",
+      )
+      .eq("nanny_user_id", input.nanny_user_id)
+      .order("contacted_at", { ascending: false })
+      .limit(input.limit ?? 10);
+
+    if (error) return envelopeError("fetchRecentLogs", error);
+    return {
+      success: true,
+      data: { logs: (data ?? []) as RecentLogEntry[] },
+    };
+  } catch (error: unknown) {
+    return envelopeError("fetchRecentLogs", error);
+  }
+}
+
 // ── updateNannyAvailability ──
 // Admin-on-call updates a nanny's weekly schedule (e.g. while on the phone
 // with them) without the nanny needing to log in. Writes to the same

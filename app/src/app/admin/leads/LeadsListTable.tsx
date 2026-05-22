@@ -1,14 +1,25 @@
 "use client";
 
-// T-032 — Desktop list table.
+// T-032 — Compact single-line desktop list table.
+//
+// Each row is one line: avatar+name+phone · status · verification ·
+// children · last contact · suburb · row-action buttons (Logs / Log).
+// Click row → opens the full drawer. Click action buttons → opens a
+// modal popup (preventDefault stops the row-click).
+//
+// Older fields (responded badge, level label, next-action date) moved
+// into the drawer to keep the row scannable.
 
+import { useState } from "react";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { EmptyState } from "@/components/dashboard/EmptyState";
-import { Users } from "lucide-react";
+import { Users, Phone, History, MessageCirclePlus } from "lucide-react";
 import type { LeadRow } from "@/lib/leads/types";
-import { formatSydneyDateTime, formatSydneyDate } from "@/lib/leads/format";
+import { formatSydneyDateTime } from "@/lib/leads/format";
 import { LeadStatusPill } from "./LeadStatusPill";
 import { VerificationMiniChip } from "./VerificationMiniChip";
+import { LeadRecentLogsModal } from "./LeadRecentLogsModal";
+import { LeadQuickLogModal } from "./LeadQuickLogModal";
 
 interface LeadsListTableProps {
   rows: LeadRow[];
@@ -24,11 +35,10 @@ function fullName(row: LeadRow): string {
   return full.length > 0 ? full : (row.email ?? row.nanny_user_id.slice(0, 8));
 }
 
-function levelLabel(level: number | null): string {
-  if (level === null) return "—";
-  const names = ["Signed up", "Registered", "ID verified", "Prov.", "Full"];
-  return `Lv ${level}` + (names[level] ? ` ${names[level]}` : "");
-}
+type ModalState =
+  | { kind: "none" }
+  | { kind: "logs"; nannyUserId: string; nannyName: string }
+  | { kind: "addlog"; nannyUserId: string; nannyName: string };
 
 export function LeadsListTable({
   rows,
@@ -36,6 +46,8 @@ export function LeadsListTable({
   openLeadId,
   isPending,
 }: LeadsListTableProps) {
+  const [modal, setModal] = useState<ModalState>({ kind: "none" });
+
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-slate-200 bg-white p-8">
@@ -53,35 +65,19 @@ export function LeadsListTable({
       <table className="min-w-full text-left text-sm">
         <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
-            <th className="px-3 py-2 font-medium">Name</th>
-            <th className="px-3 py-2 font-medium">Signed up</th>
-            <th className="px-3 py-2 font-medium">Verification</th>
-            <th className="px-3 py-2 font-medium">Level</th>
-            <th
-              className="px-3 py-2 font-medium text-center"
-              title="External U3 position — nanny currently nannies an under-3 child outside Baby Bloom"
-            >
-              U3
-            </th>
-            <th
-              className="px-3 py-2 font-medium text-center"
-              title="All children on the nanny's account (child_client.nanny_user_id, non-closed)"
-            >
-              Children
-            </th>
-            <th
-              className="px-3 py-2 font-medium text-center"
-              title="Of those children, how many have a parent connected to Baby Bloom"
-            >
-              Linked
-            </th>
-            <th className="px-3 py-2 font-medium">Contributions</th>
-            <th className="px-3 py-2 font-medium">Last contact</th>
-            <th className="px-3 py-2 font-medium text-center">Contacts</th>
-            <th className="px-3 py-2 font-medium">Responded</th>
+            <th className="px-3 py-2 font-medium">Nanny</th>
             <th className="px-3 py-2 font-medium">Status</th>
-            <th className="px-3 py-2 font-medium">Next action</th>
+            <th className="px-3 py-2 font-medium">Verified</th>
+            <th
+              className="px-3 py-2 font-medium text-center"
+              title="Children on the nanny's account / how many are linked to a Baby Bloom parent"
+            >
+              Kids
+            </th>
+            <th className="px-3 py-2 font-medium">Last contact</th>
+            <th className="px-3 py-2 font-medium text-center">#</th>
             <th className="px-3 py-2 font-medium">Suburb</th>
+            <th className="px-3 py-2 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody
@@ -90,6 +86,7 @@ export function LeadsListTable({
           {rows.map((row) => {
             const isOpen = openLeadId === row.nanny_user_id;
             const status = row.contact_state?.lead_status ?? "untouched";
+            const name = fullName(row);
             return (
               <tr
                 key={row.nanny_user_id}
@@ -102,65 +99,57 @@ export function LeadsListTable({
                 }}
                 role="button"
                 tabIndex={0}
-                aria-label={`Open ${fullName(row)}`}
+                aria-label={`Open ${name}`}
                 aria-current={isOpen ? "true" : undefined}
                 className={`cursor-pointer transition hover:bg-slate-50 focus:bg-violet-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-inset ${isOpen ? "bg-violet-50/40" : ""}`}
               >
-                <td className="px-3 py-2">
+                {/* Nanny: avatar + name + phone inline */}
+                <td className="whitespace-nowrap px-3 py-1.5">
                   <div className="flex items-center gap-2">
                     <UserAvatar
-                      name={fullName(row)}
+                      name={name}
                       imageUrl={row.profile_picture_url ?? undefined}
-                      className="h-8 w-8"
+                      className="h-7 w-7 flex-shrink-0"
                     />
-                    <div>
-                      <div className="font-medium text-slate-900">
-                        {fullName(row)}
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-slate-900">
+                        {name}
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {row.email ?? "—"}
-                      </div>
+                      {row.mobile_number && (
+                        <div className="flex items-center gap-1 text-[11px] text-slate-500">
+                          <Phone className="h-2.5 w-2.5" />
+                          <a
+                            href={`tel:${row.mobile_number}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:text-violet-700"
+                          >
+                            {row.mobile_number}
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </td>
-                <td
-                  className="px-3 py-2 whitespace-nowrap text-xs text-slate-600"
-                  title={row.signup_at}
-                >
-                  {formatSydneyDateTime(row.signup_at)}
+
+                {/* Status */}
+                <td className="whitespace-nowrap px-3 py-1.5">
+                  <LeadStatusPill status={status} />
                 </td>
-                <td className="px-3 py-2">
+
+                {/* Verification chip */}
+                <td className="whitespace-nowrap px-3 py-1.5">
                   <VerificationMiniChip verification={row.verification} />
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs">
-                  {levelLabel(row.verification.verification_level)}
-                </td>
-                <td className="px-3 py-2 text-center text-xs">
-                  {row.external_u3_position === true ? (
-                    <span
-                      className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-700"
-                      title="Currently nannies an under-3 outside Baby Bloom"
-                    >
-                      U3
-                    </span>
-                  ) : row.external_u3_position === false ? (
-                    <span
-                      className="text-slate-400"
-                      title="Confirmed no external U3 position"
-                    >
-                      —
-                    </span>
-                  ) : (
-                    <span className="text-slate-400" title="Unknown">
-                      ·
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2 text-center text-sm">
-                  {row.children_linked_count}
-                </td>
-                <td className="px-3 py-2 text-center text-sm">
-                  {row.parent_linked_children_count}
+
+                {/* Kids: total / linked (with bonus star) */}
+                <td className="whitespace-nowrap px-3 py-1.5 text-center text-sm">
+                  <span className="text-slate-900">
+                    {row.children_linked_count}
+                  </span>
+                  <span className="text-slate-400"> / </span>
+                  <span className="text-slate-700">
+                    {row.parent_linked_children_count}
+                  </span>
                   {row.bonus_children_count > 0 && (
                     <span
                       className="ml-1 text-[10px] font-medium text-violet-600"
@@ -170,64 +159,92 @@ export function LeadsListTable({
                     </span>
                   )}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                      row.contributions_complete_derived
-                        ? "bg-green-50 text-green-700 ring-green-200"
-                        : "bg-slate-50 text-slate-500 ring-slate-200"
-                    }`}
-                    title={
-                      row.bonus_program_completed_at
-                        ? `Bonus program completed at ${row.bonus_program_completed_at}`
-                        : row.bonus_children_count > 0
-                          ? `${row.bonus_children_count} bonus invite(s) connected (timestamp not set)`
-                          : "No bonus contributions detected"
-                    }
-                  >
-                    {row.contributions_complete_derived
-                      ? "Complete"
-                      : "Incomplete"}
-                  </span>
-                </td>
+
+                {/* Last contact */}
                 <td
-                  className="px-3 py-2 whitespace-nowrap text-xs text-slate-600"
+                  className="whitespace-nowrap px-3 py-1.5 text-xs text-slate-600"
                   title={row.contact_state?.last_contact_at ?? "Never"}
                 >
                   {row.contact_state?.last_contact_at ? (
                     formatSydneyDateTime(row.contact_state.last_contact_at)
                   ) : (
-                    <em className="text-slate-500">Never</em>
+                    <em className="text-slate-400">Never</em>
                   )}
                 </td>
-                <td className="px-3 py-2 text-center text-sm">
+
+                {/* Total contacts count */}
+                <td className="whitespace-nowrap px-3 py-1.5 text-center text-sm text-slate-600">
                   {row.total_contacts_derived}
                 </td>
-                <td className="px-3 py-2">
-                  {row.responded_ever_derived ? (
-                    <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700">
-                      Yes
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
-                      No
-                    </span>
-                  )}
-                </td>
-                <td className="px-3 py-2">
-                  <LeadStatusPill status={status} />
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap text-xs text-slate-600">
-                  {formatSydneyDate(row.contact_state?.next_action_at)}
-                </td>
-                <td className="px-3 py-2 text-xs text-slate-600">
+
+                {/* Suburb */}
+                <td className="whitespace-nowrap px-3 py-1.5 text-xs text-slate-600">
                   {row.suburb ?? "—"}
+                </td>
+
+                {/* Row actions */}
+                <td className="whitespace-nowrap px-3 py-1.5 text-right">
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModal({
+                          kind: "logs",
+                          nannyUserId: row.nanny_user_id,
+                          nannyName: name,
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:border-violet-300 hover:bg-violet-50 hover:text-violet-700"
+                      aria-label={`Recent logs for ${name}`}
+                      title="Recent contact logs"
+                    >
+                      <History className="h-3 w-3" />
+                      Logs
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setModal({
+                          kind: "addlog",
+                          nannyUserId: row.nanny_user_id,
+                          nannyName: name,
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm hover:bg-violet-700"
+                      aria-label={`Log contact with ${name}`}
+                      title="Log new contact"
+                    >
+                      <MessageCirclePlus className="h-3 w-3" />
+                      Log
+                    </button>
+                  </div>
                 </td>
               </tr>
             );
           })}
         </tbody>
       </table>
+
+      {/* Modals */}
+      {modal.kind === "logs" && (
+        <LeadRecentLogsModal
+          open
+          onOpenChange={(open) => !open && setModal({ kind: "none" })}
+          nannyUserId={modal.nannyUserId}
+          nannyName={modal.nannyName}
+          onOpenDrawer={() => onRowClick(modal.nannyUserId)}
+        />
+      )}
+      {modal.kind === "addlog" && (
+        <LeadQuickLogModal
+          open
+          onOpenChange={(open) => !open && setModal({ kind: "none" })}
+          nannyUserId={modal.nannyUserId}
+          nannyName={modal.nannyName}
+        />
+      )}
     </div>
   );
 }
