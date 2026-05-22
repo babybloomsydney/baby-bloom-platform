@@ -153,7 +153,7 @@ export function AddChildSheetParent({
               >
                 terms and conditions
               </button>
-              , including the{" "}
+              , and{" "}
               <Link
                 href="/legal/privacy-policy"
                 target="_blank"
