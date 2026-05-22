@@ -88,9 +88,11 @@ export function LeadDrawerVerificationBreakdown({
           label="WWCC"
           status={wwccStatus}
           detail={
-            v?.wwcc_verified
-              ? `verified ${fmtDate(v.wwcc_verified_at)}${v.wwcc_expiry_date ? ` · expires ${fmtDate(v.wwcc_expiry_date)}` : ""}`
-              : "missing"
+            v?.wwcc_number
+              ? `#${v.wwcc_number}${v?.wwcc_verified ? ` · verified ${fmtDate(v.wwcc_verified_at)}` : ""}${v?.wwcc_expiry_date ? ` · expires ${fmtDate(v.wwcc_expiry_date)}` : ""}`
+              : v?.wwcc_verified
+                ? `verified ${fmtDate(v.wwcc_verified_at)}${v.wwcc_expiry_date ? ` · expires ${fmtDate(v.wwcc_expiry_date)}` : ""}`
+                : "missing"
           }
         />
         <Row

@@ -42,6 +42,7 @@ export interface LeadDetail {
     wwcc_verified: boolean | null;
     wwcc_verified_at: string | null;
     wwcc_expiry_date: string | null;
+    wwcc_number: string | null;
     verification_status: number | null;
     ocg_result_status: string | null;
     ocg_recorded_at: string | null;
@@ -170,7 +171,7 @@ export async function fetchLeadDetail(
     supa
       .from("verifications")
       .select(
-        "identity_verified, identity_verified_at, wwcc_verified, wwcc_verified_at, wwcc_expiry_date, verification_status, ocg_result_status, ocg_recorded_at",
+        "identity_verified, identity_verified_at, wwcc_verified, wwcc_verified_at, wwcc_expiry_date, wwcc_number, verification_status, ocg_result_status, ocg_recorded_at",
       )
       .eq("user_id", nannyUserId)
       .maybeSingle(),
