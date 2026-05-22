@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Sheet,
@@ -13,8 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { createChildAsParent } from "@/lib/actions/bapp/child-clients";
-import { ConsentCheckbox } from "@/components/legal/ConsentCheckbox";
-import { PolicyContent } from "@/components/legal/PolicyContent";
+import { PolicyModal } from "@/components/legal/PolicyModal";
 import {
   earliestAllowedDobIso,
   todayIso,
@@ -36,8 +36,9 @@ export function AddChildSheetParent({
   const [gender, setGender] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // T-015 — auto-ticked bundled consent. Untick disables submit.
+  // T-015 — auto-ticked terms-of-use agreement. Untick disables submit.
   const [consented, setConsented] = useState(true);
+  const [policyOpen, setPolicyOpen] = useState(false);
 
   function reset() {
     setFirstName("");
@@ -131,19 +132,45 @@ export function AddChildSheetParent({
               <option value="Girl">Girl</option>
             </select>
           </div>
-          {/* T-015 — bundled parent-app-consent. Body text comes from
-              legal_documents.body_md (slug=parent-app-consent), filled
-              by T-014. Auto-ticked; untick disables submit. */}
-          <div className="space-y-2">
-            <PolicyContent slug="parent-app-consent" />
-            <ConsentCheckbox
-              label="I consent to Baby Bloom collecting and processing data for this child."
-              description="Includes photos, daily observations, diary entries, and any sensitive information you choose to enter. You can withdraw this at any time. Renews annually. See policy above."
-              defaultConsented={true}
-              onConsentChange={setConsented}
-              fieldName="parent_app_consent"
+          {/* Mundane, plaintext terms-of-use agreement below the inputs,
+              above the submit button. Hyperlink opens the canonical
+              body_md (slug=parent-app-consent) in a Dialog that
+              dismisses on overlay click. */}
+          <label className="flex cursor-pointer items-start gap-2 pt-1 text-xs text-slate-500">
+            <input
+              type="checkbox"
+              name="parent_app_consent"
+              checked={consented}
+              onChange={(e) => setConsented(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-slate-600"
             />
-          </div>
+            <span>
+              I agree to the full{" "}
+              <button
+                type="button"
+                onClick={() => setPolicyOpen(true)}
+                className="underline hover:text-slate-700"
+              >
+                terms and conditions
+              </button>
+              , including the{" "}
+              <Link
+                href="/legal/privacy-policy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-slate-700"
+              >
+                privacy policy
+              </Link>
+              .
+            </span>
+          </label>
+          <PolicyModal
+            slug="parent-app-consent"
+            open={policyOpen}
+            onOpenChange={setPolicyOpen}
+            title="Terms and conditions"
+          />
 
           {error && (
             <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
