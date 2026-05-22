@@ -197,11 +197,28 @@ export async function updateLeadStatus(
   try {
     const input = updateLeadStatusSchema.parse(rawInput);
     await requireAdmin();
-    const result = await upsertContactState(input.nanny_user_id, {
-      lead_status: input.status,
-    });
-    if (result.success) revalidatePath(LEADS_PATH);
-    return result;
+    const supa = createAdminClient();
+    const { error } = await supa
+      .from("nanny_contact_state")
+      .upsert(
+        { nanny_user_id: input.nanny_user_id, lead_status: input.status },
+        { onConflict: "nanny_user_id" },
+      );
+    if (error) {
+      // Surface the actual Postgres / PostgREST error to the operator —
+      // this is an admin-only surface, and silent failures (the generic
+      // envelopeError text) hid a CHECK-constraint mismatch when the
+      // T-032b/c migration hadn't applied. Worth the trade-off.
+      console.error("[leads:updateLeadStatus] failed:", error);
+      const message =
+        error.message ||
+        error.details ||
+        error.hint ||
+        "Database rejected the status update.";
+      return { success: false, error: message };
+    }
+    revalidatePath(LEADS_PATH);
+    return { success: true, data: undefined };
   } catch (error: unknown) {
     return envelopeError("updateLeadStatus", error);
   }

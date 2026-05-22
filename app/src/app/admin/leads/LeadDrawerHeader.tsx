@@ -2,7 +2,7 @@
 
 // T-032 — Drawer sticky header: name + status pill + action shortcuts.
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Phone, MessageSquare, Mail, Send } from "lucide-react";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,7 @@ export function LeadDrawerHeader({
   onLocalPatch,
 }: LeadDrawerHeaderProps) {
   const [isPending, startTransition] = useTransition();
+  const [statusError, setStatusError] = useState<string | null>(null);
   const profile = detail.user_profile;
   const status: LeadStatus = detail.contact_state?.lead_status ?? "untouched";
   const mobile = profile?.mobile_number ?? null;
@@ -67,6 +68,7 @@ export function LeadDrawerHeader({
   };
 
   const onStatusChange = (s: LeadStatus) => {
+    setStatusError(null);
     startTransition(async () => {
       const result = await updateLeadStatus({
         nanny_user_id: detail.nanny_user_id,
@@ -89,6 +91,8 @@ export function LeadDrawerHeader({
               updated_at: new Date().toISOString(),
             };
         onLocalPatch({ ...detail, contact_state: nextState });
+      } else {
+        setStatusError(result.error ?? "Status update failed.");
       }
     });
   };
@@ -122,6 +126,14 @@ export function LeadDrawerHeader({
               ))}
             </select>
           </div>
+          {statusError && (
+            <p
+              role="alert"
+              className="mt-1 rounded bg-red-50 px-2 py-1 text-[11px] text-red-700"
+            >
+              {statusError}
+            </p>
+          )}
         </div>
       </div>
 
