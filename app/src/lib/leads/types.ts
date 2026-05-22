@@ -1,11 +1,24 @@
 // T-032 — Shared types for the Nanny Contact Management page.
 // Mirrors the database shape from migrations/T-032-nanny-contact-management.sql.
 
+// Operator-managed pipeline state for a nanny contact. Expanded T-032b
+// to include action-oriented tags so admins can mark exactly where in
+// the conversation they are (called / texted / awaiting reply / booked /
+// activated) instead of the generic responsive / unresponsive split.
+// Renames: responsive → replied, unresponsive → no_response.
+// Ordered for the dropdown: default → action verbs → response signals →
+// scheduled / won → parked / hard-stop.
 export const LEAD_STATUSES = [
   "untouched",
+  "called",
+  "texted",
+  "emailed",
+  "voicemail_left",
+  "no_response",
+  "replied",
   "in_conversation",
-  "responsive",
-  "unresponsive",
+  "booked",
+  "activated",
   "dormant",
   "do_not_contact",
 ] as const;
