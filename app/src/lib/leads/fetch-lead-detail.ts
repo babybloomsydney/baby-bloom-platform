@@ -135,6 +135,18 @@ export interface LeadDetail {
       cancelled_at: string | null;
     }
   >;
+  /**
+   * The nanny's authoritative weekly schedule from the `nanny_availability`
+   * table — `days_available` is a string[] of day names, `schedule` is a
+   * day-keyed object (Mon..Sun lowercased) whose values describe time-slot
+   * coverage (consumed by the existing `AvailabilityGrid` component).
+   * Distinct from the funnel-captured `nanny_leads.availability` JSONB,
+   * which has the start/end-date + immediate-start signup answers.
+   */
+  availability: {
+    days_available: string[];
+    schedule: Record<string, unknown>;
+  } | null;
   last_sign_in_at: string | null;
 }
 
@@ -155,6 +167,7 @@ export async function fetchLeadDetail(
     placementsRes,
     interviewsRes,
     bsrRes,
+    availabilityRes,
     authRes,
   ] = await Promise.all([
     supa
@@ -210,6 +223,7 @@ export async function fetchLeadDetail(
     nannyOnlyPlacements(supa, nannyUserId),
     nannyOnlyInterviews(supa, nannyUserId),
     nannyOnlyBabysitting(supa, nannyUserId),
+    nannyOnlyAvailability(supa, nannyUserId),
     supa.auth.admin.getUserById(nannyUserId),
   ]);
 
@@ -430,6 +444,7 @@ export async function fetchLeadDetail(
     placements: placementsRes,
     interview_requests: interviewsRes,
     babysitting_notifications: bsrRes,
+    availability: availabilityRes,
     parent_directory: parentDirectory,
     subscription_directory: subscriptionDirectory,
     last_sign_in_at: authRes.data?.user?.last_sign_in_at ?? null,
@@ -496,4 +511,32 @@ async function nannyOnlyBabysitting(
     .order("notified_at", { ascending: false })
     .limit(30);
   return data ?? [];
+}
+
+async function nannyOnlyAvailability(
+  supa: ReturnType<typeof createAdminClient>,
+  nannyUserId: string,
+): Promise<LeadDetail["availability"]> {
+  const { data: n } = await supa
+    .from("nannies")
+    .select("id")
+    .eq("user_id", nannyUserId)
+    .maybeSingle<{ id: string }>();
+  if (!n) return null;
+  const { data } = await supa
+    .from("nanny_availability")
+    .select("days_available, schedule")
+    .eq("nanny_id", n.id)
+    .maybeSingle<{
+      days_available: string[] | null;
+      schedule: Record<string, unknown> | null;
+    }>();
+  if (!data) return null;
+  return {
+    days_available: Array.isArray(data.days_available)
+      ? data.days_available
+      : [],
+    schedule:
+      data.schedule && typeof data.schedule === "object" ? data.schedule : {},
+  };
 }

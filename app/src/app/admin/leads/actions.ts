@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/require-admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendEmail } from "@/lib/email/resend";
 import {
   CONTACT_DIRECTIONS,
   CONTACT_METHODS,
@@ -393,5 +394,171 @@ export async function bulkMoveToDormant(
     return { success: true, data: { updated: data?.length ?? 0 } };
   } catch (error: unknown) {
     return envelopeError("bulkMoveToDormant", error);
+  }
+}
+
+// ── updateNannyAvailability ──
+// Admin-on-call updates a nanny's weekly schedule (e.g. while on the phone
+// with them) without the nanny needing to log in. Writes to the same
+// `nanny_availability` row the nanny would edit themselves, then:
+//   1. logs the change to `activity_logs` for forensic audit
+//   2. emails the nanny so they know an admin updated it
+// Email + audit failures do NOT roll back the schedule write — the
+// schedule is the authoritative state, the email is a courtesy. Both
+// failures are surfaced server-side via console.error for forensics.
+
+const TIME_SLOTS_ALLOWED = [
+  "Morning (6am-10am)",
+  "Midday (10am-2pm)",
+  "Afternoon (2pm-6pm)",
+  "Evening (6pm-10pm)",
+] as const;
+
+const DAYS_ALLOWED = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
+
+const updateNannyAvailabilitySchema = z.object({
+  nanny_user_id: uuidSchema,
+  available_days: z.array(z.enum(DAYS_ALLOWED)).max(7),
+  schedule: z.record(z.string(), z.array(z.enum(TIME_SLOTS_ALLOWED))),
+});
+
+export type UpdateNannyAvailabilityInput = z.infer<
+  typeof updateNannyAvailabilitySchema
+>;
+
+function formatScheduleForEmail(
+  days: readonly string[],
+  schedule: Record<string, string[]>,
+): string {
+  if (days.length === 0) return "<p>No days marked as available.</p>";
+  const rows = days
+    .map((day) => {
+      const slots = schedule[day.toLowerCase()] ?? [];
+      if (slots.length === 0) return null;
+      const slotsLabel = slots
+        .map((s) => s.replace(/\s*\([^)]+\)\s*/, ""))
+        .join(", ");
+      return `<li><strong>${day}:</strong> ${slotsLabel}</li>`;
+    })
+    .filter((x): x is string => x !== null);
+  if (rows.length === 0) return "<p>No time slots marked as available.</p>";
+  return `<ul style="margin:8px 0 16px 0;padding-left:20px;line-height:1.7">${rows.join("")}</ul>`;
+}
+
+export async function updateNannyAvailability(
+  rawInput: unknown,
+): Promise<ActionResult<void>> {
+  try {
+    const input = updateNannyAvailabilitySchema.parse(rawInput);
+    const { userId } = await requireAdmin();
+    const operator = await deriveOperatorHandle(userId);
+    const supa = createAdminClient();
+
+    // Look up nanny.id from nanny_user_id (nanny_availability is keyed by
+    // nanny_id, not user_id — same as the nanny's own profile save path).
+    const { data: nannyRow, error: nannyErr } = await supa
+      .from("nannies")
+      .select("id")
+      .eq("user_id", input.nanny_user_id)
+      .maybeSingle<{ id: string }>();
+    if (nannyErr) return envelopeError("updateNannyAvailability", nannyErr);
+    if (!nannyRow) {
+      return { success: false, error: "Nanny record not found." };
+    }
+
+    // Read the previous availability so we can include the before/after in
+    // the audit log (operator + future-self will want this when reviewing).
+    const { data: previous } = await supa
+      .from("nanny_availability")
+      .select("days_available, schedule")
+      .eq("nanny_id", nannyRow.id)
+      .maybeSingle<{
+        days_available: string[] | null;
+        schedule: Record<string, unknown> | null;
+      }>();
+
+    const { error: upsertErr } = await supa.from("nanny_availability").upsert(
+      {
+        nanny_id: nannyRow.id,
+        days_available: input.available_days,
+        schedule: input.schedule,
+      },
+      { onConflict: "nanny_id" },
+    );
+    if (upsertErr) return envelopeError("updateNannyAvailability", upsertErr);
+
+    // Audit log — best-effort, do not roll back schedule on failure.
+    try {
+      await supa.from("activity_logs").insert({
+        user_id: input.nanny_user_id,
+        action: "availability_updated_by_admin",
+        details: {
+          operator,
+          before: previous
+            ? {
+                days_available: previous.days_available ?? [],
+                schedule: previous.schedule ?? {},
+              }
+            : null,
+          after: {
+            days_available: input.available_days,
+            schedule: input.schedule,
+          },
+        },
+      });
+    } catch (logErr) {
+      console.error(
+        "[leads:updateNannyAvailability] audit log failed:",
+        logErr,
+      );
+    }
+
+    // Email — best-effort, do not roll back schedule on failure.
+    try {
+      const { data: profile } = await supa
+        .from("user_profiles")
+        .select("first_name, email")
+        .eq("user_id", input.nanny_user_id)
+        .maybeSingle<{ first_name: string | null; email: string | null }>();
+
+      if (profile?.email) {
+        const scheduleHtml = formatScheduleForEmail(
+          input.available_days,
+          input.schedule,
+        );
+        const html = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;color:#0f172a;line-height:1.55">
+  <h2 style="font-size:20px;font-weight:600;margin:0 0 12px 0">Your availability has been updated</h2>
+  <p>Hi ${profile.first_name ?? "there"},</p>
+  <p>Following our chat, your Baby Bloom availability has been updated by ${operator}. Here's what's now on your profile:</p>
+  ${scheduleHtml}
+  <p>If anything here is wrong, you can edit it any time in your <a href="https://babybloomsydney.com.au/nanny/profile" style="color:#7c3aed">profile</a>, or just reply to this email.</p>
+  <p style="margin-top:24px;color:#64748b;font-size:13px">Baby Bloom Sydney</p>
+</div>`.trim();
+
+        await sendEmail({
+          to: profile.email,
+          subject: "Your Baby Bloom availability has been updated",
+          html,
+          emailType: "availability_updated_by_admin",
+          recipientUserId: input.nanny_user_id,
+        });
+      }
+    } catch (emailErr) {
+      console.error("[leads:updateNannyAvailability] email failed:", emailErr);
+    }
+
+    revalidatePath(LEADS_PATH);
+    return { success: true, data: undefined };
+  } catch (error: unknown) {
+    return envelopeError("updateNannyAvailability", error);
   }
 }
