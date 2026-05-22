@@ -7,7 +7,13 @@
 //   - Switching between desktop table + mobile cards
 
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback, useMemo, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import {
   Sheet,
   SheetContent,
@@ -48,7 +54,20 @@ export function AdminLeadsClient({
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
 
-  const drawerOpen = Boolean(openLeadId) && Boolean(initialDetail);
+  // Optimistic local state for the drawer so it closes instantly on outside
+  // click. The URL stays the source of truth for shareable / refreshable
+  // state, but we no longer block the Sheet's close on a server round-trip
+  // — previously each outside click queued a router.push inside a transition
+  // and the Sheet only closed once the new RSC props landed, which read as
+  // "needs multiple fast clicks" from the user's seat.
+  const serverWantsOpen = Boolean(openLeadId) && Boolean(initialDetail);
+  const [drawerOpen, setDrawerOpen] = useState(serverWantsOpen);
+
+  // Re-sync from URL: opening a new lead (or arriving via shared link) flips
+  // the local state on; the server-driven close path also keeps us in sync.
+  useEffect(() => {
+    setDrawerOpen(serverWantsOpen);
+  }, [serverWantsOpen]);
 
   const pushState = useCallback(
     (next: LeadQueryState, leadId: string | null = openLeadId) => {
@@ -63,6 +82,7 @@ export function AdminLeadsClient({
 
   const openDrawer = useCallback(
     (nannyUserId: string) => {
+      setDrawerOpen(true);
       const params = serialiseLeadQueryState(initialState);
       params.set("openLead", nannyUserId);
       const search = params.toString();
@@ -72,6 +92,7 @@ export function AdminLeadsClient({
   );
 
   const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
     const params = serialiseLeadQueryState(initialState);
     const search = params.toString();
     const url = search ? `${pathname}?${search}` : pathname;
