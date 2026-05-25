@@ -23,10 +23,10 @@ export function MiniFooter() {
         About
       </Link>
       <Link href="/legal/privacy-policy" className="hover:underline">
-        Privacy
+        Privacy Policy
       </Link>
       <Link href="/legal/client-terms" className="hover:underline">
-        Terms
+        Terms and Conditions
       </Link>
     </div>
   );
