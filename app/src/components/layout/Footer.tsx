@@ -40,7 +40,8 @@ export function Footer() {
           <div className="lg:col-span-1">
             <Logo />
             <p className="mt-4 text-sm text-slate-600 max-w-xs">
-              Connecting Sydney families with trusted, verified nannies since 2020.
+              Connecting Sydney families with trusted, verified nannies since
+              2020.
             </p>
           </div>
 
@@ -83,7 +84,7 @@ export function Footer() {
                 href="/legal/client-terms"
                 className="text-sm text-slate-500 hover:text-violet-500 transition-colors"
               >
-                Terms of Service
+                Terms and Conditions
               </Link>
               <Link
                 href="/legal/cookies"
