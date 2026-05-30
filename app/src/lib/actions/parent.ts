@@ -10,6 +10,7 @@ import {
 } from "@/lib/position/constants";
 import { funnelLog } from "@/lib/position/logger";
 import { createInboxMessage } from "./connection-helpers";
+import { autofireMatchmaking } from "./autofire-matchmaking";
 
 export interface Position {
   id: string;
@@ -266,6 +267,9 @@ export async function createPosition(
     }
   }
 
+  // T-040: Autofire Advanced matchmaking on create. Failures are swallowed by the helper.
+  await autofireMatchmaking(position.id);
+
   revalidatePath("/parent");
   return { success: true, error: null, positionId: position.id };
 }
@@ -440,6 +444,9 @@ export async function saveTypeformPosition(
     }
     positionId = position.id;
     funnelLog("saveTypeformPosition", positionId, "→ Open(1)", { parentId });
+    // T-040: Autofire Advanced matchmaking ONLY on the CREATE branch (fire-once-on-edit).
+    // The UPDATE branch above must not re-trigger the blast.
+    await autofireMatchmaking(positionId);
   }
 
   // Children: delete existing and recreate
