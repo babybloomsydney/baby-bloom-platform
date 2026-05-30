@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { HIDDEN_CONNECTION_STAGES } from "@/lib/position/constants";
 import { ParentNannyProfileView } from "@/app/parent/browse/[id]/ParentNannyProfileView";
+import { parseFunnelSource, parseFunnelLead } from "@/lib/funnel/source";
 import { notFound } from "next/navigation";
 import { Metadata } from "next";
 
@@ -23,14 +24,21 @@ export async function generateMetadata({
   // Use AI bio summary or fallback
   const suburb = nanny.suburb ?? "Sydney";
   const bioSummary = nanny.ai_content?.bio_summary;
-  const bioAbout = (typeof bioSummary === "object" && bioSummary !== null) ? (bioSummary as Record<string, string>).about : null;
-  const bioRaw = bioAbout ?? (nanny.ai_content?.parent_pitch as string | undefined) ?? "";
-  const description = String(bioRaw)
-    .replace(/<[^>]*>/g, "") // strip HTML tags
-    .slice(0, 155)
-    .trim() || `Find a verified, trusted nanny in ${suburb} on Baby Bloom Sydney.`;
+  const bioAbout =
+    typeof bioSummary === "object" && bioSummary !== null
+      ? (bioSummary as Record<string, string>).about
+      : null;
+  const bioRaw =
+    bioAbout ?? (nanny.ai_content?.parent_pitch as string | undefined) ?? "";
+  const description =
+    String(bioRaw)
+      .replace(/<[^>]*>/g, "") // strip HTML tags
+      .slice(0, 155)
+      .trim() ||
+    `Find a verified, trusted nanny in ${suburb} on Baby Bloom Sydney.`;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://app-babybloom.vercel.app";
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://app-babybloom.vercel.app";
   const ogImageUrl = `${siteUrl}/api/og/nanny-v2/${params.id}`;
   const pageUrl = `${siteUrl}/nannies/${params.id}`;
 
@@ -62,9 +70,19 @@ export default async function NannyProfilePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams: { from?: string };
+  searchParams: {
+    from?: string;
+    src?: string | string[];
+    lead?: string | string[];
+  };
 }) {
-  const hidePromoTile = searchParams.from === 'matchmaking' || searchParams.from === 'onboarding';
+  const funnelSource = parseFunnelSource(searchParams.src);
+  const funnelLead = parseFunnelLead(searchParams.lead);
+  const hidePromoTile =
+    searchParams.from === "matchmaking" ||
+    searchParams.from === "onboarding" ||
+    funnelSource === "std" ||
+    funnelSource === "adv";
   const { data: nanny, error } = await getPublicNannyProfile(params.id);
 
   if (error || !nanny) {
@@ -82,7 +100,9 @@ export default async function NannyProfilePage({
 
   try {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (user) {
       isGuest = false;
@@ -91,40 +111,44 @@ export default async function NannyProfilePage({
       } else {
         // Check if user is a parent
         const { data: role } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", user.id)
           .single();
 
-        if (role?.role === 'parent') {
+        if (role?.role === "parent") {
           isParent = true;
 
           // Look up parent table ID (connection_requests.parent_id = parents.id, NOT auth.users.id)
           const adminClient = createAdminClient();
           const { data: parentRecord } = await adminClient
-            .from('parents')
-            .select('id')
-            .eq('user_id', user.id)
+            .from("parents")
+            .select("id")
+            .eq("user_id", user.id)
             .single();
 
           if (parentRecord) {
             // Count pending connection requests
             const { count } = await adminClient
-              .from('connection_requests')
-              .select('id', { count: 'exact', head: true })
-              .eq('parent_id', parentRecord.id)
-              .eq('status', 'pending');
+              .from("connection_requests")
+              .select("id", { count: "exact", head: true })
+              .eq("parent_id", parentRecord.id)
+              .eq("status", "pending");
 
             pendingRequestCount = count ?? 0;
 
             // Check existing request with this nanny (exclude terminal stages)
             const { data: existing } = await adminClient
-              .from('connection_requests')
-              .select('status, connection_stage')
-              .eq('parent_id', parentRecord.id)
-              .eq('nanny_id', nanny.nanny_id)
-              .in('status', ['pending', 'accepted', 'confirmed'])
-              .not('connection_stage', 'in', `(${HIDDEN_CONNECTION_STAGES.join(',')})`)
+              .from("connection_requests")
+              .select("status, connection_stage")
+              .eq("parent_id", parentRecord.id)
+              .eq("nanny_id", nanny.nanny_id)
+              .in("status", ["pending", "accepted", "confirmed"])
+              .not(
+                "connection_stage",
+                "in",
+                `(${HIDDEN_CONNECTION_STAGES.join(",")})`,
+              )
               .limit(1)
               .maybeSingle();
 
@@ -132,10 +156,10 @@ export default async function NannyProfilePage({
 
             // Check if parent has any active placement
             const { data: activePlacement } = await adminClient
-              .from('nanny_placements')
-              .select('id, nanny_id')
-              .eq('parent_id', parentRecord.id)
-              .eq('status', 'active')
+              .from("nanny_placements")
+              .select("id, nanny_id")
+              .eq("parent_id", parentRecord.id)
+              .eq("status", "active")
               .limit(1)
               .maybeSingle();
 
@@ -154,32 +178,51 @@ export default async function NannyProfilePage({
   }
 
   const personJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: `${nanny.first_name ?? 'Nanny'} ${(nanny.last_name ?? '').charAt(0) || ''}.`.trim(),
-    jobTitle: 'Verified Nanny',
-    description: String(nanny.ai_content?.parent_pitch ?? '').replace(/<[^>]*>/g, '').slice(0, 200).trim() || undefined,
+    "@context": "https://schema.org",
+    "@type": "Person",
+    name: `${nanny.first_name ?? "Nanny"} ${(nanny.last_name ?? "").charAt(0) || ""}.`.trim(),
+    jobTitle: "Verified Nanny",
+    description:
+      String(nanny.ai_content?.parent_pitch ?? "")
+        .replace(/<[^>]*>/g, "")
+        .slice(0, 200)
+        .trim() || undefined,
     image: nanny.profile_picture_url || undefined,
     address: {
-      '@type': 'PostalAddress',
-      addressLocality: nanny.suburb ?? 'Sydney',
-      addressRegion: 'NSW',
-      addressCountry: 'AU',
+      "@type": "PostalAddress",
+      addressLocality: nanny.suburb ?? "Sydney",
+      addressRegion: "NSW",
+      addressCountry: "AU",
     },
     worksFor: {
-      '@type': 'Organization',
-      name: 'Baby Bloom Sydney',
-      url: 'https://babybloomsydney.com.au',
+      "@type": "Organization",
+      name: "Baby Bloom Sydney",
+      url: "https://babybloomsydney.com.au",
     },
   };
 
   const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://babybloomsydney.com.au' },
-      { '@type': 'ListItem', position: 2, name: 'Nannies', item: 'https://babybloomsydney.com.au/nannies' },
-      { '@type': 'ListItem', position: 3, name: nanny.first_name ?? 'Nanny', item: `https://babybloomsydney.com.au/nannies/${params.id}` },
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: "https://babybloomsydney.com.au",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Nannies",
+        item: "https://babybloomsydney.com.au/nannies",
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: nanny.first_name ?? "Nanny",
+        item: `https://babybloomsydney.com.au/nannies/${params.id}`,
+      },
     ],
   };
 
@@ -188,13 +231,13 @@ export default async function NannyProfilePage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(personJsonLd).replace(/</g, '\\u003c'),
+          __html: JSON.stringify(personJsonLd).replace(/</g, "\\u003c"),
         }}
       />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbJsonLd).replace(/</g, '\\u003c'),
+          __html: JSON.stringify(breadcrumbJsonLd).replace(/</g, "\\u003c"),
         }}
       />
       <ParentNannyProfileView
@@ -207,6 +250,8 @@ export default async function NannyProfilePage({
         hasActivePlacement={hasActivePlacement}
         isActiveNanny={isActiveNanny}
         hidePromoTile={hidePromoTile}
+        funnelSource={funnelSource}
+        funnelLead={funnelLead}
       />
     </div>
   );

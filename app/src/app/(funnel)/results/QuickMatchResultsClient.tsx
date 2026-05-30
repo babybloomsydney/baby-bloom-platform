@@ -4,7 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, RotateCcw, Sparkles, Loader2 } from "lucide-react";
+import {
+  ArrowRight,
+  RotateCcw,
+  Sparkles,
+  Loader2,
+  ShieldCheck,
+  CheckCircle,
+} from "lucide-react";
 import { NannyPreviewCard } from "@/components/landing/NannyPreviewCard";
 import type { NannyPreview } from "@/components/landing/NannyPreviewCard";
 
@@ -19,10 +26,7 @@ interface QuickMatchResponse {
   topNannies: QuickMatchNanny[];
 }
 
-const BASIC_FACTORS = [
-  "Location",
-  "Schedule",
-];
+const BASIC_FACTORS = ["Location", "Schedule"];
 
 const ADVANCED_FACTORS = [
   "Total Experience",
@@ -50,7 +54,11 @@ export function QuickMatchResultsClient() {
       return;
     }
 
-    let parsed: { suburb: string; postcode: string; availability: Record<string, string[]> };
+    let parsed: {
+      suburb: string;
+      postcode: string;
+      availability: Record<string, string[]>;
+    };
     try {
       parsed = JSON.parse(raw);
       if (!parsed.suburb || !parsed.availability) {
@@ -91,7 +99,9 @@ export function QuickMatchResultsClient() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-violet-500 mx-auto" />
-          <p className="mt-4 text-sm text-slate-500">Finding nannies near {suburb || "you"}...</p>
+          <p className="mt-4 text-sm text-slate-500">
+            Finding nannies near {suburb || "you"}...
+          </p>
         </div>
       </div>
     );
@@ -101,7 +111,9 @@ export function QuickMatchResultsClient() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-slate-600">Something went wrong. Please try again.</p>
+          <p className="text-slate-600">
+            Something went wrong. Please try again.
+          </p>
           <Button
             className="mt-4 bg-violet-500 hover:bg-violet-600"
             onClick={() => router.push("/")}
@@ -129,7 +141,8 @@ export function QuickMatchResultsClient() {
               {totalMatches > 0 ? (
                 <>
                   <h2 className="text-2xl md:text-3xl font-bold text-slate-900">
-                    {totalMatches} match{totalMatches !== 1 ? "es" : ""} near {suburb}
+                    {totalMatches} match{totalMatches !== 1 ? "es" : ""} near{" "}
+                    {suburb}
                   </h2>
                   <p className="mt-1 md:mt-2 text-slate-500 text-sm">
                     Matched by location and schedule.
@@ -154,23 +167,11 @@ export function QuickMatchResultsClient() {
                   <NannyPreviewCard
                     key={nanny.id}
                     nanny={nanny}
+                    linkHref={`/nannies/${nanny.id}?src=std`}
                     distanceKm={nanny.distance_km}
                     matchScore={nanny.logistical_score}
                   />
                 ))}
-              </div>
-            )}
-
-            {/* "See all matches" subtle text link — directly under nanny cards */}
-            {totalMatches > 0 && (
-              <div className="flex justify-center mb-4 sm:mb-8">
-                <Link
-                  href="/signup"
-                  className="text-sm text-slate-400 hover:text-violet-500 transition-colors flex items-center gap-1"
-                >
-                  Create account to see all matches
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
               </div>
             )}
 
@@ -199,15 +200,48 @@ export function QuickMatchResultsClient() {
                   ))}
                 </div>
               </div>
-
-              <button
-                onClick={() => router.push("/")}
-                className="flex items-center justify-center gap-1.5 w-full text-xs text-slate-400 hover:text-slate-600 transition-colors py-1"
-              >
-                <RotateCcw className="h-3 w-3" />
-                Search again
-              </button>
             </div>
+
+            {/* T-039 Slice C — Connect-with-matches violet tile, BELOW Advanced */}
+            {totalMatches > 0 && (
+              <div
+                aria-labelledby="connect-with-matches-heading"
+                className="mt-4 sm:mt-6 rounded-2xl bg-violet-50 border border-violet-100 p-4 text-center"
+              >
+                <h2 id="connect-with-matches-heading" className="sr-only">
+                  Connect with your matches
+                </h2>
+                <div className="flex items-center justify-center gap-4 mb-2.5">
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                    <ShieldCheck className="w-3.5 h-3.5 text-green-500" /> WWCC
+                    verified
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-xs text-slate-500">
+                    <CheckCircle className="w-3.5 h-3.5 text-violet-500" />{" "}
+                    Expertly vetted
+                  </span>
+                </div>
+                <Link
+                  href="/signup?src=std"
+                  className="group flex items-center justify-center gap-2 h-12 w-full rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-semibold text-sm transition-all active:scale-[0.98] shadow-md shadow-violet-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2"
+                >
+                  Connect with matches
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                <p className="text-xs text-slate-400 mt-2.5">
+                  Free to join &middot; Free to match
+                </p>
+              </div>
+            )}
+
+            {/* Search again — utility link */}
+            <button
+              onClick={() => router.push("/")}
+              className="mt-4 sm:mt-6 flex items-center justify-center gap-1.5 w-full text-xs text-slate-400 hover:text-slate-600 transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 rounded"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Search again
+            </button>
           </div>
         </div>
       </div>

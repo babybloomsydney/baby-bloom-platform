@@ -817,9 +817,54 @@ export function ParentHubClient({
 
   return (
     <>
-      {/* Sticky verification banner — full viewport width */}
-      {hasLockedCards && (
-        <div
+      {/* T-039 Slice E-prime — no-position banner; primary nudge to `/parent/request`.
+          Takes precedence over the verification banner: a parent without a
+          position can't yet have locked verification-gated content in a
+          user-actionable way, so we render the more actionable nudge alone. */}
+      {!hasPosition && (
+        <aside
+          role="region"
+          aria-label="Position incomplete notice"
+          className="sticky top-16 z-30 -mt-4 lg:-mt-6 mb-4 lg:mb-6"
+          style={{
+            marginLeft: "calc(-50vw + 50%)",
+            marginRight: "calc(-50vw + 50%)",
+            width: "100vw",
+          }}
+        >
+          <div className="border-b border-violet-100 bg-violet-50 px-4 lg:px-6 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs sm:text-sm text-violet-900">
+                <ClipboardList
+                  aria-hidden="true"
+                  className="inline h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 -mt-0.5 text-violet-600"
+                />
+                Complete your position to connect with nannies
+              </p>
+              <Button
+                asChild
+                size="sm"
+                className="shrink-0 bg-violet-600 hover:bg-violet-700 text-xs h-8 px-3"
+              >
+                <Link
+                  href="/parent/request"
+                  aria-label="Complete your position"
+                >
+                  Complete
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </aside>
+      )}
+
+      {/* Sticky verification banner — full viewport width. Suppressed when the
+          no-position banner above is showing (avoids stacking the two sticky
+          regions; the no-position state is the more actionable nudge). */}
+      {hasLockedCards && hasPosition && (
+        <aside
+          role="region"
+          aria-label="Verification required notice"
           className="sticky top-16 z-30 -mt-4 lg:-mt-6 mb-4 lg:mb-6"
           style={{
             marginLeft: "calc(-50vw + 50%)",
@@ -830,7 +875,10 @@ export function ParentHubClient({
           <div className="border-b border-emerald-100 bg-emerald-50 px-4 lg:px-6 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs sm:text-sm text-emerald-800">
-                <ShieldCheck className="inline h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 -mt-0.5 text-emerald-600" />
+                <ShieldCheck
+                  aria-hidden="true"
+                  className="inline h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1 sm:mr-1.5 -mt-0.5 text-emerald-600"
+                />
                 Verify your account to be matched with a professional childcare
                 provider
               </p>
@@ -839,11 +887,16 @@ export function ParentHubClient({
                 size="sm"
                 className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-xs h-8 px-3"
               >
-                <Link href="/parent/verification">Verify Now</Link>
+                <Link
+                  href="/parent/verification"
+                  aria-label="Verify your account now"
+                >
+                  Verify Now
+                </Link>
               </Button>
             </div>
           </div>
-        </div>
+        </aside>
       )}
 
       {/* ═══════════════════════════════════════════════════

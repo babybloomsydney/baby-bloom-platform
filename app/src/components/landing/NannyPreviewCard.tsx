@@ -28,25 +28,55 @@ const QUAL_ABBREV: Record<string, string> = {
 interface NannyPreviewCardProps {
   nanny: NannyPreview;
   linkBase?: string;
+  /**
+   * Optional href override. When provided, supersedes the `${linkBase}/${id}`
+   * computed href entirely. Use to thread funnel-source query params (e.g.
+   * `?src=std`) without breaking existing call sites that rely on `linkBase`.
+   */
+  linkHref?: string;
   distanceKm?: number | null;
   matchScore?: number | null;
 }
 
-export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, matchScore }: NannyPreviewCardProps) {
+export function NannyPreviewCard({
+  nanny,
+  linkBase = "/nannies",
+  linkHref,
+  distanceKm,
+  matchScore,
+}: NannyPreviewCardProps) {
   const initials = nanny.first_name[0]?.toUpperCase() ?? "?";
 
-  const traitBadges: { icon: typeof Clock; label: string; primary: boolean }[] = [];
+  const traitBadges: { icon: typeof Clock; label: string; primary: boolean }[] =
+    [];
   if (nanny.total_experience_years && nanny.total_experience_years > 0)
-    traitBadges.push({ icon: Clock, label: `${nanny.total_experience_years}${nanny.total_experience_years === 1 ? 'yr' : 'yrs'} experience`, primary: true });
+    traitBadges.push({
+      icon: Clock,
+      label: `${nanny.total_experience_years}${nanny.total_experience_years === 1 ? "yr" : "yrs"} experience`,
+      primary: true,
+    });
   if (nanny.under_3_experience_years && nanny.under_3_experience_years > 0)
-    traitBadges.push({ icon: Baby, label: `Toddlers, ${nanny.under_3_experience_years}${nanny.under_3_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
+    traitBadges.push({
+      icon: Baby,
+      label: `Toddlers, ${nanny.under_3_experience_years}${nanny.under_3_experience_years === 1 ? "yr" : "yrs"}`,
+      primary: true,
+    });
   if (nanny.newborn_experience_years && nanny.newborn_experience_years > 0)
-    traitBadges.push({ icon: Baby, label: `Babies, ${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? 'yr' : 'yrs'}`, primary: true });
+    traitBadges.push({
+      icon: Baby,
+      label: `Babies, ${nanny.newborn_experience_years}${nanny.newborn_experience_years === 1 ? "yr" : "yrs"}`,
+      primary: true,
+    });
   if (nanny.highest_qualification)
-    traitBadges.push({ icon: GraduationCap, label: QUAL_ABBREV[nanny.highest_qualification] || nanny.highest_qualification, primary: false });
+    traitBadges.push({
+      icon: GraduationCap,
+      label:
+        QUAL_ABBREV[nanny.highest_qualification] || nanny.highest_qualification,
+      primary: false,
+    });
 
   return (
-    <Link href={`${linkBase}/${nanny.id}`} className="block group">
+    <Link href={linkHref ?? `${linkBase}/${nanny.id}`} className="block group">
       <Card className="overflow-hidden transition-all hover:shadow-lg hover:border-violet-200">
         <div className="p-3 sm:p-4">
           <div className="flex items-start gap-4">
@@ -76,14 +106,17 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="font-semibold text-base text-slate-900 truncate group-hover:text-violet-600 transition-colors">
-                  {nanny.first_name}{nanny.age ? `, ${nanny.age}` : ""}
+                  {nanny.first_name}
+                  {nanny.age ? `, ${nanny.age}` : ""}
                 </h3>
                 {matchScore != null && (
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                    matchScore >= 85
-                      ? "bg-green-100 text-green-700"
-                      : "bg-violet-100 text-violet-700"
-                  }`}>
+                  <span
+                    className={`text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                      matchScore >= 85
+                        ? "bg-green-100 text-green-700"
+                        : "bg-violet-100 text-violet-700"
+                    }`}
+                  >
                     {matchScore}% match
                   </span>
                 )}
@@ -91,7 +124,8 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
               <div className="flex items-center gap-1 text-sm text-slate-500 mt-0.5">
                 <MapPin className="w-3.5 h-3.5 shrink-0" />
                 <span className="truncate">
-                  {nanny.suburb}{distanceKm != null ? `, ${distanceKm}km away` : ""}
+                  {nanny.suburb}
+                  {distanceKm != null ? `, ${distanceKm}km away` : ""}
                 </span>
               </div>
 
@@ -115,7 +149,8 @@ export function NannyPreviewCard({ nanny, linkBase = "/nannies", distanceKm, mat
                       : "bg-slate-50 text-slate-600 border border-slate-200"
                   }`}
                 >
-                  <badge.icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" /> {badge.label}
+                  <badge.icon className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />{" "}
+                  {badge.label}
                 </span>
               ))}
             </div>

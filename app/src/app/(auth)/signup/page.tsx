@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,18 +22,18 @@ import { recordConsent } from "@/lib/legal/record-consent";
 import { AGR01_CHECKPOINTS } from "@/lib/legal/checkpoints";
 import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
 import {
-  Loader2,
-  ShieldCheck,
-  CheckCircle,
-  ArrowRight,
-} from "lucide-react";
+  parseFunnelSource,
+  funnelSourceToSignupSource,
+} from "@/lib/funnel/source";
+import { Loader2, ShieldCheck, CheckCircle, ArrowRight } from "lucide-react";
 
 const signupSchema = z
   .object({
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     email: z.string().email("Please enter a valid email address"),
-    password: z.string()
+    password: z
+      .string()
       .min(8, "Password must be at least 8 characters")
       .regex(/[0-9]/, "Password must include a number")
       .regex(/[^A-Za-z0-9]/, "Password must include a special character"),
@@ -45,13 +46,26 @@ const signupSchema = z
 
 type SignupFormData = z.infer<typeof signupSchema>;
 
-export default function SignupPage() {
+function SignupForm() {
+  const searchParams = useSearchParams();
+  // T-039 Slice E-prime: URL ?src wins over referrer for attribution.
+  // 'std' / 'adv' map via the canonical helper in lib/funnel/source.ts.
+  // Otherwise fall back to the existing document.referrer heuristic below.
+  const funnelSource = parseFunnelSource(searchParams.get("src"));
+  const signupSourceFromUrl = funnelSource
+    ? funnelSourceToSignupSource(funnelSource)
+    : null;
+
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>({});
+  const [consentChecked, setConsentChecked] = useState<Record<string, boolean>>(
+    {},
+  );
 
-  const allConsentsChecked = AGR01_CHECKPOINTS.every((cp) => consentChecked[cp.id]);
+  const allConsentsChecked = AGR01_CHECKPOINTS.every(
+    (cp) => consentChecked[cp.id],
+  );
 
   // Clear any stale session when user lands on auth page
   useEffect(() => {
@@ -81,25 +95,28 @@ export default function SignupPage() {
     formData.append("lastName", data.lastName);
     formData.append("role", "parent");
 
-    // Determine signup source from referrer
-    const ref = document.referrer || '';
-    let source = 'direct';
-    if (/\/nannies\/[^/]+/.test(ref)) source = 'profile';
-    else if (ref.includes('/nannies')) source = 'browse';
-    else if (ref.includes('/matchmaking/results')) source = 'quick_match';
-    else if (ref.includes('/matchmaking')) source = 'advanced_match';
-    else if (ref.includes('/babysitting/')) source = 'bsr';
-    else if (ref.includes('/position/')) source = 'position';
-    else if (ref.includes('/pricing')) source = 'pricing';
+    // Determine signup source — URL ?src wins, else fall back to referrer.
+    let source = signupSourceFromUrl;
+    if (!source) {
+      const ref = document.referrer || "";
+      source = "direct";
+      if (/\/nannies\/[^/]+/.test(ref)) source = "profile";
+      else if (ref.includes("/nannies")) source = "browse";
+      else if (ref.includes("/matchmaking/results")) source = "quick_match";
+      else if (ref.includes("/matchmaking")) source = "advanced_match";
+      else if (ref.includes("/babysitting/")) source = "bsr";
+      else if (ref.includes("/position/")) source = "position";
+      else if (ref.includes("/pricing")) source = "pricing";
+    }
     formData.append("signupSource", source);
 
     try {
       await recordConsent(
         AGR01_CHECKPOINTS.map((cp) => ({
-          agreementId: 'AGR-01',
+          agreementId: "AGR-01",
           checkpointId: cp.id,
           checkpointText: cp.text,
-        }))
+        })),
       );
     } catch {
       // Consent recording failed (DB tables may not exist yet) — don't block signup
@@ -120,9 +137,7 @@ export default function SignupPage() {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white">
         <Loader2 className="h-8 w-8 animate-spin text-violet-500 mb-3" />
-        <p className="text-sm text-slate-500">
-          Setting up your account...
-        </p>
+        <p className="text-sm text-slate-500">Setting up your account...</p>
       </div>
     );
   }
@@ -328,9 +343,22 @@ export default function SignupPage() {
               </Link>
             </p>
           </div>
-
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="fixed inset-0 z-40 min-h-[100dvh] flex items-center justify-center bg-white">
+          <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+        </div>
+      }
+    >
+      <SignupForm />
+    </Suspense>
   );
 }
