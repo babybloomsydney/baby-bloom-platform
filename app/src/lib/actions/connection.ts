@@ -1,5 +1,20 @@
 "use server";
 
+/**
+ * Error-code sentinels emitted by the connection actions for the client
+ * to dispatch on. Keep this list small + intentional — every entry here
+ * is a flow-control signal the client surfaces as a dedicated UI branch.
+ *
+ * Note: `'use server'` files cannot directly re-export non-async values
+ * to client components. Clients should compare against the literal strings
+ * (e.g. `result.error === "POSITION_REQUIRED"`); the const is here as the
+ * authoritative source and is consumed inside this module + the test files.
+ */
+export const CONNECTION_ERRORS = {
+  POSITION_REQUIRED: "POSITION_REQUIRED",
+  VERIFICATION_REQUIRED: "VERIFICATION_REQUIRED",
+} as const;
+
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
@@ -242,12 +257,43 @@ export async function createConnectionRequest(
   }
 
   // Check for active/filled position
-  const { data: position } = await supabase
+  const { data: position, error: positionLookupError } = await supabase
     .from("nanny_positions")
     .select("id, stage")
     .eq("parent_id", parentId)
     .in("status", ["active", "filled"])
     .maybeSingle();
+
+  // A DB error on the position lookup MUST NOT silently masquerade as
+  // POSITION_REQUIRED (which would tell a real parent they have no
+  // position). Surface it as a transient failure the client can retry.
+  if (positionLookupError) {
+    console.error("[Connection] Position lookup error:", positionLookupError);
+    return {
+      success: false,
+      error: "Couldn't check your position. Please try again.",
+    };
+  }
+
+  // T-041: gate manual Connect on having an active/filled position.
+  //
+  // The linked-children "shell position" path passes this gate by design:
+  // when a parent claims a child-invite token, `ensure_placement` (SQL)
+  // creates a `nanny_positions` row with `status='filled'`. That parent
+  // can then Connect with any verified nanny — broadening from "only the
+  // inviting nanny" to "any nanny" is intentional per the product threat
+  // model (parents who arrive via invite are validated parents and the
+  // platform wants them able to expand their childcare team).
+  //
+  // The downstream `position?.id ?? null` fallback stays so future API/cron
+  // consumers that legitimately create position-less requests are unchanged
+  // — but for this manual-Connect path, `position` is guaranteed truthy
+  // below by the early-return here.
+  //
+  // See system/forms/Connect position gate/ for the full design rationale.
+  if (!position) {
+    return { success: false, error: CONNECTION_ERRORS.POSITION_REQUIRED };
+  }
 
   // Max 5 pending requests
   const { count } = await supabase
