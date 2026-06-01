@@ -44,7 +44,11 @@ export function MatchResultsClient({
     const t1 = setTimeout(() => setPhase(1), 80);
     const t2 = setTimeout(() => setPhase(2), 350);
     const t3 = setTimeout(() => setPhase(3), 650);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
   }, []);
 
   // Scroll tracking (mobile carousel only)
@@ -60,7 +64,10 @@ export function MatchResultsClient({
       children.forEach((child, i) => {
         const childCenter = child.offsetLeft + child.offsetWidth / 2;
         const dist = Math.abs(containerCenter - childCenter);
-        if (dist < closestDist) { closestDist = dist; closest = i; }
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = i;
+        }
       });
       setActiveIndex(closest);
     };
@@ -74,11 +81,12 @@ export function MatchResultsClient({
       if (!el || idx < 0 || idx >= totalSlides) return;
       const child = el.children[idx] as HTMLElement | undefined;
       if (child) {
-        const scrollLeft = child.offsetLeft - el.offsetWidth / 2 + child.offsetWidth / 2;
+        const scrollLeft =
+          child.offsetLeft - el.offsetWidth / 2 + child.offsetWidth / 2;
         el.scrollTo({ left: scrollLeft, behavior: "smooth" });
       }
     },
-    [totalSlides]
+    [totalSlides],
   );
 
   const signupUrl = `/matchmaking/signup?lead=${leadId}`;
@@ -105,7 +113,6 @@ export function MatchResultsClient({
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
           Your top matches
         </h1>
-        
       </div>
 
       {/* ═══ Zone 2: Cards ═══ */}
@@ -125,7 +132,7 @@ export function MatchResultsClient({
           {visibleMatches.map((match) => (
             <Link
               key={match.nannyId}
-              href={`/nannies/${match.nanny.id}?from=matchmaking`}
+              href={`/nannies/${match.nanny.id}?src=adv&lead=${leadId}`}
               className="block shrink-0 snap-center"
               style={{ width: `${CARD_W}px` }}
             >
@@ -143,7 +150,9 @@ export function MatchResultsClient({
                   <PublicMatchCard match={blurredMatch} />
                 </div>
                 <div className="absolute inset-0 bg-white/60 rounded-2xl flex flex-col items-center justify-center">
-                  <p className="text-4xl font-bold text-violet-600">+{moreCount}</p>
+                  <p className="text-4xl font-bold text-violet-600">
+                    +{moreCount}
+                  </p>
                   <p className="text-sm font-medium text-slate-700 mt-1">
                     more {moreCount === 1 ? "nanny" : "nannies"} matched
                   </p>
@@ -164,7 +173,7 @@ export function MatchResultsClient({
           {visibleMatches.map((match) => (
             <Link
               key={match.nannyId}
-              href={`/nannies/${match.nanny.id}?from=matchmaking`}
+              href={`/nannies/${match.nanny.id}?src=adv&lead=${leadId}`}
               className="block shrink-0"
               style={{ width: `${CARD_W}px` }}
             >
@@ -182,7 +191,9 @@ export function MatchResultsClient({
                   <PublicMatchCard match={blurredMatch} />
                 </div>
                 <div className="absolute inset-0 bg-white/60 rounded-2xl flex flex-col items-center justify-center">
-                  <p className="text-4xl font-bold text-violet-600">+{moreCount}</p>
+                  <p className="text-4xl font-bold text-violet-600">
+                    +{moreCount}
+                  </p>
                   <p className="text-sm font-medium text-slate-700 mt-1">
                     more {moreCount === 1 ? "nanny" : "nannies"} matched
                   </p>
@@ -201,7 +212,9 @@ export function MatchResultsClient({
             <button
               onClick={() => scrollTo(activeIndex - 1)}
               className={`absolute left-2 top-1/2 -translate-y-1/2 flex md:hidden items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
-                activeIndex === 0 ? "opacity-0 pointer-events-none" : "opacity-100"
+                activeIndex === 0
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-100"
               }`}
             >
               <ChevronLeft className="w-5 h-5" />
@@ -209,7 +222,9 @@ export function MatchResultsClient({
             <button
               onClick={() => scrollTo(activeIndex + 1)}
               className={`absolute right-2 top-1/2 -translate-y-1/2 flex md:hidden items-center justify-center w-9 h-9 rounded-full bg-white border border-slate-200 shadow-sm text-slate-400 hover:text-violet-600 hover:border-violet-200 transition-all z-10 ${
-                activeIndex >= totalSlides - 1 ? "opacity-0 pointer-events-none" : "opacity-100"
+                activeIndex >= totalSlides - 1
+                  ? "opacity-0 pointer-events-none"
+                  : "opacity-100"
               }`}
             >
               <ChevronRight className="w-5 h-5" />
@@ -254,8 +269,6 @@ export function MatchResultsClient({
             </span>
           </div>
 
-          
-
           <Link
             href={signupUrl}
             className="group flex items-center justify-center gap-2 h-12 w-full rounded-xl bg-violet-500 hover:bg-violet-600 text-white font-semibold text-sm transition-all active:scale-[0.98] shadow-md shadow-violet-200"
@@ -271,8 +284,13 @@ export function MatchResultsClient({
       </div>
 
       <style jsx>{`
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .hide-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
       `}</style>
     </div>
   );

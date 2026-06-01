@@ -22,6 +22,10 @@ import { recordConsent } from "@/lib/legal/record-consent";
 import { AGR01_CHECKPOINTS } from "@/lib/legal/checkpoints";
 import { ConsentCheckboxGroup } from "@/components/legal/ConsentCheckboxGroup";
 import { INVITE_TOKEN_REGEX } from "@/lib/invite/redirect";
+import {
+  parseFunnelSource,
+  funnelSourceToSignupSource,
+} from "@/lib/funnel/source";
 import { ArrowLeft, Loader2 } from "lucide-react";
 
 const parentSignupSchema = z
@@ -49,6 +53,14 @@ function ParentSignupForm() {
     rawInviteToken && INVITE_TOKEN_REGEX.test(rawInviteToken)
       ? rawInviteToken
       : null;
+  // T-039 Slice E-prime: URL ?src writes signupSource for attribution.
+  // 'std' / 'adv' map via the canonical helper in lib/funnel/source.ts.
+  // Otherwise null (this form leaves signupSource unset, matching prior
+  // behaviour — referrer fallback for this route is a separate follow-up).
+  const funnelSource = parseFunnelSource(searchParams.get("src"));
+  const signupSourceFromUrl = funnelSource
+    ? funnelSourceToSignupSource(funnelSource)
+    : null;
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +102,10 @@ function ParentSignupForm() {
           checkpointText: cp.text,
         })),
       );
-    } catch {}
+    } catch {
+      // Consent recording failed (DB tables may not exist yet) — don't block
+      // signup. Mirrors the sibling /signup form's behaviour at the same spot.
+    }
 
     const formData = new FormData();
     formData.append("email", data.email);
@@ -99,6 +114,8 @@ function ParentSignupForm() {
     formData.append("lastName", data.lastName);
     formData.append("role", "parent");
     if (inviteToken) formData.append("invite_token", inviteToken);
+    if (signupSourceFromUrl)
+      formData.append("signupSource", signupSourceFromUrl);
 
     const result = await signUp(formData);
 
