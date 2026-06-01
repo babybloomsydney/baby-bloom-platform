@@ -11,6 +11,7 @@
 
 import type { BloomBotModule, ToolDefinition, ToolResult } from "./types";
 import { createConnectionRequest } from "@/lib/actions/connection";
+import { CONNECTION_ERRORS } from "@/lib/actions/connection-errors";
 import {
   reportIntroOutcome,
   reportParentOutcome,
@@ -523,6 +524,17 @@ async function applySendConnectionRequest(
 
   const result = await createConnectionRequest(nannyId, message);
   if (!result.success) {
+    // T-041: server emits "POSITION_REQUIRED" as a sentinel for the modal
+    // UI to swap to a "create your position first" surface. Katie speaks
+    // English to parents, so translate the sentinel into a human message
+    // (and point at the same destination as the modal CTA).
+    if (result.error === CONNECTION_ERRORS.POSITION_REQUIRED) {
+      return {
+        success: false,
+        error:
+          "You'll need to create a nanny position first. Open the Position section from your hub (or visit /parent/request) and tell us about your family's needs — it only takes a few minutes.",
+      };
+    }
     return {
       success: false,
       error: result.error ?? "Failed to send connection request.",
