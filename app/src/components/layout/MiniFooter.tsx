@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 
@@ -11,7 +12,10 @@ const HIDDEN_PATHS = [
   "/apply",
 ];
 
-export function MiniFooter() {
+// useSearchParams forces the closest Suspense boundary to client-render;
+// wrapping the body in our own Suspense localises that cost to the footer
+// rather than bailing every page out of static optimisation.
+function MiniFooterInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
@@ -33,5 +37,13 @@ export function MiniFooter() {
         Terms
       </Link>
     </div>
+  );
+}
+
+export function MiniFooter() {
+  return (
+    <Suspense fallback={null}>
+      <MiniFooterInner />
+    </Suspense>
   );
 }

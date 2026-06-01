@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,10 @@ const DASHBOARDS: Record<string, string> = {
 
 const HIDDEN_PATHS = ["/matchmaking/onboarding", "/position/"];
 
-export function LandingHeader() {
+// useSearchParams forces the closest Suspense boundary to client-render;
+// wrapping the body in our own Suspense localises that cost to the header
+// rather than bailing every page out of static optimisation.
+function LandingHeaderInner() {
   const { user, role, isLoading } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -70,5 +74,13 @@ export function LandingHeader() {
           ))}
       </div>
     </header>
+  );
+}
+
+export function LandingHeader() {
+  return (
+    <Suspense fallback={null}>
+      <LandingHeaderInner />
+    </Suspense>
   );
 }
