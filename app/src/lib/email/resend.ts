@@ -1,9 +1,9 @@
-import { Resend } from 'resend';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { Resend } from "resend";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const DEFAULT_FROM = 'Baby Bloom <noreply@babybloomsydney.com.au>';
+const DEFAULT_FROM = "Baby Bloom <noreply@babybloomsydney.com.au>";
 
 export interface SendEmailParams {
   to: string | string[];
@@ -23,9 +23,43 @@ export interface SendEmailResult {
   error?: string;
 }
 
-export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  const { to, subject, html, text, from, replyTo, emailType, recipientUserId, attachments } = params;
+export async function sendEmail(
+  params: SendEmailParams,
+): Promise<SendEmailResult> {
+  const {
+    to,
+    subject,
+    html,
+    text,
+    from,
+    replyTo,
+    emailType,
+    recipientUserId,
+    attachments,
+  } = params;
   const recipientEmail = Array.isArray(to) ? to[0] : to;
+
+  // Dev/test guard: when EMAIL_DEV_DRY_RUN is true, skip the real Resend
+  // call but still log to email_logs so downstream "was the blast attempted"
+  // assertions hold. MUST NEVER be set in production. Used by the T-040
+  // autofire-on-signup E2E so the test can verify the pipeline without
+  // spamming real nannies with localhost URLs.
+  if (process.env.EMAIL_DEV_DRY_RUN === "true") {
+    await logEmail({
+      recipientUserId,
+      recipientEmail,
+      emailType,
+      subject,
+      bodyHtml: html,
+      bodyText: text,
+      status: "sent",
+      providerMessageId: "dry-run",
+    }).catch(() => {});
+    console.log(
+      `[Email] DRY-RUN — would send ${emailType} to ${recipientEmail}`,
+    );
+    return { success: true, messageId: "dry-run" };
+  }
 
   try {
     const { data, error } = await resend.emails.send({
@@ -39,7 +73,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     });
 
     if (error) {
-      console.error('[Email] Resend error:', error);
+      console.error("[Email] Resend error:", error);
       await logEmail({
         recipientUserId,
         recipientEmail,
@@ -47,7 +81,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
         subject,
         bodyHtml: html,
         bodyText: text,
-        status: 'failed',
+        status: "failed",
         errorMessage: error.message,
       });
       return { success: false, error: error.message };
@@ -62,16 +96,17 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       subject,
       bodyHtml: html,
       bodyText: text,
-      status: 'sent',
+      status: "sent",
       providerMessageId: messageId,
     });
 
-    console.log(`[Email] Sent ${emailType} to ${recipientEmail} (${messageId})`);
+    console.log(
+      `[Email] Sent ${emailType} to ${recipientEmail} (${messageId})`,
+    );
     return { success: true, messageId };
-
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[Email] Send exception:', message);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("[Email] Send exception:", message);
 
     await logEmail({
       recipientUserId,
@@ -80,7 +115,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       subject,
       bodyHtml: html,
       bodyText: text,
-      status: 'failed',
+      status: "failed",
       errorMessage: message,
     }).catch(() => {}); // Don't let logging failure mask the real error
 
@@ -105,6 +140,28 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
 }> {
   if (emails.length === 0) return { sent: 0, failed: 0 };
 
+  // Dry-run guard — same intent as sendEmail. Logs every would-be send to
+  // email_logs so the matchmaking blast pipeline's "did we attempt all
+  // these nannies" assertions still hold without hitting Resend.
+  if (process.env.EMAIL_DEV_DRY_RUN === "true") {
+    console.log(`[Email] Batch DRY-RUN — would send ${emails.length} emails`);
+    await Promise.allSettled(
+      emails.map((email) =>
+        logEmail({
+          recipientUserId: email.recipientUserId,
+          recipientEmail: email.to,
+          emailType: email.emailType,
+          subject: email.subject,
+          bodyHtml: email.html,
+          bodyText: email.text,
+          status: "sent",
+          providerMessageId: "dry-run",
+        }),
+      ),
+    );
+    return { sent: emails.length, failed: 0 };
+  }
+
   // Use Resend Batch API — single request for up to 100 personalized emails
   const BATCH_LIMIT = 100;
   let sent = 0;
@@ -114,7 +171,7 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
     const chunk = emails.slice(i, i + BATCH_LIMIT);
 
     try {
-      const payload = chunk.map(email => ({
+      const payload = chunk.map((email) => ({
         from: DEFAULT_FROM,
         to: [email.to],
         subject: email.subject,
@@ -125,12 +182,12 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
       const { data, error } = await resend.batch.send(payload);
 
       if (error) {
-        console.error('[Email] Batch API error:', error);
+        console.error("[Email] Batch API error:", error);
         failed += chunk.length;
 
         // Log all as failed
         await Promise.allSettled(
-          chunk.map(email =>
+          chunk.map((email) =>
             logEmail({
               recipientUserId: email.recipientUserId,
               recipientEmail: email.to,
@@ -138,10 +195,10 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
               subject: email.subject,
               bodyHtml: email.html,
               bodyText: email.text,
-              status: 'failed',
+              status: "failed",
               errorMessage: error.message,
-            })
-          )
+            }),
+          ),
         );
         continue;
       }
@@ -163,18 +220,19 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
             subject: email.subject,
             bodyHtml: email.html,
             bodyText: email.text,
-            status: idx < ids.length ? 'sent' : 'failed',
+            status: idx < ids.length ? "sent" : "failed",
             providerMessageId: ids[idx]?.id,
-          })
-        )
+          }),
+        ),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown batch error';
-      console.error('[Email] Batch send exception:', message);
+      const message =
+        err instanceof Error ? err.message : "Unknown batch error";
+      console.error("[Email] Batch send exception:", message);
       failed += chunk.length;
 
       await Promise.allSettled(
-        chunk.map(email =>
+        chunk.map((email) =>
           logEmail({
             recipientUserId: email.recipientUserId,
             recipientEmail: email.to,
@@ -182,15 +240,17 @@ export async function sendBatchEmails(emails: BatchEmailItem[]): Promise<{
             subject: email.subject,
             bodyHtml: email.html,
             bodyText: email.text,
-            status: 'failed',
+            status: "failed",
             errorMessage: message,
-          })
-        )
+          }),
+        ),
       );
     }
   }
 
-  console.log(`[Email] Batch: ${sent} sent, ${failed} failed out of ${emails.length}`);
+  console.log(
+    `[Email] Batch: ${sent} sent, ${failed} failed out of ${emails.length}`,
+  );
   return { sent, failed };
 }
 
@@ -203,7 +263,7 @@ interface LogEmailParams {
   subject: string;
   bodyHtml?: string;
   bodyText?: string;
-  status: 'sent' | 'failed';
+  status: "sent" | "failed";
   providerMessageId?: string;
   errorMessage?: string;
 }
@@ -211,7 +271,7 @@ interface LogEmailParams {
 async function logEmail(params: LogEmailParams): Promise<void> {
   try {
     const admin = createAdminClient();
-    await admin.from('email_logs').insert({
+    await admin.from("email_logs").insert({
       recipient_user_id: params.recipientUserId ?? null,
       recipient_email: params.recipientEmail,
       email_type: params.emailType,
@@ -219,12 +279,12 @@ async function logEmail(params: LogEmailParams): Promise<void> {
       body_html: params.bodyHtml ?? null,
       body_text: params.bodyText ?? null,
       status: params.status,
-      sent_at: params.status === 'sent' ? new Date().toISOString() : null,
-      failed_at: params.status === 'failed' ? new Date().toISOString() : null,
+      sent_at: params.status === "sent" ? new Date().toISOString() : null,
+      failed_at: params.status === "failed" ? new Date().toISOString() : null,
       error_message: params.errorMessage ?? null,
       provider_message_id: params.providerMessageId ?? null,
     });
   } catch (err) {
-    console.error('[Email] Failed to log email:', err);
+    console.error("[Email] Failed to log email:", err);
   }
 }
