@@ -203,19 +203,60 @@ test.describe("T-040 autofire on adv-funnel signup", () => {
       "at least one dfy_match_notifications row for the new position",
     ).toBeGreaterThan(0);
 
-    // The blast was attempted (email_logs row with status='sent' and
-    // provider_message_id='dry-run' — confirms the dry-run guard fired)
-    const { data: emailLogs } = await admin
+    // The nanny blast was attempted (email_logs rows for OTHER recipients
+    // with provider_message_id='dry-run' — confirms the dry-run guard
+    // suppressed real Resend calls but the pipeline ran)
+    const { data: blastLogs } = await admin
       .from("email_logs")
       .select("status, provider_message_id, email_type")
       .neq("recipient_email", TEST_EMAIL)
       .eq("provider_message_id", "dry-run")
       .order("created_at", { ascending: false })
       .limit(5);
-    // Any 'dry-run' entries from this test run are sufficient evidence
     expect(
-      (emailLogs ?? []).length,
-      "at least one nanny-blast email_logs entry with dry-run marker (confirms EMAIL_DEV_DRY_RUN was active)",
+      (blastLogs ?? []).length,
+      "at least one nanny-blast email_logs entry with dry-run marker",
     ).toBeGreaterThan(0);
+
+    // T-040 Step 1c: the parent receives the ADV welcome (not the
+    // standard "create your position" welcome). Verify by email_type.
+    // Small retry loop because Supabase row visibility can lag by ~100ms.
+    let parentEmails: {
+      email_type: string;
+      status: string;
+      recipient_email?: string;
+    }[] = [];
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { data } = await admin
+        .from("email_logs")
+        .select("email_type, status, recipient_email")
+        .ilike("recipient_email", TEST_EMAIL)
+        .order("created_at", { ascending: false });
+      parentEmails = (data ?? []) as typeof parentEmails;
+      if (parentEmails.length > 0) break;
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    // Diagnostic — if the assertion fails, surface a recent slice of
+    // email_logs so the cause is visible in the test output.
+    if (parentEmails.length === 0) {
+      const { data: recent } = await admin
+        .from("email_logs")
+        .select("email_type, status, recipient_email, created_at")
+        .order("created_at", { ascending: false })
+        .limit(10);
+      console.log(
+        `[autofire-test] no email_logs for ${TEST_EMAIL}; recent rows:`,
+        JSON.stringify(recent, null, 2),
+      );
+    }
+    const types = parentEmails.map((e) => e.email_type);
+    expect(
+      types,
+      "adv-funnel signup must send welcome_adv_parent email",
+    ).toContain("welcome_adv_parent");
+    expect(
+      types,
+      "adv-funnel signup must NOT send the generic 'welcome' email (would say 'create your position' which is already done)",
+    ).not.toContain("welcome");
   });
 });

@@ -10,15 +10,30 @@ import {
 import { POSITION_STAGE, POSITION_STATUS } from "@/lib/position/constants";
 import type { TypeformFormData } from "@/app/parent/request/questions";
 import { autofireMatchmaking } from "./autofire-matchmaking";
+import { sendEmail } from "@/lib/email/resend";
+import { buildWelcomeAdvParentEmail } from "@/lib/email/templates/welcome-adv-parent";
+import { buildWelcomeParentEmail } from "@/lib/email/templates/welcome-parent";
+
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL || "https://app-babybloom.vercel.app";
 
 /**
  * Sign up a new parent AND convert their lead into real position records.
  * Called from the post-onboarding signup page (/matchmaking/signup?lead=X).
+ *
+ * The standard "now create a position" welcome email is suppressed for this
+ * audience: their position is created + DFY-autofired inside this function,
+ * so they get the adv-parent welcome (matchmaking-live framing + connection
+ * stepper) afterwards instead. See `welcome-adv-parent.ts` + T-040 Step 1c.
  */
 export async function signUpAndConvertLead(
   formData: FormData,
   leadId: string,
 ): Promise<ActionResult> {
+  // T-040 Step 1c: tell signUp to skip the generic welcome. We send our
+  // own context-aware welcome below once the position + autofire are done.
+  formData.set("skip_welcome_email", "true");
+
   // Step 1: Create the auth user + parent record via existing signUp
   const signUpResult = await signUp(formData);
 
@@ -200,6 +215,41 @@ export async function signUpAndConvertLead(
   // has its own try/catch and swallows blast failures internally.
   if (createdPositionId) {
     await autofireMatchmaking(createdPositionId);
+  }
+
+  // Step 8 (T-040 Step 1c): Send the context-aware welcome email.
+  // - If the position was created → adv-parent welcome ("matchmaking live"
+  //   + connection stepper). This is the case ~all signUpAndConvertLead
+  //   calls land in.
+  // - If position creation silently failed (e.g. constraint violation logged
+  //   above) → fall back to the standard welcome so the parent at least
+  //   gets onboarded; the in-product no-position banner (T-039 Slice E')
+  //   nudges them through `/parent/request` to recreate.
+  const recipientEmail = formData.get("email") as string | null;
+  const recipientFirstName =
+    (formData.get("firstName") as string | null) ?? "there";
+  if (recipientEmail) {
+    const template = createdPositionId
+      ? buildWelcomeAdvParentEmail({
+          firstName: recipientFirstName,
+          appUrl: APP_URL,
+        })
+      : buildWelcomeParentEmail({
+          firstName: recipientFirstName,
+          appUrl: APP_URL,
+        });
+    // Awaited so the email_logs row exists by the time the caller
+    // returns — important for tests + for ops queries that want to
+    // tie a signup to its outgoing welcome. The wrapping `.catch`
+    // keeps an email-provider failure from aborting the redirect.
+    await sendEmail({
+      to: recipientEmail,
+      subject: template.subject,
+      html: template.html,
+      emailType: createdPositionId ? "welcome_adv_parent" : "welcome",
+    }).catch((err) =>
+      console.error("[lead-conversion] Welcome email error:", err),
+    );
   }
 
   // Override redirect to browse page with matches tab active

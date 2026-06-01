@@ -346,6 +346,12 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
         emailType: "welcome-invite-parent",
         recipientUserId: userId,
       }).catch((err) => console.error("[Signup] ACC-003 email error:", err));
+    } else if (formData.get("skip_welcome_email") === "true") {
+      // T-040 Step 1c: caller (currently `signUpAndConvertLead` for the
+      // adv funnel) takes responsibility for sending a context-aware
+      // welcome email AFTER the position is created + autofire has run.
+      // We skip here so the parent never sees the generic "now create
+      // a position" copy when their position is already live.
     } else {
       const { subject, html } = buildWelcomeParentEmail({ firstName, appUrl });
       sendEmail({

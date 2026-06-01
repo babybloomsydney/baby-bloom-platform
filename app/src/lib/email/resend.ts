@@ -271,7 +271,11 @@ interface LogEmailParams {
 async function logEmail(params: LogEmailParams): Promise<void> {
   try {
     const admin = createAdminClient();
-    await admin.from("email_logs").insert({
+    // Supabase's .insert() resolves to `{ data, error }` rather than
+    // throwing — without checking `error` here, schema mismatches (e.g.
+    // a CHECK constraint on email_type rejecting a new value) silently
+    // disappear and the email is sent but never reconciled in our logs.
+    const { error } = await admin.from("email_logs").insert({
       recipient_user_id: params.recipientUserId ?? null,
       recipient_email: params.recipientEmail,
       email_type: params.emailType,
@@ -284,6 +288,12 @@ async function logEmail(params: LogEmailParams): Promise<void> {
       error_message: params.errorMessage ?? null,
       provider_message_id: params.providerMessageId ?? null,
     });
+    if (error) {
+      console.error(
+        `[Email] email_logs insert rejected for type=${params.emailType} to=${params.recipientEmail}:`,
+        error,
+      );
+    }
   } catch (err) {
     console.error("[Email] Failed to log email:", err);
   }
