@@ -1,21 +1,7 @@
 "use server";
 
-/**
- * Error-code sentinels emitted by the connection actions for the client
- * to dispatch on. Keep this list small + intentional — every entry here
- * is a flow-control signal the client surfaces as a dedicated UI branch.
- *
- * Note: `'use server'` files cannot directly re-export non-async values
- * to client components. Clients should compare against the literal strings
- * (e.g. `result.error === "POSITION_REQUIRED"`); the const is here as the
- * authoritative source and is consumed inside this module + the test files.
- */
-export const CONNECTION_ERRORS = {
-  POSITION_REQUIRED: "POSITION_REQUIRED",
-  VERIFICATION_REQUIRED: "VERIFICATION_REQUIRED",
-} as const;
-
 import { createClient } from "@/lib/supabase/server";
+import { CONNECTION_ERRORS } from "./connection-errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 import { getParentId } from "./parent";

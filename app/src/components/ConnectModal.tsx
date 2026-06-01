@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createConnectionRequest } from "@/lib/actions/connection";
+import { CONNECTION_ERRORS } from "@/lib/actions/connection-errors";
 import { recordInformedAction } from "@/lib/legal/record-consent";
 import {
   X,
@@ -104,9 +105,9 @@ export function ConnectModal({
         onClose();
         router.push("/parent/connections");
       }, 3000);
-    } else if (result.error === "POSITION_REQUIRED") {
+    } else if (result.error === CONNECTION_ERRORS.POSITION_REQUIRED) {
       setPositionRequired(true);
-    } else if (result.error === "VERIFICATION_REQUIRED") {
+    } else if (result.error === CONNECTION_ERRORS.VERIFICATION_REQUIRED) {
       setVerificationRequired(true);
     } else {
       setError(result.error || "Failed to send request");

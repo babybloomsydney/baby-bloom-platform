@@ -11,6 +11,7 @@
 
 import type { BloomBotModule, ToolDefinition, ToolResult } from "./types";
 import { createConnectionRequest } from "@/lib/actions/connection";
+import { CONNECTION_ERRORS } from "@/lib/actions/connection-errors";
 import {
   reportIntroOutcome,
   reportParentOutcome,
@@ -527,7 +528,7 @@ async function applySendConnectionRequest(
     // UI to swap to a "create your position first" surface. Katie speaks
     // English to parents, so translate the sentinel into a human message
     // (and point at the same destination as the modal CTA).
-    if (result.error === "POSITION_REQUIRED") {
+    if (result.error === CONNECTION_ERRORS.POSITION_REQUIRED) {
       return {
         success: false,
         error:
