@@ -99,6 +99,7 @@ function SignupForm() {
   });
 
   async function onSubmit(data: SignupFormData) {
+    if (!allConsentsChecked) return;
     setIsLoading(true);
     setError(null);
 
@@ -127,6 +128,19 @@ function SignupForm() {
     }
     formData.append("signupSource", source);
 
+    const result = await signUp(formData);
+
+    if (result.error) {
+      setError(result.error);
+      setIsLoading(false);
+      return;
+    }
+
+    // Record AGR-01 consent AFTER signUp so the auth session exists —
+    // recordConsent requires an authenticated user, so calling it before
+    // signUp silently no-ops ("Not authenticated") and nothing lands in
+    // consent_records. Fail-soft: the UI gate already enforced consent; a
+    // record-write failure must not block the now-created account.
     try {
       await recordConsent(
         AGR01_CHECKPOINTS.map((cp) => ({
@@ -136,15 +150,10 @@ function SignupForm() {
         })),
       );
     } catch {
-      // Consent recording failed (DB tables may not exist yet) — don't block signup
+      // non-blocking — consent record only
     }
 
-    const result = await signUp(formData);
-
-    if (result.error) {
-      setError(result.error);
-      setIsLoading(false);
-    } else if (result.redirectTo) {
+    if (result.redirectTo) {
       setIsRedirecting(true);
       window.location.href = result.redirectTo;
     }

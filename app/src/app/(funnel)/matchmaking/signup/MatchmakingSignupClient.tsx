@@ -92,16 +92,6 @@ export function MatchmakingSignupClient({
     setIsLoading(true);
     setError(null);
 
-    try {
-      await recordConsent(
-        AGR01_CHECKPOINTS.map((cp) => ({
-          agreementId: "AGR-01",
-          checkpointId: cp.id,
-          checkpointText: cp.text,
-        })),
-      );
-    } catch {}
-
     const formData = new FormData();
     formData.append("email", data.email);
     formData.append("password", data.password);
@@ -118,7 +108,24 @@ export function MatchmakingSignupClient({
     if (result.error) {
       setError(result.error);
       setIsLoading(false);
-    } else if (result.redirectTo) {
+      return;
+    }
+
+    // Record AGR-01 consent AFTER signup so the auth session exists (fail-soft;
+    // the UI gate already enforced consent — see /signup for the full rationale).
+    try {
+      await recordConsent(
+        AGR01_CHECKPOINTS.map((cp) => ({
+          agreementId: "AGR-01",
+          checkpointId: cp.id,
+          checkpointText: cp.text,
+        })),
+      );
+    } catch {
+      // non-blocking — consent record only
+    }
+
+    if (result.redirectTo) {
       setIsRedirecting(true);
       window.location.href = result.redirectTo;
     }
