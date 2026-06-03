@@ -3,96 +3,13 @@
 import { useState, useRef, useEffect } from "react";
 import { Camera, X, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { compressImageForUpload } from "@/lib/images/compress";
+import { mapUploadError } from "@/lib/images/errors";
 
-// Maximum target size for the uploaded file. Vercel's default serverless
-// function body limit is 4.5 MB; we target 2 MB so the multipart-encoded
-// request comfortably fits with overhead. iPhone HEIC + HDR + Live Photo
-// captures routinely exceed Vercel's limit, which previously caused the
-// request to be silently dropped at the edge before reaching our route.
-// (V2.1 launch 2026-05-19 — Bailey reported iPhone Safari library uploads
-// failing intermittently while desktop and camera capture worked.)
-const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
-
-// Cap the longest edge of the re-encoded image. 2000px covers feed
-// rendering at retina densities without being wasteful. Anything larger
-// is downscaled before JPEG encode.
-const MAX_DIMENSION = 2000;
-
-/**
- * Re-encode and (if needed) downscale a user-picked image so the upload
- * always fits Vercel's body limit. Handles HEIC implicitly on iOS Safari
- * (which natively decodes HEIC into <img>), and produces JPEG output so
- * the resulting URL renders in every browser (HEIC doesn't display in
- * desktop browsers).
- *
- * Falls back to the original file if:
- *   - It's already under the size limit AND in a web-renderable format
- *   - The canvas pipeline fails (browser doesn't support the source format)
- *
- * The route still enforces server-side type + size checks; this is the
- * client-side optimisation that prevents Vercel's edge from dropping
- * the request before it lands.
- */
-async function compressImageForUpload(file: File): Promise<File | Blob> {
-  const isHeic =
-    file.type === "image/heic" ||
-    file.type === "image/heif" ||
-    /\.heic$|\.heif$/i.test(file.name);
-
-  // Fast path: already small + web-renderable. Skip canvas roundtrip.
-  if (file.size <= MAX_UPLOAD_BYTES && !isHeic) {
-    return file;
-  }
-
-  let url: string | null = null;
-  try {
-    url = URL.createObjectURL(file);
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error("Browser couldn't decode this image"));
-      i.src = url!;
-    });
-
-    let { width, height } = img;
-    if (width === 0 || height === 0) {
-      throw new Error("Image has no dimensions");
-    }
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(width, height));
-    width = Math.round(width * scale);
-    height = Math.round(height * scale);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas 2D context unavailable");
-    ctx.drawImage(img, 0, 0, width, height);
-
-    // Try progressively lower JPEG quality until we're under the size cap.
-    for (const quality of [0.85, 0.75, 0.65, 0.55, 0.45]) {
-      const blob: Blob | null = await new Promise((resolve) =>
-        canvas.toBlob((b) => resolve(b), "image/jpeg", quality),
-      );
-      if (blob && blob.size <= MAX_UPLOAD_BYTES) {
-        return blob;
-      }
-    }
-    // Last-resort low-quality JPEG. Better a degraded photo than a failed upload.
-    const finalBlob: Blob | null = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b), "image/jpeg", 0.35),
-    );
-    if (finalBlob) return finalBlob;
-    return file;
-  } catch {
-    // If the browser can't decode the source (e.g. HEIC on desktop Chrome),
-    // fall back to the original file. The server-side size check will reject
-    // anything too large with a clear error.
-    return file;
-  } finally {
-    if (url) URL.revokeObjectURL(url);
-  }
-}
+// Compression + error-mapping live in `@/lib/images/` so every media-
+// upload surface can re-use the same logic (T-028). The original inline
+// impl (HOTFIX-01, commit 7ba16ac) was extracted in Wave 1 of T-028 —
+// behaviour identical; this component now just imports.
 
 interface ImageUploadProps {
   childId: string;
@@ -177,12 +94,10 @@ export function ImageUpload({
       // Compress/convert before upload — iPhone HEIC/HDR/Live photos can
       // exceed Vercel's 4.5 MB body limit and get dropped at the edge
       // before reaching our route. canvas re-encode produces a JPEG ≤2 MB.
-      let payload: File | Blob = file;
-      try {
-        payload = await compressImageForUpload(file);
-      } catch (err) {
-        console.error("Image compression failed; uploading original:", err);
-      }
+      // compressImageForUpload is non-throwing by contract — internal
+      // errors fall through to returning the original `file` with a
+      // console.warn breadcrumb (see lib/images/compress.ts).
+      const payload = await compressImageForUpload(file);
       if (controller.signal.aborted) return;
 
       const formData = new FormData();
@@ -207,7 +122,7 @@ export function ImageUpload({
         setPreview(null);
         // Surface specific server messages where helpful so the user
         // knows what to do — generic "Upload failed" hides real causes.
-        const friendly = mapUploadError(res.status, result);
+        const friendly = mapUploadError(res.status, result, "child-feed");
         setError(friendly);
         onUploaded(null);
       }
@@ -229,29 +144,6 @@ export function ImageUpload({
         setUploading(false);
       }
     }
-  }
-
-  /** Surface server-side error reasons to the user. The route returns
-   *  structured error codes the user can act on — show them the cause,
-   *  not a generic "Upload failed". */
-  function mapUploadError(
-    status: number,
-    body: { error?: string; reason?: string } | undefined,
-  ): string {
-    if (status === 401) return "Sign in expired — refresh and try again.";
-    if (status === 403 && body?.error === "media_consent_required") {
-      return "Waiting for the parent to accept the consent for this child before photos can be uploaded.";
-    }
-    if (status === 400 && body?.error === "Image must be under 10MB") {
-      return "Photo is too large. Try a smaller image or one taken at lower resolution.";
-    }
-    if (status === 400 && body?.error === "File must be an image") {
-      return "Only image files are supported.";
-    }
-    if (status === 413) {
-      return "Photo is too large to upload. Try a smaller image.";
-    }
-    return "Upload failed. Try again or skip the photo.";
   }
 
   function handleRemove() {

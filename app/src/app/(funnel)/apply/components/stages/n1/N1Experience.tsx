@@ -53,6 +53,20 @@ export function N1Experience({
       return age < 18;
     })();
 
+    // Outlier DOB guard — catches typos / incidental date entries
+    // (e.g. someone fat-fingering the year and ending up as age ~208).
+    // Not mentioned anywhere in the UI unless triggered; data-hygiene
+    // only, not a published policy.
+    const isOver80 = (() => {
+      if (!experience.date_of_birth) return false;
+      const dob = new Date(experience.date_of_birth);
+      const today = new Date();
+      let age = today.getFullYear() - dob.getFullYear();
+      const m = today.getMonth() - dob.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+      return age > 80;
+    })();
+
     const isTenPlus = experience.total_experience === "10+";
     const totalExp = experience.total_experience
       ? isTenPlus
@@ -86,6 +100,7 @@ export function N1Experience({
     const canContinue =
       experience.date_of_birth !== null &&
       !isUnder18 &&
+      !isOver80 &&
       hasEnoughExp &&
       experience.under_3_experience_yn !== null &&
       (experience.under_3_experience_yn === false ||
@@ -149,9 +164,27 @@ export function N1Experience({
             </div>
           )}
 
+          {/* Outlier DOB warning — soft nudge to re-check, not an age-cap
+              policy. Only shown when the entered DOB lands the user past 80. */}
+          {isOver80 && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex flex-col gap-1">
+                <p className="text-sm font-medium text-amber-800">
+                  That doesn&apos;t look right
+                </p>
+                <p className="text-sm text-amber-700">
+                  Please double-check your date of birth.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Total experience — slider 0-10+ */}
           <ProgressiveReveal
-            show={experience.date_of_birth !== null && !isUnder18}
+            show={
+              experience.date_of_birth !== null && !isUnder18 && !isOver80
+            }
           >
             <div className="flex flex-col gap-2 pt-2">
               <Label className="text-sm font-medium text-slate-700">
