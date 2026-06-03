@@ -51,6 +51,15 @@ vi.mock("@/lib/actions/bapp/child-invites", () => ({
   declineChildInvite: vi.fn(async () => state.declineResult),
 }));
 
+// T-015 — `PolicyContent` is an async server component that
+// fetches from Supabase. Stub it to a synchronous element so the
+// client-side React Testing Library render doesn't see a Promise.
+vi.mock("@/components/legal/PolicyContent", () => ({
+  PolicyContent: ({ slug }: { slug: string }) => (
+    <div data-testid={`policy-stub-${slug}`}>policy:{slug}</div>
+  ),
+}));
+
 import { InviteLandingClient } from "./InviteLandingClient";
 
 const TOKEN = "ABCD-2345";
@@ -374,7 +383,9 @@ describe("InviteLandingClient — switch-confirmation gate", () => {
     });
     expect(switchButton).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("checkbox"));
+    // T-015 — there's now a second checkbox (consent). Pick the
+    // first (the switch-confirmation one).
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
     expect(switchButton).not.toBeDisabled();
   });
 

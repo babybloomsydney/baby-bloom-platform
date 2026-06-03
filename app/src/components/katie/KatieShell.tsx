@@ -41,6 +41,9 @@ import {
  *  one place to be added. */
 const DISTRACTION_FREE_PATHS = [
   "/nanny/onboarding-verification",
+  // T-022 — onboarding contributions page is part of the same focused
+  // signup flow; same hide-DashboardNav-and-Katie-tabs treatment.
+  "/nanny/onboarding/add-child",
   "/parent/request",
 ];
 
@@ -54,7 +57,17 @@ function isDistractionFreePath(pathname: string): boolean {
  *  add visual noise + ambiguous routing. Kept separate from
  *  `DISTRACTION_FREE_PATHS` because we DO want the global header /
  *  avatar dropdown / sign-out on settings. */
-const TABS_HIDDEN_PATHS = ["/nanny/settings", "/parent/settings"];
+const TABS_HIDDEN_PATHS = [
+  "/nanny/settings",
+  "/parent/settings",
+  // Payments surfaces — Katie/Portal tabs are noise on these. Per
+  // FRONTEND/03-build-spec.md § "Navigation chrome rules" + UX-FIX-PLAN
+  // FIX-3 / FIX-4 (2026-05-12 audit).
+  "/parent/subscribe",
+  "/parent/subscription",
+  "/subscribe-for",
+  "/nanny/payouts",
+];
 
 function isTabsHiddenPath(pathname: string): boolean {
   return TABS_HIDDEN_PATHS.some((p) => pathname.startsWith(p));

@@ -21,6 +21,7 @@ import {
   Settings,
   TrendingUp,
   UserPlus,
+  Phone,
 } from "lucide-react";
 
 interface RecentUser {
@@ -288,6 +289,20 @@ export default async function AdminDashboardPage() {
           Quick Actions
         </h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Link href="/admin/leads">
+            <Card className="cursor-pointer transition-shadow hover:shadow-md">
+              <CardContent className="flex items-center gap-4 p-6">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-violet-100">
+                  <Phone className="h-6 w-6 text-violet-500" />
+                </div>
+                <div>
+                  <h3 className="font-medium">Contacts</h3>
+                  <p className="text-sm text-slate-500">Nanny contact log</p>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
           <Link href="/admin/pipeline">
             <Card className="cursor-pointer transition-shadow hover:shadow-md">
               <CardContent className="flex items-center gap-4 p-6">

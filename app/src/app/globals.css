@@ -137,3 +137,26 @@
     font-size: max(16px, 1rem) !important;
   }
 }
+
+/* ──────────────────────────────────────────────────────────────────
+   Reduced-motion guard — WCAG 2.2 SC 2.3.3.
+
+   Many surfaces in the app (Radix Dialog / Sheet / Tabs) ship with
+   fade / zoom / slide animations by default. Users with vestibular
+   disorders can experience nausea from these — particularly the
+   slide-from-top entrance on full-screen modals.
+
+   Respects `prefers-reduced-motion: reduce` (set in OS
+   accessibility preferences) by collapsing all animation /
+   transition durations to near-zero. Applies project-wide.
+   ────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

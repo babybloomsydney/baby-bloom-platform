@@ -16,7 +16,9 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ProgressChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { isChildNameInPreloadProfiles } from "@/lib/chat/preload/predicates";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 import {
   recalculateProgress,
   writeHistorySnapshot,
@@ -408,6 +410,18 @@ export async function applyUpdateProgress(
   }
   const { child, cleaned, progressData } = r.prepared;
 
+  // T-015 media gate — block image_url writes without parent consent.
+  if (progressData.image_url) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
+
   // Mirror logBulkProgress: write the progress row first so the
   // child's feed shows this update, then recalc + snapshot. Shape
   // matches ProgressData in src/types/bapp.ts so the same row
@@ -452,6 +466,19 @@ export async function applyUpdateProgress(
     }. Your update is in the feed.`;
   }
 
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Placed AFTER the cascade block for readability:
+  // the cascade is wrapped in its own try/catch, so placement does NOT
+  // affect exception safety — the email semantically belongs at the end,
+  // after the post-insert side-effects have settled.
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "progress",
+    logContext: "adhoc",
+  });
+
   const nowIso = new Date().toISOString();
   return {
     ok: true,
@@ -470,6 +497,7 @@ export const progressModule: BloomBotModule = {
   name: "Child Progress",
   description:
     "Reads EYLF milestones for a child's age bracket along with their observed scores and per-domain completion percent, and applies direct progress updates.",
+  childScoped: true,
 
   tools: [
     {

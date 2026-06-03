@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { cancelInFlightCommission } from "@/lib/payments/commission-cancel";
 
 /**
  * Cron — expire-cancelled-subscriptions
@@ -62,6 +63,23 @@ export async function GET(request: NextRequest) {
         lapsed_at: nowIso,
       },
     });
+
+    // T-018 Lock 3 safety net: `cancelled → lapsed` is NOT a paying→terminal
+    // transition (cancelled isn't in the paying-state list), so the
+    // DB trigger does not fire here. Normally there are zero pending/held
+    // rows by this point (they were cancelled at the prior `active → cancelled`
+    // transition), but a race or trigger failure could have left some.
+    // Belt-and-suspenders cancel any residuals so they never pay out.
+    try {
+      await cancelInFlightCommission(row.id, "parent_cancelled");
+    } catch (err: unknown) {
+      console.error(
+        "[cron:expire-cancelled] cancel-in-flight safety net failed",
+        row.id,
+        err,
+      );
+    }
+
     lapsed++;
   }
 

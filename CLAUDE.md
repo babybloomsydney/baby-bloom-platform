@@ -1,5 +1,32 @@
 # CLAUDE.md - Baby Bloom Sydney
 
+## ⚠️ TEAM COORDINATION — READ EVEN BEFORE ECC
+
+> **You are part of a multi-agent team.** Multiple Claude sessions, sub-agents, and Bailey himself can be active concurrently. Coordination happens through the OPERATIONS folder at the project root. **This CLAUDE.md is the code-specific layer; the team-coordination layer lives one level up.**
+
+**Mandatory reads at session start (before anything else, including the ECC section below):**
+
+1. **[`/CLAUDE.md`](../../CLAUDE.md)** — top-level project CLAUDE.md. Mandates OPERATIONS reading.
+2. **[`/system/OPERATIONS/README.md`](../../system/OPERATIONS/README.md)** — orientation: what's active, who's working what.
+3. **[`/system/OPERATIONS/INDEX.md`](../../system/OPERATIONS/INDEX.md)** — current state of every active task.
+4. **[`/system/OPERATIONS/PROTOCOLS/PLANNING-VS-IMPLEMENTATION.md`](../../system/OPERATIONS/PROTOCOLS/PLANNING-VS-IMPLEMENTATION.md)** — confirm whether you're a planning agent (writes specs) or coding agent (writes code). **CRITICAL.** Coding agents work from a handoff doc; planning agents do NOT touch app code.
+5. **[`/system/OPERATIONS/PROTOCOLS/HANDLE-CONVENTION.md`](../../system/OPERATIONS/PROTOCOLS/HANDLE-CONVENTION.md)** — pick your handle (PREFERRED: actual session name).
+6. **[`/system/OPERATIONS/PROTOCOLS/CONTEXT-REFRESH.md`](../../system/OPERATIONS/PROTOCOLS/CONTEXT-REFRESH.md)** — mandatory after every sub-task to prevent drift.
+7. **[`/system/OPERATIONS/PROTOCOLS/SIGN-OFF-FORMAT.md`](../../system/OPERATIONS/PROTOCOLS/SIGN-OFF-FORMAT.md)** — every edit signed + timestamped. ANZ format with explicit `+10:00` / `+11:00` offset. Date-only fields banned.
+8. **[`/system/OPERATIONS/PROTOCOLS/COMMIT-DISCIPLINE.md`](../../system/OPERATIONS/PROTOCOLS/COMMIT-DISCIPLINE.md)** — commit workspace docs at every task boundary. Code commits in THIS repo (`BB/nanny-platform/.git`) are separate from doc commits in the WORKSPACE repo (`/Users/bai/.openclaw/workspace/.git`). When code ships, the corresponding `system/APP/...` specs + `system/OPERATIONS/...` PROGRESS updates need a commit in the workspace too. Authored 2026-05-20 after the `rm -rf system` incident destroyed uncommitted docs.
+
+After those reads, the ECC discipline below applies for the actual code work.
+
+The hierarchy if rules conflict (highest wins):
+1. `~/.claude/rules/` — base ECC rules.
+2. **This file** — code-specific overrides for this project.
+3. **`/CLAUDE.md`** + `/system/OPERATIONS/PROTOCOLS/*` — team-coordination layer.
+4. Per-task `00-context.md` — task-specific notes.
+
+If something here conflicts with the OPERATIONS protocols, this file wins for code-specific concerns; OPERATIONS wins for team-coordination concerns. Raise conflicts via `/system/OPERATIONS/INDEX.md` "Open KEY decisions" if uncertain.
+
+---
+
 ## ECC Discipline (READ FIRST — NON-NEGOTIABLE)
 
 > **ECC = Everything Claude Code** — the full set of skills, agents, rules,
@@ -131,7 +158,8 @@ Grouped by purpose so you can pick fast. Full one-line descriptions live at the 
 4. [code-reviewer + typescript-reviewer + silent-failure-hunter]  ← parallel
 5. apply HIGH + MEDIUM fixes
 6. npm run lint && npm run typecheck && npm test && npm run build
-7. commit with conventional-commit format
+7. commit with conventional-commit format (in `BB/nanny-platform/.git`)
+8. **In the WORKSPACE repo** (`/Users/bai/.openclaw/workspace/.git`), commit the corresponding doc updates — PROGRESS.md, spec amendments, handoff docs. Two repos, two commits. See [`/system/OPERATIONS/PROTOCOLS/COMMIT-DISCIPLINE.md`](../../system/OPERATIONS/PROTOCOLS/COMMIT-DISCIPLINE.md).
 ```
 
 **Bug fix**

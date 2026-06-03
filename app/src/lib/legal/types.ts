@@ -12,7 +12,9 @@ export type AgreementId =
   | "AGR-11" // Professional Hire Confirmation
   | "AGR-12" // Professional Facebook Sharing
   | "AGR-13" // Website Visitor (Cookie)
-  | "AGR-14"; // Nanny child-add — legal guardian permission (invite linking)
+  | "AGR-14" // Nanny child-add — legal guardian permission (invite linking)
+  | "PARENT-APP-CONSENT" // Bundled per-child parent consent (Bailey 2026-05-14 — covers app use + photos + sensitive info; 12-month renewable). Diverges from T-014's AGR-20 fragmentation — see T-015 CONSENT-MODEL-DIVERGENCE-NOTE.md.
+  | "NANNY-ATTESTATION"; // Bundled per-child nanny attestation (Bailey 2026-05-14 — covers professional ToS for that engagement; 12-month renewable).
 
 export interface CheckpointConfig {
   id: string;

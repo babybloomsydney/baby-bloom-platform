@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { displayName, displayFullName } from "@/lib/auth/display-name";
 import { SidebarItem } from "./SidebarItem";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,10 @@ import {
   Link2,
   Award,
   Share2,
+  CreditCard,
+  Wallet,
+  LifeBuoy,
+  Phone,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -67,9 +72,17 @@ const parentNavItems = [
 const adminNavItems = [
   { href: "/admin/dashboard", icon: Home, label: "Dashboard" },
   { href: "/admin/pipeline", icon: Filter, label: "User Pipeline" },
+  { href: "/admin/leads", icon: Phone, label: "Contacts" },
   { href: "/admin/positions", icon: Briefcase, label: "Positions" },
   { href: "/admin/users", icon: Users, label: "User Management" },
-  { href: "/admin/verification-reference", icon: BookOpen, label: "Verification Ref" },
+  { href: "/admin/subscriptions", icon: CreditCard, label: "Subscriptions" },
+  { href: "/admin/payouts", icon: Wallet, label: "Payouts" },
+  { href: "/admin/support", icon: LifeBuoy, label: "Support" },
+  {
+    href: "/admin/verification-reference",
+    icon: BookOpen,
+    label: "Verification Ref",
+  },
   { href: "/admin/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
@@ -93,17 +106,17 @@ export function Sidebar({ role: propRole, collapsed, onToggle }: SidebarProps) {
   const { user, role: authRole, profile, signOut } = useAuth();
 
   // Use auth role if user is logged in, otherwise fall back to prop
-  const role: UserRole = (user && authRole) ? authRole as UserRole : propRole;
+  const role: UserRole = user && authRole ? (authRole as UserRole) : propRole;
   const isGuest = role === "guest";
   const navItems = navItemsByRole[role] || publicNavItems;
 
-  const fullName = profile
-    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-    : "";
-  const firstName = profile?.first_name || "User";
+  const fullName = displayFullName(profile, user);
+  const firstName = displayName(profile, user);
 
   return (
-    <aside className={`flex h-full flex-col border-r bg-white transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}>
+    <aside
+      className={`flex h-full flex-col border-r bg-white transition-all duration-200 ${collapsed ? "w-16" : "w-64"}`}
+    >
       {/* Logo — click to toggle collapse */}
       <button
         onClick={onToggle}
@@ -143,12 +156,19 @@ export function Sidebar({ role: propRole, collapsed, onToggle }: SidebarProps) {
           {collapsed ? (
             <div className="flex flex-col items-center gap-2">
               <Link href="/login">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500 hover:text-violet-600">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-500 hover:text-violet-600"
+                >
                   <LogIn className="h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button size="icon" className="h-8 w-8 bg-violet-500 hover:bg-violet-600">
+                <Button
+                  size="icon"
+                  className="h-8 w-8 bg-violet-500 hover:bg-violet-600"
+                >
                   <UserPlus className="h-4 w-4" />
                 </Button>
               </Link>
@@ -158,7 +178,10 @@ export function Sidebar({ role: propRole, collapsed, onToggle }: SidebarProps) {
               <Button variant="outline" asChild className="w-full">
                 <Link href="/login">Log in</Link>
               </Button>
-              <Button asChild className="w-full bg-violet-500 hover:bg-violet-600">
+              <Button
+                asChild
+                className="w-full bg-violet-500 hover:bg-violet-600"
+              >
                 <Link href="/signup">Sign Up</Link>
               </Button>
             </div>
@@ -194,7 +217,9 @@ export function Sidebar({ role: propRole, collapsed, onToggle }: SidebarProps) {
                 <p className="truncate text-sm font-medium text-slate-900">
                   {firstName}
                 </p>
-                <p className="truncate text-xs text-slate-500 capitalize">{role}</p>
+                <p className="truncate text-xs text-slate-500 capitalize">
+                  {role}
+                </p>
               </div>
               <Button
                 variant="ghost"

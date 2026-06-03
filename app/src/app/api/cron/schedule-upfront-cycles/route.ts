@@ -101,9 +101,7 @@ export async function GET(request: NextRequest) {
 
     const result = await scheduleCommissionFor({
       parentSubscriptionId: sub.id,
-      trigger: "cycle_completed",
       cycleIndex: nextCycleIndex,
-      cycleEndsAt,
     });
 
     if (result.ok) {

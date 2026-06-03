@@ -34,6 +34,7 @@ import {
   Settings,
   Users,
   LifeBuoy,
+  CreditCard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +105,7 @@ function buildTree(childCount: number): SettingsNode[] {
           ? { label: String(childCount), tone: "neutral" }
           : undefined,
     },
+    { id: "subscription", label: "Subscription", icon: CreditCard },
     { id: "contact-us", label: "Contact Us", icon: LifeBuoy },
     // Hidden danger leaf — reached only via the small link at the
     // bottom of Account's drill-down menu.
@@ -149,6 +151,8 @@ export function ParentSettingsClient({ profile, managedChildren = [] }: Props) {
             return <SecuritySection />;
           case "linked-children":
             return <ChildrenSection items={managedChildren} />;
+          case "subscription":
+            return <SubscriptionLinkSection />;
           case "contact-us":
             return <ContactSection />;
           case "close-account":
@@ -481,6 +485,35 @@ function ChildrenSection({ items }: { items: ChildClient[] }) {
     <SettingsSubsection header="Linked children">
       <div className="px-4 py-4">
         <ChildManagementCard items={items} role="parent" />
+      </div>
+    </SettingsSubsection>
+  );
+}
+
+// ── Subscription (link-only leaf) ────────────────────────────
+//
+// Per Option A in `04-codebase-reality.md`: the canonical
+// subscription-state surface lives at /parent/subscription. This
+// leaf navigates there rather than embedding the state-aware UI,
+// to avoid duplicating logic + keep one source of truth for
+// management actions.
+
+function SubscriptionLinkSection() {
+  const router = useRouter();
+  return (
+    <SettingsSubsection header="Subscription">
+      <div className="px-4 py-4">
+        <p className="text-sm text-slate-600">
+          Manage your Baby Bloom subscription — view current plan, update
+          payment method, cancel, or resubscribe.
+        </p>
+        <Button
+          size="lg"
+          className="mt-4 bg-violet-600 hover:bg-violet-700"
+          onClick={() => router.push("/parent/subscription")}
+        >
+          Open subscription
+        </Button>
       </div>
     </SettingsSubsection>
   );

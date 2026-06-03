@@ -21,11 +21,41 @@ import { PlanSheet } from "./sheets/PlanSheet";
 import { ChildAvatarEditor } from "./ChildAvatarEditor";
 import { ChildDetailsEditor } from "./ChildDetailsEditor";
 import { SparkleIcon } from "@/components/katie/messages/SparkleIcon";
+import { SubscribeModal } from "@/components/payments/SubscribeModal";
+import { SubscribeModalNanny } from "@/components/payments/SubscribeModalNanny";
+import { LapsedBanner } from "@/components/payments/LapsedBanner";
+import type { SubscribeModalLapseReason } from "@/components/payments/SubscribeModal";
 
 interface BAppLayoutProps {
   child: ChildClient;
   role: "nanny" | "parent";
   children: React.ReactNode;
+  /**
+   * Whether the child's family currently has app access. Defaults to
+   * true (backward compat for callers not yet wired to the access
+   * gate). When false:
+   *   - The LapsedBanner renders above page content.
+   *   - The FAB + all three action buttons trigger the SubscribeModal
+   *     instead of opening the Observation / Diary / Plan sheets.
+   *   - Per S4 in `system/APP/PAYMENTS/FRONTEND/03-build-spec.md`.
+   */
+  familyHasAccess?: boolean;
+  /** Drives modal body copy when familyHasAccess === false. */
+  lapseReason?: SubscribeModalLapseReason;
+  /** Parent's first name — surfaced to nanny in lapsed-state copy. */
+  parentFirstName?: string;
+  /** Nanny's first name — surfaced to parent in lapsed-state copy. */
+  nannyFirstName?: string;
+  /**
+   * Pre-generated nanny-share URL from `createSubscribeInvite` (S5).
+   * Required when `role === "nanny"` AND `familyHasAccess === false`
+   * — the nanny variant of the SubscribeModal renders the share CTA
+   * via this URL. The layout server component is responsible for
+   * minting / fetching this before rendering BAppLayout.
+   */
+  nannyShareUrl?: string;
+  /** Pre-built share-text body matching the URL. */
+  nannyShareText?: string;
 }
 
 const TABS = [
@@ -81,12 +111,51 @@ function formatAgeLabel(months: number | null): string | null {
   return `${years}y ${rem}mo`;
 }
 
-export function BAppLayout({ child, role, children }: BAppLayoutProps) {
+export function BAppLayout({
+  child,
+  role,
+  children,
+  familyHasAccess = true,
+  lapseReason = "subscription_lapsed",
+  parentFirstName,
+  nannyFirstName,
+  nannyShareUrl,
+  nannyShareText,
+}: BAppLayoutProps) {
   const pathname = usePathname();
   const [fabOpen, setFabOpen] = useState(false);
   const [observationOpen, setObservationOpen] = useState(false);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
+  // S4 — modal state for lapsed-family interrupt. The FAB and every
+  // action button funnel into this when familyHasAccess is false.
+  const [subscribeModalOpen, setSubscribeModalOpen] = useState(false);
+
+  const childFirstName = child.first_name ?? "your child";
+
+  /** Single chokepoint for what happens when the user tries to act
+   *  on a child entry. In active state: open the relevant sheet.
+   *  In lapsed state: open the SubscribeModal instead. */
+  const handleAction = (action: "design" | "observation" | "diary"): void => {
+    setFabOpen(false);
+    if (!familyHasAccess) {
+      setSubscribeModalOpen(true);
+      return;
+    }
+    if (action === "design") setPlanOpen(true);
+    else if (action === "observation") setObservationOpen(true);
+    else setDiaryOpen(true);
+  };
+
+  /** FAB button click. Active state: toggle the expansion. Lapsed
+   *  state: skip the expansion and go straight to the modal. */
+  const handleFabClick = (): void => {
+    if (!familyHasAccess) {
+      setSubscribeModalOpen(true);
+      return;
+    }
+    setFabOpen(!fabOpen);
+  };
 
   const basePath = `/${role}/development/${child.id}`;
   const hubPath = `/${role}?t=children`;
@@ -170,6 +239,15 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
                 {ageLabel && (
                   <p className="text-xs text-slate-400">{ageLabel}</p>
                 )}
+                {/* "Following with [Nanny]" relational frame on the
+                    parent's side — UX-FIX-PLAN FIX-9. Surfaces the
+                    nanny so the parent feels the relationship the
+                    platform is built on, not just the transaction. */}
+                {role === "parent" && nannyFirstName && (
+                  <p className="text-xs text-slate-500">
+                    Following with {nannyFirstName}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -201,6 +279,17 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
         {/* ═══════════════════════════════════════════════════
             PAGE CONTENT
            ═══════════════════════════════════════════════════ */}
+        {/* S3 — Lapsed banner. Persistent + unclosable while
+            familyHasAccess is false. Sits above feed content so
+            it's seen regardless of where the user scrolls. */}
+        {!familyHasAccess && (
+          <LapsedBanner
+            role={role}
+            childFirstName={childFirstName}
+            parentFirstName={parentFirstName}
+            onPrimaryCta={() => setSubscribeModalOpen(true)}
+          />
+        )}
         {children}
       </div>
 
@@ -228,10 +317,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
           <>
             <button
               type="button"
-              onClick={() => {
-                setFabOpen(false);
-                setPlanOpen(true);
-              }}
+              onClick={() => handleAction("design")}
               className="flex items-center gap-2 rounded-full bg-indigo-100 py-2 pl-3 pr-4 text-sm font-medium text-indigo-600 shadow-sm transition-all animate-in slide-in-from-bottom-2 duration-200"
               style={{ animationDelay: "0ms" }}
             >
@@ -245,10 +331,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setFabOpen(false);
-                setObservationOpen(true);
-              }}
+              onClick={() => handleAction("observation")}
               className="flex items-center gap-2 rounded-full bg-emerald-100 py-2 pl-3 pr-4 text-sm font-medium text-emerald-600 shadow-sm transition-all animate-in slide-in-from-bottom-2 duration-200"
               style={{ animationDelay: "50ms" }}
             >
@@ -257,10 +340,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
             </button>
             <button
               type="button"
-              onClick={() => {
-                setFabOpen(false);
-                setDiaryOpen(true);
-              }}
+              onClick={() => handleAction("diary")}
               className="flex items-center gap-2 rounded-full bg-violet-100 py-2 pl-3 pr-4 text-sm font-medium text-violet-600 shadow-sm transition-all animate-in slide-in-from-bottom-2 duration-200"
               style={{ animationDelay: "100ms" }}
             >
@@ -274,7 +354,7 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
             options because the parent uses `flex-col` (not reverse). */}
         <button
           type="button"
-          onClick={() => setFabOpen(!fabOpen)}
+          onClick={handleFabClick}
           aria-label={fabOpen ? "Close menu" : "Open menu"}
           aria-expanded={fabOpen}
           className={cn(
@@ -316,6 +396,36 @@ export function BAppLayout({ child, role, children }: BAppLayoutProps) {
         onOpenChange={setPlanOpen}
         childId={child.id}
       />
+
+      {/* S1/S2 — SubscribeModal. Rendered when familyHasAccess is
+          false. Parent gets the pricing-CTA variant; nanny gets
+          the share-link variant. Triggered by:
+          - The FAB main button (handleFabClick)
+          - Any FAB action button (handleAction)
+          - The LapsedBanner's primary CTA */}
+      {!familyHasAccess && role === "parent" && (
+        <SubscribeModal
+          isOpen={subscribeModalOpen}
+          onClose={() => setSubscribeModalOpen(false)}
+          childId={child.id}
+          childFirstName={childFirstName}
+          nannyFirstName={nannyFirstName}
+          lapseReason={lapseReason}
+        />
+      )}
+      {!familyHasAccess &&
+        role === "nanny" &&
+        nannyShareUrl &&
+        nannyShareText && (
+          <SubscribeModalNanny
+            isOpen={subscribeModalOpen}
+            onClose={() => setSubscribeModalOpen(false)}
+            childFirstName={childFirstName}
+            parentFirstName={parentFirstName}
+            shareUrl={nannyShareUrl}
+            shareText={nannyShareText}
+          />
+        )}
     </div>
   );
 }

@@ -12,6 +12,8 @@ import {
 import { deriveInviteState, type InviteState } from "@/lib/invite/state";
 import type { ChildInvitePreview } from "@/types/bapp";
 import type { UserRole } from "@/lib/auth/types";
+import { ConsentCheckbox } from "@/components/legal/ConsentCheckbox";
+import { PolicyContent } from "@/components/legal/PolicyContent";
 
 interface InviteLandingClientProps {
   token: string;
@@ -47,6 +49,11 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
   const [switchAcked, setSwitchAcked] = useState(false);
   const requiresSwitchAck = props.switchContext?.isSwitching === true;
   const autoFiredRef = useRef(false);
+  // T-015 — bundled consent at invite-accept. Auto-ticked; untick
+  // disables Connect. The agreement recorded depends on the
+  // invitee's role: parent → PARENT-APP-CONSENT, nanny → NANNY-
+  // ATTESTATION (folded into the existing invite-accept server action).
+  const [consented, setConsented] = useState(true);
 
   const baseState = deriveInviteState({
     preview: props.preview,
@@ -121,10 +128,15 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
     if (state.kind !== "ready_to_connect") return;
     if (requiresSwitchAck) return;
     if (busy !== null) return;
+    // T-015 — auto-fire MUST respect the consent checkbox. Without
+    // this guard, a user landing via ?auto=1 with `consented === false`
+    // (e.g. via untick + browser back/forward) would link without
+    // their explicit consent on the new policy.
+    if (!consented) return;
     autoFiredRef.current = true;
     void handleConnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoMode, state.kind, requiresSwitchAck, busy]);
+  }, [autoMode, state.kind, requiresSwitchAck, busy, consented]);
 
   // While the auto-flow is connecting, swap the page chrome for a
   // small "Connecting…" surface so the user sees forward motion
@@ -163,11 +175,44 @@ export function InviteLandingClient(props: InviteLandingClientProps) {
               onAcknowledgeChange={setSwitchAcked}
             />
           )}
+
+          {/* T-015 — bundled consent + policy preview before Connect.
+              Slug is role-aware: parent invitee sees PARENT-APP-CONSENT
+              policy + label; nanny invitee sees NANNY-ATTESTATION. */}
+          <div className="space-y-2">
+            <PolicyContent
+              slug={
+                state.expectedRole === "parent"
+                  ? "parent-app-consent"
+                  : "nanny-attestation"
+              }
+            />
+            <ConsentCheckbox
+              label={
+                state.expectedRole === "parent"
+                  ? "I consent to Baby Bloom collecting and processing data for this child."
+                  : "I agree to Baby Bloom's professional terms for this engagement."
+              }
+              description={
+                state.expectedRole === "parent"
+                  ? "Includes photos, daily observations, diary entries, and any sensitive information. Renews annually. Withdraw any time."
+                  : "Includes my responsibilities while caring for this child + handling their data. Renews annually."
+              }
+              defaultConsented={true}
+              onConsentChange={setConsented}
+              fieldName="invite_consent"
+            />
+          </div>
+
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button
               type="button"
               onClick={handleConnect}
-              disabled={busy !== null || (requiresSwitchAck && !switchAcked)}
+              disabled={
+                busy !== null ||
+                (requiresSwitchAck && !switchAcked) ||
+                !consented
+              }
               className="flex-1"
             >
               {busy === "connect" ? (

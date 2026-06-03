@@ -28,6 +28,7 @@ const SUPPORT_INBOX = "admin@babybloomsydney.com.au";
 const SUBJECT_MAX = 120;
 const MESSAGE_MIN = 10;
 const MESSAGE_MAX = 4000;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function escapeHtml(s: string): string {
   return s
@@ -77,6 +78,18 @@ export async function submitContactRequest(input: {
         success: false,
         error: `Message must be ${MESSAGE_MAX} characters or fewer.`,
       };
+    }
+    // Optional override — must be a valid email shape when provided so
+    // we don't ship a junk reply-to into Resend (would silently bounce
+    // any support reply). Server-side belt-and-braces: the client
+    // form should reject this earlier too. Length-cap before regex per
+    // RFC 5321 (254 chars) so a multi-KB string doesn't pass the
+    // "non-empty" gate and reach Resend as a junk header.
+    if (
+      replyEmail.length > 0 &&
+      (replyEmail.length > 254 || !EMAIL_REGEX.test(replyEmail))
+    ) {
+      return { success: false, error: "Please add a valid reply email." };
     }
 
     // Resolve user identity for the support team via admin client
@@ -130,6 +143,25 @@ export async function submitContactRequest(input: {
       </div>
     `.trim();
 
+    // S14 — persist to contact_messages for the admin support inbox.
+    // Best-effort: if the insert fails we still attempt the email
+    // send so the user's message reaches Bailey one way or another.
+    const { error: insertErr } = await admin.from("contact_messages").insert({
+      user_id: user.id,
+      sender_email: finalReplyTo,
+      sender_name: fullName,
+      subject,
+      body: message,
+      category: classifyContactCategory(subject, message),
+      status: "unread",
+    });
+    if (insertErr) {
+      console.error(
+        "[submitContactRequest] contact_messages insert failed:",
+        insertErr,
+      );
+    }
+
     const result = await sendEmail({
       to: SUPPORT_INBOX,
       subject: `[Contact] ${subject}`,
@@ -155,6 +187,22 @@ export async function submitContactRequest(input: {
   }
 }
 
+/** Heuristic category classifier for the admin inbox. Subject +
+ *  body keyword matching — cheap, no false negatives on the
+ *  default "general" bucket. */
+function classifyContactCategory(
+  subject: string,
+  body: string,
+): "refund" | "billing" | "technical" | "general" {
+  const text = `${subject} ${body}`.toLowerCase();
+  if (/\brefund|chargeback|refunded?\b/.test(text)) return "refund";
+  if (/\bbilling|invoice|payment|card|charge|subscription\b/.test(text))
+    return "billing";
+  if (/\bbug|error|crash|broken|not working|doesn't work\b/.test(text))
+    return "technical";
+  return "general";
+}
+
 /**
  * Public (anonymous) variant of the contact form. Powers the
  * marketing-site `/contact` page — no auth required, but the
@@ -166,8 +214,11 @@ export async function submitContactRequest(input: {
  * address. There's no rate-limit here yet; if the form sees
  * spam in production add a simple per-IP throttle in the route
  * handler that wraps this action.
+ *
+ * Both `submitContactRequest` and `submitPublicContactRequest`
+ * use the same `EMAIL_REGEX` — moved up to module scope rather
+ * than redeclared next to each user so they stay in sync.
  */
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const NAME_MAX = 80;
 
 export async function submitPublicContactRequest(input: {
@@ -227,6 +278,27 @@ export async function submitPublicContactRequest(input: {
         <div style="white-space: pre-wrap; color: #0f172a; font-size: 14px; line-height: 1.5; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">${escapeHtml(message)}</div>
       </div>
     `.trim();
+
+    // S14 — persist to contact_messages (anonymous submission;
+    // user_id stays null). Same best-effort pattern as authed.
+    const adminClient = createAdminClient();
+    const { error: insertErr } = await adminClient
+      .from("contact_messages")
+      .insert({
+        user_id: null,
+        sender_email: email,
+        sender_name: name,
+        subject,
+        body: message,
+        category: classifyContactCategory(subject, message),
+        status: "unread",
+      });
+    if (insertErr) {
+      console.error(
+        "[submitPublicContactRequest] contact_messages insert failed:",
+        insertErr,
+      );
+    }
 
     const result = await sendEmail({
       to: SUPPORT_INBOX,

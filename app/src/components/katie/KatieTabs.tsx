@@ -374,7 +374,12 @@ export function KatieTabs({ role }: KatieTabsProps) {
                 : "text-slate-400 group-hover:text-violet-600")
             }
           />
-          Katie
+          <span>
+            Katie
+            <sup className="ml-0.5 text-[0.6em] font-semibold tracking-wide text-sky-400">
+              (BETA)
+            </sup>
+          </span>
           {unreadCount > 0 && (
             <UnreadBadge count={unreadCount} pulse={!isKatieActive} />
           )}

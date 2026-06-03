@@ -4,6 +4,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { BAppLayout } from "@/components/bapp/BAppLayout";
 import { InviteBanner } from "@/components/bapp/InviteBanner";
 import { getInviteForChild } from "@/lib/actions/bapp/child-invites";
+import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
+import { ConsentRenewalModal } from "@/components/legal/ConsentRenewalModal";
 import type { ChildClient } from "@/types/bapp";
 
 export default async function ParentDevelopmentLayout({
@@ -44,17 +47,67 @@ export default async function ParentDevelopmentLayout({
   const showBanner = c.nanny_user_id === null;
   const inviteResult = showBanner ? await getInviteForChild(c.id) : null;
 
+  // S4 — paywall gate. When the family lacks access, BAppLayout swaps
+  // the FAB action into the SubscribeModal trigger + renders the
+  // LapsedBanner above page content. Trial state has access; lapsed /
+  // cancelled-after-period do not.
+  const access = await requireChildFamilyAccess(c.id);
+
+  // T-015 — check whether the parent's media consent is within the
+  // T-7d renewal window or already expired. If so, render the
+  // ConsentRenewalModal alongside the page content.
+  const mediaConsentGate = await hasParentMediaConsent(
+    { childId: c.id },
+    { admin },
+  );
+  const showRenewalModal =
+    mediaConsentGate.state === "nearing_expiry" ||
+    mediaConsentGate.state === "expired";
+
+  // Fetch nanny first name. UX-FIX-PLAN FIX-9 (2026-05-12 audit):
+  // previously only fetched when access was lapsed (for the modal
+  // copy); now fetched whenever a nanny is linked so the layout can
+  // surface "Following with [Nanny]" on the parent side and make the
+  // relational frame visible — not just during paywall moments.
+  let nannyFirstName: string | undefined;
+  if (c.nanny_user_id) {
+    const { data: nannyProfile } = await admin
+      .from("user_profiles")
+      .select("first_name")
+      .eq("user_id", c.nanny_user_id)
+      .maybeSingle<{ first_name: string | null }>();
+    nannyFirstName = nannyProfile?.first_name ?? undefined;
+  }
+
   return (
-    <BAppLayout child={c} role="parent">
+    <BAppLayout
+      child={c}
+      role="parent"
+      familyHasAccess={access.hasAccess}
+      nannyFirstName={nannyFirstName}
+      lapseReason={
+        access.reason === "trial_expired"
+          ? "trial_ended"
+          : "subscription_lapsed"
+      }
+    >
       {inviteResult?.success && inviteResult.data && (
         <InviteBanner
           childId={c.id}
           childFirstName={c.first_name ?? "your child"}
-          inviteUrl={inviteResult.data.url}
+          inviteToken={inviteResult.data.token}
           role="parent"
         />
       )}
       {children}
+      {showRenewalModal && mediaConsentGate.expiresAt && (
+        <ConsentRenewalModal
+          childId={c.id}
+          childFirstName={c.first_name ?? "your child"}
+          role="parent"
+          expiresAt={mediaConsentGate.expiresAt}
+        />
+      )}
     </BAppLayout>
   );
 }

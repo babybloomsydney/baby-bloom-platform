@@ -23,9 +23,11 @@
  */
 
 import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import type { DiaryChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 type MealType = (typeof MEAL_TYPES)[number];
@@ -50,6 +52,28 @@ async function insertLog(
   ctx: InsertCtx,
   row: BappLogInsert,
 ): Promise<{ id: string } | null> {
+  // T-015 media gate — applies to ALL diary apply* paths via this
+  // shared helper. If the data payload includes an image_url, the
+  // parent's `parent-app-consent` must be current for that child.
+  const dataImageUrl =
+    typeof (row.data as { image_url?: unknown })?.image_url === "string"
+      ? ((row.data as { image_url?: string }).image_url ?? null)
+      : null;
+  if (dataImageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: row.child_client_id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      console.warn(
+        "[diary insertLog] media_consent_required — blocking image_url insert for child",
+        row.child_client_id,
+      );
+      return null;
+    }
+  }
+
   const { data, error } = await ctx.supabase
     .from("bapp_logs")
     .insert(row)
@@ -64,6 +88,23 @@ async function insertLog(
     console.error("[diary insertLog] bapp_logs insert failed:", error);
     return null;
   }
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never propagate). Every diary apply path flows
+  // through this helper, so the wire-up sits here once. Row literals are
+  // pinned to diary / adhoc on the BappLogInsert interface above.
+  //
+  // PLACEMENT INVARIANT: this call must remain AFTER every early-return
+  // path above (media-consent gate + DB-error gate) so the email fires
+  // ONLY on a confirmed successful insert. Any future gate added inside
+  // `insertLog` MUST be placed above this point.
+  await notifyParentOfFeedPost({
+    childId: row.child_client_id,
+    authorId: row.author_id,
+    logType: "diary",
+    logContext: "adhoc",
+  });
+
   return data as { id: string };
 }
 
@@ -557,6 +598,7 @@ export const diaryModule: BloomBotModule = {
   name: "Daily Diary",
   description:
     "Drafts daily-care diary entries — meals (log_food), sleep (log_sleep), and free-form parent-updates (log_update). Each tool returns a DRAFT tile the user must accept; nothing is inserted into bapp_logs until the user clicks Accept.",
+  childScoped: true,
 
   tools: [
     {

@@ -24,20 +24,19 @@ export interface PreloadPublisherProps {
 }
 
 export function PreloadPublisher({ slots }: PreloadPublisherProps) {
-  const ctx = usePreloadOptional();
+  // Destructure the stable function reference instead of depending on
+  // the whole context value. The Provider rebuilds its `value` object
+  // every render, so depending on `ctx` itself caused an infinite
+  // re-render loop (effect fires → setPreloadSlots → state change →
+  // new value object → effect fires again). The function below is
+  // wrapped in useCallback inside PreloadProvider so its identity is
+  // stable across renders.
+  const setSlots = usePreloadOptional()?.setPreloadSlots;
 
   useEffect(() => {
-    // No provider mounted (e.g. public pages, /admin) → silent no-op.
-    // Defensive: PreloadProvider is in KatieShell which only mounts
-    // for /nanny + /parent paths, so any publisher sitting outside
-    // that subtree just does nothing rather than throwing.
-    if (!ctx) return;
-    ctx.setPreloadSlots(slots);
-    // We intentionally re-run when `slots` changes (object identity);
-    // the parent should memoize if stability matters for performance.
-    // Mostly the parent renders this once per nav, so re-runs are
-    // limited to the nav-keep-mounted-with-new-id case.
-  }, [ctx, slots]);
+    if (!setSlots) return;
+    setSlots(slots);
+  }, [setSlots, slots]);
 
   return null;
 }

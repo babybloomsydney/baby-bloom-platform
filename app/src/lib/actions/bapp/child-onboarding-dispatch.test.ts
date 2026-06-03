@@ -8,6 +8,17 @@ vi.mock("@/lib/chat/proactive/action-triggered", () => ({
   dispatchActionTriggeredInBackground: (input: unknown) => dispatchSpy(input),
 }));
 
+// Mock the feed-post notification helper — recordCelebrationTile now
+// fires notifyParentOfFeedPost as a non-fatal side-effect on insert
+// success. The helper itself is unit-tested separately in
+// `lib/email/feed-post-notification.test.ts`.
+const notifySpy = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/email/feed-post-notification", () => ({
+  notifyParentOfFeedPost: (
+    input: import("@/lib/email/feed-post-notification").NotifyParentOfFeedPostArgs,
+  ) => notifySpy(input),
+}));
+
 import {
   recordCelebrationTile,
   dispatchChildCreated,
@@ -17,6 +28,7 @@ import {
 
 beforeEach(() => {
   dispatchSpy.mockClear();
+  notifySpy.mockClear();
 });
 
 describe("recordCelebrationTile", () => {
@@ -51,6 +63,35 @@ describe("recordCelebrationTile", () => {
     expect(data.body).toBeTruthy();
     expect(data.icon).toBe("sparkles");
     expect(data.color).toBe("violet");
+
+    // T-033 wire-up: notify the linked parent (helper skip rules + DB
+    // lookups happen inside; here we only verify the call shape).
+    expect(notifySpy).toHaveBeenCalledTimes(1);
+    expect(notifySpy).toHaveBeenCalledWith({
+      childId: "child-1",
+      authorId: "user-1",
+      logType: "custom",
+      logContext: "adhoc",
+    });
+  });
+
+  it("does NOT fire the feed-post notification when the celebration insert fails", async () => {
+    const insertSpy = vi
+      .fn()
+      .mockResolvedValue({ error: { message: "RLS denied", code: "42501" } });
+    const admin = {
+      from: () => ({ insert: insertSpy }),
+    } as unknown as SupabaseClient;
+
+    await recordCelebrationTile({
+      admin,
+      childClientId: "child-1",
+      authorId: "user-1",
+      childFirstName: "Casey",
+    });
+
+    // Notification only fires on insert success.
+    expect(notifySpy).not.toHaveBeenCalled();
   });
 
   it("trims whitespace from the child name in the title", async () => {

@@ -19,6 +19,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -67,11 +68,22 @@ export function PreloadProvider({ children }: { children: ReactNode }) {
     clearPreload();
   }, [pathname, clearPreload]);
 
-  return (
-    <Ctx.Provider value={{ preload, setPreloadSlots, clearPreload }}>
-      {children}
-    </Ctx.Provider>
+  // Memoize the context value so consumers that depend on the whole
+  // object (rather than picking a stable function off it) don't get a
+  // new reference on every provider re-render. Without this, any
+  // child useEffect that lists `ctx` in its deps fires every render.
+  //
+  // `preload` is intentionally in the deps array even though it
+  // re-creates the memo on every state change. Consumers that need
+  // fresh slot data must see the new reference; consumers that only
+  // need the stable function refs should destructure those instead
+  // of depending on the whole context object.
+  const value = useMemo(
+    () => ({ preload, setPreloadSlots, clearPreload }),
+    [preload, setPreloadSlots, clearPreload],
   );
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 /** Throws when called outside `<PreloadProvider>`. */

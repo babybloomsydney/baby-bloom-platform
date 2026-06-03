@@ -23,6 +23,17 @@ interface BAppFeedViewProps {
    *  the banner doesn't flash. Omit on routes that don't surface
    *  the cascade (parent-side, certain admin views). */
   bannerStatus?: BannerStatus;
+  /**
+   * When false, suppresses the "No entries yet — tap + to get
+   * started" empty state. The LapsedBanner (sibling, rendered by
+   * BAppLayout) already tells the user what to do; pairing it with
+   * a contradictory "tap +" affordance creates a "which message
+   * should I follow?" moment. UX-FIX-PLAN FIX-7 (2026-05-12 audit).
+   *
+   * Default `true` preserves existing behaviour on all callers that
+   * don't pass this prop (admin views, nanny-only-child case, etc.).
+   */
+  familyHasAccess?: boolean;
 }
 
 export function BAppFeedView({
@@ -30,6 +41,7 @@ export function BAppFeedView({
   initialFeed,
   milestones,
   bannerStatus,
+  familyHasAccess = true,
 }: BAppFeedViewProps) {
   const [feed, setFeed] = useState<FeedItem[]>(initialFeed);
   const [detailItem, setDetailItem] = useState<FeedItem | null>(null);
@@ -89,13 +101,18 @@ export function BAppFeedView({
       {bannerStatus ? <ResumeBanner status={bannerStatus} /> : null}
 
       {visibleFeed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-            <Plus className="h-5 w-5 text-slate-400" />
+        // When the family lacks an active subscription, the sibling
+        // LapsedBanner is the active message. Suppress the "tap +"
+        // empty-state so the two don't contradict each other.
+        familyHasAccess ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+              <Plus className="h-5 w-5 text-slate-400" />
+            </div>
+            <p className="text-sm text-slate-500">No entries yet.</p>
+            <p className="text-xs text-slate-400">Tap + to get started.</p>
           </div>
-          <p className="text-sm text-slate-500">No entries yet.</p>
-          <p className="text-xs text-slate-400">Tap + to get started.</p>
-        </div>
+        ) : null
       ) : (
         <div className="space-y-3">
           {visibleFeed.map((item) => (

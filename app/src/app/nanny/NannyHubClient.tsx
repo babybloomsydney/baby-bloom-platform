@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExpandablePhoto } from "@/components/ui/expandable-photo";
 import {
@@ -46,8 +46,8 @@ import type { DfyNotification } from "@/lib/actions/matching";
 import { ChildCardGrid } from "@/components/bapp/ChildCardGrid";
 import { PendingInvitesSection } from "@/components/bapp/PendingInvitesSection";
 import type { ChildClient, PendingInviteCard } from "@/types/bapp";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { VerificationRequiredModal } from "@/components/verification/VerificationRequiredModal";
 import type { VerificationData } from "@/lib/actions/verification";
 
 import { Tag } from "@/components/profile/Tag";
@@ -128,6 +128,8 @@ interface NannyHubClientProps {
   bsrBanUntil: string | null;
   shareUnlocked: boolean;
   educationChildren: ChildClient[];
+  /** Subscribed-family tick state per child — DSS §8 Q8. */
+  subscribedChildIds?: string[];
   pendingInvites?: PendingInviteCard[];
 }
 
@@ -167,8 +169,12 @@ export function NannyHubClient({
   bsrBanUntil,
   shareUnlocked,
   educationChildren,
+  subscribedChildIds,
   pendingInvites = [],
 }: NannyHubClientProps) {
+  const subscribedChildIdSet = subscribedChildIds
+    ? new Set(subscribedChildIds)
+    : undefined;
   // ── Verification locking ──
   const isTabsLocked = verificationLevel < 3;
 
@@ -187,6 +193,17 @@ export function NannyHubClient({
   const [showTabLockedModal, setShowTabLockedModal] = useState(false);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+
+  // If `isTabsLocked` flips to false mid-session (verification level ticks
+  // from 2→3, e.g. after a real-time level refresh), the Verification tab
+  // disappears from the rendered array. Without this guard the user is
+  // stuck on an orphan activeTab='verification' with no rendered content.
+  // Reset to the natural default. code-reviewer 2026-05-19.
+  useEffect(() => {
+    if (!isTabsLocked && activeTab === "verification") {
+      setActiveTab("nannying");
+    }
+  }, [isTabsLocked, activeTab]);
 
   const p = nannyProfile;
   const ai = p?.ai_content;
@@ -932,45 +949,48 @@ export function NannyHubClient({
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════
-          MAIN TAB BAR — dynamic based on verification level
+          MAIN TAB BAR — Verification (only at level<3) + Nannying +
+          Children + Babysitting. Bailey 2026-05-19 amendments 1 + 3:
+            • Children tab is ALWAYS visible (was hidden when locked) — was
+              dropping unverified users out of a discoverable surface.
+            • Nannying tab is ALWAYS unlocked (was locked at level<3) —
+              backend gates every state-changing action server-side, so
+              there's no safety value in the UI lock. Lets unverified
+              nannies browse Jobs + see their existing placements.
+            • Babysitting stays locked at level<3 (separate gate — needs
+              level>=4 + babysitter_eligible).
+            • Verification tab appears only at level<3 as the primary CTA.
          ═══════════════════════════════════════════════════════════════════ */}
       <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-        {(isTabsLocked
-          ? [
-              {
-                id: "verification" as MainTabId,
-                label: "Verification",
-                locked: false,
-              },
-              { id: "nannying" as MainTabId, label: "Nannying", locked: true },
-              {
-                id: "babysitting" as MainTabId,
-                label: "Babysitting",
-                locked: true,
-              },
-            ]
-          : [
-              // Tab order — per user spec 2026-05-07: Nannying first
-              // (the nanny's primary surface), Children second so the
-              // connected-children list sits between the two professional
-              // surfaces, Babysitting last.
-              { id: "nannying" as MainTabId, label: "Nannying", locked: false },
-              {
-                id: "children" as MainTabId,
-                label: "Children",
-                locked: false,
-              },
-              {
-                id: "babysitting" as MainTabId,
-                label: "Babysitting",
-                locked: false,
-              },
-            ]
-        ).map((tab) => {
+        {[
+          ...(isTabsLocked
+            ? [
+                {
+                  id: "verification" as MainTabId,
+                  label: "Verification",
+                  locked: false,
+                },
+              ]
+            : []),
+          { id: "nannying" as MainTabId, label: "Nannying", locked: false },
+          { id: "children" as MainTabId, label: "Children", locked: false },
+          {
+            id: "babysitting" as MainTabId,
+            label: "Babysitting",
+            locked: isTabsLocked,
+          },
+        ].map((tab) => {
           const isActive = activeTab === tab.id;
           return (
             <button
               key={tab.id}
+              type="button"
+              // `aria-disabled` (not `disabled`) — the button still handles the
+              // click to open the modal; we just announce the locked state to
+              // assistive tech. `aria-haspopup="dialog"` cues SR users that
+              // activation opens a Dialog. a11y-architect 2026-05-19.
+              aria-disabled={tab.locked || undefined}
+              aria-haspopup={tab.locked ? "dialog" : undefined}
               onClick={() =>
                 tab.locked ? setShowTabLockedModal(true) : setActiveTab(tab.id)
               }
@@ -985,7 +1005,7 @@ export function NannyHubClient({
             >
               <span className="flex items-center justify-center gap-1.5">
                 {tab.label}
-                {tab.locked && <Lock className="h-3 w-3" />}
+                {tab.locked && <Lock className="h-3 w-3" aria-hidden="true" />}
               </span>
             </button>
           );
@@ -1061,40 +1081,21 @@ export function NannyHubClient({
         <>
           <PendingInvitesSection initialInvites={pendingInvites} />
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            {/* eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children */}
-            <ChildCardGrid children={educationChildren} role="nanny" />
+            <ChildCardGrid
+              // eslint-disable-next-line react/no-children-prop -- `children` here is the data prop name of ChildCardGrid, not React children
+              children={educationChildren}
+              role="nanny"
+              subscribedChildIds={subscribedChildIdSet}
+            />
           </div>
         </>
       )}
 
-      {/* Tab-locked modal */}
-      <Dialog open={showTabLockedModal} onOpenChange={setShowTabLockedModal}>
-        <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-sm [&>button]:hidden">
-          <div className="flex flex-col items-center gap-4 py-2 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-green-50 ring-1 ring-green-200">
-              <ShieldCheck className="h-6 w-6 text-green-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                Verify your account
-              </h3>
-              <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
-                Complete verification to access your nannying and babysitting
-                dashboard.
-              </p>
-            </div>
-            <Button
-              asChild
-              className="w-full bg-violet-600 hover:bg-violet-700 mt-1"
-            >
-              <Link href="/nanny/verification">
-                <ShieldCheck className="h-4 w-4 mr-1.5" />
-                Verify Now
-              </Link>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Tab-locked modal (shared component, lifted from inline Dialog) */}
+      <VerificationRequiredModal
+        open={showTabLockedModal}
+        onOpenChange={setShowTabLockedModal}
+      />
 
       {/* Photo viewer modal */}
       <ProfilePhotoViewer

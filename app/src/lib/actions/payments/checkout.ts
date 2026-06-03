@@ -136,6 +136,18 @@ export async function createCheckoutSession(
     };
   }
 
+  // Look up the current subscription cycle for Stripe Session
+  // metadata only. The number flows through to Stripe so support
+  // can see which iteration of subscribing this is (first-time,
+  // first resub, etc.). It is NOT part of any idempotency key —
+  // see checkout.ts for why Session creation is idempotency-free.
+  const { data: existingSub } = await admin
+    .from("parent_subscriptions")
+    .select("subscription_cycle")
+    .eq("parent_user_id", user.id)
+    .maybeSingle<{ subscription_cycle: number | null }>();
+  const cycleNumber = (existingSub?.subscription_cycle ?? 0) + 1;
+
   const origin = resolveOrigin();
 
   try {
@@ -143,6 +155,7 @@ export async function createCheckoutSession(
       plan,
       customerId: customerResult.data.stripeCustomerId,
       parentUserId: user.id,
+      cycleNumber,
       successUrl: `${origin}/parent/subscription?status=success&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${origin}/parent/subscription?status=cancelled`,
     });

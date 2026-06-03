@@ -104,14 +104,20 @@ function calcAge(dob: string | null): number | null {
 
 function formatSlotDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-AU", { weekday: "short", day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-AU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
 }
 
 function formatTime(time: string): string {
   const [h, m] = time.split(":").map(Number);
   const ampm = h >= 12 ? "pm" : "am";
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
+  return m === 0
+    ? `${h12}${ampm}`
+    : `${h12}:${String(m).padStart(2, "0")}${ampm}`;
 }
 
 // ── GNAF Address Types ──
@@ -138,7 +144,10 @@ function parseGnafAddress(sla: string): ParsedAddress | null {
   const match = sla.match(/^(.+),\s+([A-Z\s]+?)\s+NSW\s+(\d{4})$/);
   if (!match) return null;
   const postcode = match[3];
-  const fullBeforeState = sla.substring(0, sla.lastIndexOf("NSW")).trim().replace(/,\s*$/, "");
+  const fullBeforeState = sla
+    .substring(0, sla.lastIndexOf("NSW"))
+    .trim()
+    .replace(/,\s*$/, "");
   const lastComma = fullBeforeState.lastIndexOf(",");
   if (lastComma < 0) return null;
   const street = fullBeforeState.substring(0, lastComma).trim();
@@ -153,10 +162,14 @@ interface ParentBabysittingClientProps {
   suburbs: Array<{ suburb: string; postcode: string }>;
 }
 
-export function ParentBabysittingClient({ requests, suburbs }: ParentBabysittingClientProps) {
+export function ParentBabysittingClient({
+  requests,
+  suburbs,
+}: ParentBabysittingClientProps) {
   const router = useRouter();
   const [view, setView] = useState<"list" | "create">("create");
-  const [selectedRequest, setSelectedRequest] = useState<BabysittingRequestWithSlots | null>(null);
+  const [selectedRequest, setSelectedRequest] =
+    useState<BabysittingRequestWithSlots | null>(null);
   const [showPast, setShowPast] = useState(false);
 
   // Create form state
@@ -165,7 +178,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     { id: 1, date: "", startTime: "18:00", endTime: "22:00" },
   ]);
   const [addressQuery, setAddressQuery] = useState("");
-  const [selectedAddress, setSelectedAddress] = useState<ParsedAddress | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<ParsedAddress | null>(
+    null,
+  );
   const [addressResults, setAddressResults] = useState<AddressrResult[]>([]);
   const [showAddressDropdown, setShowAddressDropdown] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -182,7 +197,10 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
   // Close suburb dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (addressDropdownRef.current && !addressDropdownRef.current.contains(e.target as Node)) {
+      if (
+        addressDropdownRef.current &&
+        !addressDropdownRef.current.contains(e.target as Node)
+      ) {
         setShowAddressDropdown(false);
       }
     };
@@ -202,7 +220,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
       setAddressLoading(true);
       try {
         const res = await fetch(
-          `/api/address-search?q=${encodeURIComponent(query)}`
+          `/api/address-search?q=${encodeURIComponent(query)}`,
         );
         if (!res.ok) {
           setAddressResults([]);
@@ -219,7 +237,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
       } finally {
         setAddressLoading(false);
       }
-    }, 300);
+    }, 180);
   }, []);
 
   function handleAddressChange(val: string) {
@@ -237,7 +255,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     }
 
     // Cross-reference with sydney_postcodes for canonical suburb name
-    const byPostcode = suburbs.filter(s => s.postcode === parsed.postcode);
+    const byPostcode = suburbs.filter((s) => s.postcode === parsed.postcode);
     if (byPostcode.length === 0) {
       setNotInArea(true);
       setSelectedAddress(null);
@@ -246,7 +264,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
       return;
     }
 
-    const exact = byPostcode.find(s => s.suburb.toLowerCase() === parsed.suburb.toLowerCase());
+    const exact = byPostcode.find(
+      (s) => s.suburb.toLowerCase() === parsed.suburb.toLowerCase(),
+    );
     const canonical = exact || byPostcode[0];
 
     setAddressQuery(parsed.street);
@@ -260,7 +280,8 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     setNotInArea(false);
   }
 
-  const nextSlotId = slots.length > 0 ? Math.max(...slots.map((s) => s.id)) + 1 : 1;
+  const nextSlotId =
+    slots.length > 0 ? Math.max(...slots.map((s) => s.id)) + 1 : 1;
 
   // Calculate estimated total
   let totalMinutes = 0;
@@ -268,7 +289,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     if (slot.startTime && slot.endTime && slot.startTime < slot.endTime) {
       const [sh, sm] = slot.startTime.split(":").map(Number);
       const [eh, em] = slot.endTime.split(":").map(Number);
-      totalMinutes += (eh * 60 + em) - (sh * 60 + sm);
+      totalMinutes += eh * 60 + em - (sh * 60 + sm);
     }
   }
   const estimatedHours = Math.round((totalMinutes / 60) * 10) / 10;
@@ -283,13 +304,22 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     setChildren(newChildren);
   };
 
-  const updateChild = (index: number, field: keyof ChildForm, value: string | number) => {
-    setChildren(children.map((c, i) => (i === index ? { ...c, [field]: value } : c)));
+  const updateChild = (
+    index: number,
+    field: keyof ChildForm,
+    value: string | number,
+  ) => {
+    setChildren(
+      children.map((c, i) => (i === index ? { ...c, [field]: value } : c)),
+    );
   };
 
   const addSlot = () => {
     if (slots.length >= 7) return;
-    setSlots([...slots, { id: nextSlotId, date: "", startTime: "18:00", endTime: "22:00" }]);
+    setSlots([
+      ...slots,
+      { id: nextSlotId, date: "", startTime: "18:00", endTime: "22:00" },
+    ]);
   };
 
   const removeSlot = (id: number) => {
@@ -317,7 +347,8 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
 
   const validateStep = (step: number): string | null => {
     if (step === 1) {
-      if (numChildren === 0 || children.length === 0) return "Please select the number of children";
+      if (numChildren === 0 || children.length === 0)
+        return "Please select the number of children";
     }
     if (step === 2) {
       if (!selectedAddress) return "Please select an address from the dropdown";
@@ -325,7 +356,8 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     if (step === 3) {
       for (const slot of slots) {
         if (!slot.date) return "Please select a date for all time slots";
-        if (slot.startTime >= slot.endTime) return "End time must be after start time for all slots";
+        if (slot.startTime >= slot.endTime)
+          return "End time must be after start time for all slots";
       }
     }
     return null;
@@ -376,21 +408,43 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
     window.location.href = `/parent/babysitting/${result.requestId}/payment`;
   };
 
-  const ageLabel = (months: number) => AGE_OPTIONS.find((o) => o.months === months)?.label ?? `${months}m`;
+  const ageLabel = (months: number) =>
+    AGE_OPTIONS.find((o) => o.months === months)?.label ?? `${months}m`;
 
   // Sort by earliest upcoming slot date (chronological)
-  const sortByNextSlot = (a: BabysittingRequestWithSlots, b: BabysittingRequestWithSlots) => {
-    const aDate = a.slots.length > 0 ? a.slots.reduce((min, s) => s.slot_date < min ? s.slot_date : min, a.slots[0].slot_date) : "9999";
-    const bDate = b.slots.length > 0 ? b.slots.reduce((min, s) => s.slot_date < min ? s.slot_date : min, b.slots[0].slot_date) : "9999";
+  const sortByNextSlot = (
+    a: BabysittingRequestWithSlots,
+    b: BabysittingRequestWithSlots,
+  ) => {
+    const aDate =
+      a.slots.length > 0
+        ? a.slots.reduce(
+            (min, s) => (s.slot_date < min ? s.slot_date : min),
+            a.slots[0].slot_date,
+          )
+        : "9999";
+    const bDate =
+      b.slots.length > 0
+        ? b.slots.reduce(
+            (min, s) => (s.slot_date < min ? s.slot_date : min),
+            b.slots[0].slot_date,
+          )
+        : "9999";
     return aDate.localeCompare(bDate);
   };
 
   // Group requests by status
-  const pendingPayment = requests.filter((r) => r.status === "pending_payment").sort(sortByNextSlot);
-  const active = requests.filter((r) => r.status === "open").sort(sortByNextSlot);
-  const filled = requests.filter((r) => r.status === "filled").sort(sortByNextSlot);
+  const pendingPayment = requests
+    .filter((r) => r.status === "pending_payment")
+    .sort(sortByNextSlot);
+  const active = requests
+    .filter((r) => r.status === "open")
+    .sort(sortByNextSlot);
+  const filled = requests
+    .filter((r) => r.status === "filled")
+    .sort(sortByNextSlot);
   const past = requests.filter((r) =>
-    ["expired", "cancelled", "nanny_cancelled", "completed"].includes(r.status)
+    ["expired", "cancelled", "nanny_cancelled", "completed"].includes(r.status),
   );
 
   // Min date = tomorrow, max date = 4 weeks from now
@@ -404,7 +458,13 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
   // ── Create Form View ──
 
   if (view === "create") {
-    const stepTitles = ["Children", "Location", "Date & Time", "Babysitter Rate", "Review"];
+    const stepTitles = [
+      "Children",
+      "Location",
+      "Date & Time",
+      "Babysitter Rate",
+      "Review",
+    ];
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-3">
@@ -415,7 +475,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
               if (formStep > 1) {
                 goBack();
               } else {
-                router.push('/parent');
+                router.push("/parent");
               }
             }}
           >
@@ -423,7 +483,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
           </Button>
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-slate-900">New Request</h1>
-            <p className="mt-1 text-slate-500">Step {formStep} of 5 — {stepTitles[formStep - 1]}</p>
+            <p className="mt-1 text-slate-500">
+              Step {formStep} of 5 — {stepTitles[formStep - 1]}
+            </p>
           </div>
         </div>
 
@@ -433,7 +495,11 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
             <div
               key={s}
               className={`h-2 rounded-full transition-all ${
-                s === formStep ? "w-8 bg-violet-500" : s < formStep ? "w-2 bg-violet-300" : "w-2 bg-slate-200"
+                s === formStep
+                  ? "w-8 bg-violet-500"
+                  : s < formStep
+                    ? "w-2 bg-violet-300"
+                    : "w-2 bg-slate-200"
               }`}
             />
           ))}
@@ -464,18 +530,31 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                   ))}
                 </div>
                 {children.map((child, i) => (
-                  <div key={i} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-semibold text-slate-500 mb-2">Child {i + 1}</p>
+                  <div
+                    key={i}
+                    className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <p className="text-xs font-semibold text-slate-500 mb-2">
+                      Child {i + 1}
+                    </p>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-xs text-slate-500">Age</label>
                         <select
                           value={child.ageMonths}
-                          onChange={(e) => updateChild(i, "ageMonths", parseInt(e.target.value))}
+                          onChange={(e) =>
+                            updateChild(
+                              i,
+                              "ageMonths",
+                              parseInt(e.target.value),
+                            )
+                          }
                           className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
                         >
                           {AGE_OPTIONS.map((opt) => (
-                            <option key={opt.months} value={opt.months}>{opt.label}</option>
+                            <option key={opt.months} value={opt.months}>
+                              {opt.label}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -483,7 +562,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                         <label className="text-xs text-slate-500">Gender</label>
                         <select
                           value={child.gender}
-                          onChange={(e) => updateChild(i, "gender", e.target.value)}
+                          onChange={(e) =>
+                            updateChild(i, "gender", e.target.value)
+                          }
                           className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
                         >
                           <option value="Boy">Boy</option>
@@ -516,7 +597,8 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                         value={addressQuery}
                         onChange={(e) => handleAddressChange(e.target.value)}
                         onFocus={() => {
-                          if (addressResults.length > 0) setShowAddressDropdown(true);
+                          if (addressResults.length > 0)
+                            setShowAddressDropdown(true);
                         }}
                         autoComplete="off"
                       />
@@ -525,7 +607,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                       )}
                     </div>
                     {showAddressDropdown && (
-                      <div className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}>
+                      <div
+                        className={`absolute z-50 w-full max-h-48 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg bottom-full mb-1`}
+                      >
                         {addressResults.map((r) => (
                           <button
                             key={r.pid}
@@ -540,13 +624,15 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                     )}
                     {selectedAddress && (
                       <p className="text-xs text-green-600 font-medium mt-1.5 flex items-center gap-1">
-                        {selectedAddress.street}, {selectedAddress.suburb} NSW {selectedAddress.postcode}
+                        {selectedAddress.street}, {selectedAddress.suburb} NSW{" "}
+                        {selectedAddress.postcode}
                         <Check className="h-3 w-3" />
                       </p>
                     )}
                     {notInArea && (
                       <p className="text-xs text-amber-600 mt-1.5">
-                        This address is outside our service area. We currently only operate in Greater Sydney, NSW.
+                        This address is outside our service area. We currently
+                        only operate in Greater Sydney, NSW.
                       </p>
                     )}
                   </div>
@@ -561,7 +647,10 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                   When do you need a babysitter?
                 </p>
                 {slots.map((slot) => (
-                  <div key={slot.id} className="relative rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+                  <div
+                    key={slot.id}
+                    className="relative rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2"
+                  >
                     {slots.length > 1 && (
                       <button
                         type="button"
@@ -578,7 +667,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                         min={minDate}
                         max={maxDate}
                         value={slot.date}
-                        onChange={(e) => updateSlot(slot.id, "date", e.target.value)}
+                        onChange={(e) =>
+                          updateSlot(slot.id, "date", e.target.value)
+                        }
                         className="bg-white"
                       />
                     </div>
@@ -587,11 +678,15 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                         <label className="text-xs text-slate-500">Start</label>
                         <select
                           value={slot.startTime}
-                          onChange={(e) => updateSlot(slot.id, "startTime", e.target.value)}
+                          onChange={(e) =>
+                            updateSlot(slot.id, "startTime", e.target.value)
+                          }
                           className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
                         >
                           {TIME_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -599,11 +694,15 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                         <label className="text-xs text-slate-500">End</label>
                         <select
                           value={slot.endTime}
-                          onChange={(e) => updateSlot(slot.id, "endTime", e.target.value)}
+                          onChange={(e) =>
+                            updateSlot(slot.id, "endTime", e.target.value)
+                          }
                           className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
                         >
                           {TIME_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -624,7 +723,9 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                   <div className="rounded-lg bg-violet-50 border border-violet-200 px-4 py-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-violet-700">Total hours</span>
-                      <span className="font-semibold text-violet-800">{estimatedHours} hrs</span>
+                      <span className="font-semibold text-violet-800">
+                        {estimatedHours} hrs
+                      </span>
                     </div>
                   </div>
                 )}
@@ -646,19 +747,31 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                     onChange={(e) => setHourlyRate(parseInt(e.target.value))}
                     className="flex-1 accent-violet-500"
                   />
-                  <span className="text-lg font-bold text-slate-900 w-16 text-right">${hourlyRate}</span>
+                  <span className="text-lg font-bold text-slate-900 w-16 text-right">
+                    ${hourlyRate}
+                  </span>
                 </div>
 
                 {/* Date/time preview + estimated total */}
                 {slots.some((s) => s.date) && (
                   <div className="rounded-lg bg-slate-50 border border-slate-200 px-4 py-3 space-y-2">
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Your dates</p>
-                    {slots.filter((s) => s.date).map((slot) => (
-                      <div key={slot.id} className="flex justify-between text-sm text-slate-600">
-                        <span>{formatSlotDate(slot.date)}</span>
-                        <span className="text-slate-400">{formatTime(slot.startTime)} – {formatTime(slot.endTime)}</span>
-                      </div>
-                    ))}
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Your dates
+                    </p>
+                    {slots
+                      .filter((s) => s.date)
+                      .map((slot) => (
+                        <div
+                          key={slot.id}
+                          className="flex justify-between text-sm text-slate-600"
+                        >
+                          <span>{formatSlotDate(slot.date)}</span>
+                          <span className="text-slate-400">
+                            {formatTime(slot.startTime)} –{" "}
+                            {formatTime(slot.endTime)}
+                          </span>
+                        </div>
+                      ))}
                   </div>
                 )}
 
@@ -666,11 +779,17 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                   <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-green-700">Total Hours</span>
-                      <span className="font-semibold text-green-800">{estimatedHours}</span>
+                      <span className="font-semibold text-green-800">
+                        {estimatedHours}
+                      </span>
                     </div>
                     <div className="flex justify-between text-sm mt-1">
-                      <span className="text-green-700 font-semibold">Est. Total Pay</span>
-                      <span className="font-bold text-green-800 text-base">${estimatedTotal}</span>
+                      <span className="text-green-700 font-semibold">
+                        Est. Total Pay
+                      </span>
+                      <span className="font-bold text-green-800 text-base">
+                        ${estimatedTotal}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -683,12 +802,20 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 {/* Children */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Children</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Children
+                    </p>
                     <p className="text-sm text-slate-700">
-                      {children.map((c) => `${ageLabel(c.ageMonths)} (${c.gender})`).join(", ")}
+                      {children
+                        .map((c) => `${ageLabel(c.ageMonths)} (${c.gender})`)
+                        .join(", ")}
                     </p>
                   </div>
-                  <button type="button" onClick={() => setFormStep(1)} className="text-violet-500 hover:text-violet-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormStep(1)}
+                    className="text-violet-500 hover:text-violet-700 p-1"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -697,11 +824,21 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 {/* Location */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Location</p>
-                    <p className="text-sm text-slate-700">{selectedAddress?.street}</p>
-                    <p className="text-sm text-slate-500">{selectedAddress?.suburb}, NSW {selectedAddress?.postcode}</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Location
+                    </p>
+                    <p className="text-sm text-slate-700">
+                      {selectedAddress?.street}
+                    </p>
+                    <p className="text-sm text-slate-500">
+                      {selectedAddress?.suburb}, NSW {selectedAddress?.postcode}
+                    </p>
                   </div>
-                  <button type="button" onClick={() => setFormStep(2)} className="text-violet-500 hover:text-violet-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormStep(2)}
+                    className="text-violet-500 hover:text-violet-700 p-1"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -710,16 +847,24 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 {/* Date & Time */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Date & Time</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Date & Time
+                    </p>
                     <div className="space-y-1">
                       {slots.map((slot) => (
                         <p key={slot.id} className="text-sm text-slate-700">
-                          {slot.date ? formatSlotDate(slot.date) : "No date"} — {formatTime(slot.startTime)} to {formatTime(slot.endTime)}
+                          {slot.date ? formatSlotDate(slot.date) : "No date"} —{" "}
+                          {formatTime(slot.startTime)} to{" "}
+                          {formatTime(slot.endTime)}
                         </p>
                       ))}
                     </div>
                   </div>
-                  <button type="button" onClick={() => setFormStep(3)} className="text-violet-500 hover:text-violet-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormStep(3)}
+                    className="text-violet-500 hover:text-violet-700 p-1"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -728,13 +873,24 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 {/* Babysitter Rate */}
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Babysitter Rate</p>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">
+                      Babysitter Rate
+                    </p>
                     <p className="text-sm text-slate-700">
                       ${hourlyRate}/hr
-                      {estimatedHours > 0 && <span className="text-slate-500"> — Est. ${estimatedTotal} ({estimatedHours} hrs)</span>}
+                      {estimatedHours > 0 && (
+                        <span className="text-slate-500">
+                          {" "}
+                          — Est. ${estimatedTotal} ({estimatedHours} hrs)
+                        </span>
+                      )}
                     </p>
                   </div>
-                  <button type="button" onClick={() => setFormStep(4)} className="text-violet-500 hover:text-violet-700 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormStep(4)}
+                    className="text-violet-500 hover:text-violet-700 p-1"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -771,7 +927,10 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 </Button>
               )}
               {formStep < 5 && (
-                <Button className="flex-1 bg-violet-500 hover:bg-violet-600" onClick={goNext}>
+                <Button
+                  className="flex-1 bg-violet-500 hover:bg-violet-600"
+                  onClick={goNext}
+                >
                   Next
                 </Button>
               )}
@@ -877,9 +1036,7 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-200">
                     <CheckCircle className="h-5 w-5 text-violet-700" />
                   </div>
-                  <h4 className="font-medium text-violet-900">
-                    3. You Choose
-                  </h4>
+                  <h4 className="font-medium text-violet-900">3. You Choose</h4>
                   <p className="text-sm text-violet-700">
                     Review nanny profiles and pick the best fit for your family
                   </p>
@@ -899,9 +1056,13 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
               </h2>
               <div className="grid gap-3">
                 {pendingPayment.map((req) => {
-                  const firstSlot = req.slots.length > 0
-                    ? req.slots.reduce((min, s) => s.slot_date < min.slot_date ? s : min, req.slots[0])
-                    : null;
+                  const firstSlot =
+                    req.slots.length > 0
+                      ? req.slots.reduce(
+                          (min, s) => (s.slot_date < min.slot_date ? s : min),
+                          req.slots[0],
+                        )
+                      : null;
                   return (
                     <div
                       key={req.id}
@@ -917,10 +1078,15 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                           </div>
                           <div>
                             <p className="font-medium text-slate-800">
-                              {firstSlot ? formatSlotDate(firstSlot.slot_date) : "Babysitting Request"}
-                              {firstSlot && ` · ${formatTime(firstSlot.start_time)}`}
+                              {firstSlot
+                                ? formatSlotDate(firstSlot.slot_date)
+                                : "Babysitting Request"}
+                              {firstSlot &&
+                                ` · ${formatTime(firstSlot.start_time)}`}
                             </p>
-                            <p className="text-sm text-slate-500">{req.suburb}</p>
+                            <p className="text-sm text-slate-500">
+                              {req.suburb}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -982,7 +1148,11 @@ export function ParentBabysittingClient({ requests, suburbs }: ParentBabysitting
                 onClick={() => setShowPast(!showPast)}
                 className="flex items-center gap-2 text-lg font-semibold text-slate-500 hover:text-slate-700 transition-colors"
               >
-                {showPast ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+                {showPast ? (
+                  <ChevronDown className="h-5 w-5" />
+                ) : (
+                  <ChevronRight className="h-5 w-5" />
+                )}
                 Past ({past.length})
               </button>
               {showPast && (
@@ -1015,14 +1185,17 @@ function BSRTile({
 }) {
   const isOpen = request.status === "open";
   const isFilled = request.status === "filled";
-  const isPast = ["expired", "cancelled", "nanny_cancelled", "completed"].includes(
-    request.status
-  );
+  const isPast = [
+    "expired",
+    "cancelled",
+    "nanny_cancelled",
+    "completed",
+  ].includes(request.status);
   const borderColor = isOpen
     ? "border-amber-200"
     : isFilled
-    ? "border-green-200"
-    : "border-slate-200";
+      ? "border-green-200"
+      : "border-slate-200";
 
   const statusConfig: Record<string, { label: string; style: string }> = {
     completed: { label: "Completed", style: "bg-green-100 text-green-700" },
@@ -1062,7 +1235,10 @@ function BSRTile({
                   </div>
                 )}
                 <p className="text-sm font-medium text-slate-900">
-                  {request.acceptedNanny.firstName}{calcAge(request.acceptedNanny.dateOfBirth) !== null ? `, ${calcAge(request.acceptedNanny.dateOfBirth)}` : ""}
+                  {request.acceptedNanny.firstName}
+                  {calcAge(request.acceptedNanny.dateOfBirth) !== null
+                    ? `, ${calcAge(request.acceptedNanny.dateOfBirth)}`
+                    : ""}
                 </p>
               </div>
             ) : (
@@ -1093,7 +1269,8 @@ function BSRTile({
           {isOpen && request.requestingNannies.length > 0 && (
             <span className="flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
               <User className="h-3 w-3" />
-              {request.requestingNannies.length} request{request.requestingNannies.length > 1 ? "s" : ""}
+              {request.requestingNannies.length} request
+              {request.requestingNannies.length > 1 ? "s" : ""}
             </span>
           )}
           {isFilled && (
@@ -1132,15 +1309,23 @@ function BSRDetailModal({
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedNanny, setSelectedNanny] = useState<RequestingNanny | null>(null);
+  const [selectedNanny, setSelectedNanny] = useState<RequestingNanny | null>(
+    null,
+  );
   const [acceptingNanny, setAcceptingNanny] = useState(false);
-  const [confirmedNannyInfo, setConfirmedNannyInfo] = useState<{ phone?: string; firstName?: string } | null>(null);
+  const [confirmedNannyInfo, setConfirmedNannyInfo] = useState<{
+    phone?: string;
+    firstName?: string;
+  } | null>(null);
 
   const isOpen = request.status === "open";
   const isFilled = request.status === "filled";
-  const isPast = ["expired", "cancelled", "nanny_cancelled", "completed"].includes(
-    request.status
-  );
+  const isPast = [
+    "expired",
+    "cancelled",
+    "nanny_cancelled",
+    "completed",
+  ].includes(request.status);
 
   const handleCancel = async () => {
     setCancelling(true);
@@ -1159,7 +1344,9 @@ function BSRDetailModal({
       <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">{isFilled ? "Babysitting Booking" : "Babysitting Request"}</CardTitle>
+            <CardTitle className="text-base">
+              {isFilled ? "Babysitting Booking" : "Babysitting Request"}
+            </CardTitle>
             <Button variant="ghost" size="sm" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
@@ -1190,19 +1377,30 @@ function BSRDetailModal({
                     className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-100 transition-colors cursor-pointer"
                   >
                     {nanny.profilePicUrl ? (
-                      <img src={nanny.profilePicUrl} alt="" className="h-9 w-9 rounded-full object-cover flex-shrink-0" />
+                      <img
+                        src={nanny.profilePicUrl}
+                        alt=""
+                        className="h-9 w-9 rounded-full object-cover flex-shrink-0"
+                      />
                     ) : (
                       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-violet-100 flex-shrink-0">
-                        <span className="text-xs font-semibold text-violet-600">{nanny.firstName[0]}</span>
+                        <span className="text-xs font-semibold text-violet-600">
+                          {nanny.firstName[0]}
+                        </span>
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-slate-900 truncate">
-                        {nanny.firstName}{calcAge(nanny.dateOfBirth) !== null ? `, ${calcAge(nanny.dateOfBirth)}` : ""}
+                        {nanny.firstName}
+                        {calcAge(nanny.dateOfBirth) !== null
+                          ? `, ${calcAge(nanny.dateOfBirth)}`
+                          : ""}
                       </p>
                       <p className="text-xs text-slate-500">
                         {nanny.distanceKm !== null && (
-                          <span>{nanny.distanceKm < 1 ? "<1" : nanny.distanceKm} km</span>
+                          <span>
+                            {nanny.distanceKm < 1 ? "<1" : nanny.distanceKm} km
+                          </span>
                         )}
                         {nanny.experienceYears && (
                           <span> · {nanny.experienceYears}yr exp</span>
@@ -1228,19 +1426,25 @@ function BSRDetailModal({
 
                 // Record informed consent — non-blocking
                 recordInformedAction({
-                  agreementId: 'AGR-07',
-                  buttonText: 'Accept Babysitter',
-                  modalContentVersion: 'v3.0-2026-03-23',
+                  agreementId: "AGR-07",
+                  buttonText: "Accept Babysitter",
+                  modalContentVersion: "v3.0-2026-03-23",
                   relatedEntityId: request.id,
                 }).catch(() => {});
 
-                const result = await parentAcceptNanny(request.id, selectedNanny.nannyId);
+                const result = await parentAcceptNanny(
+                  request.id,
+                  selectedNanny.nannyId,
+                );
                 setAcceptingNanny(false);
                 if (!result.success) {
                   setError(result.error || "Failed to accept nanny");
                 } else {
                   setSelectedNanny(null);
-                  setConfirmedNannyInfo({ phone: result.nannyPhone, firstName: result.nannyFirstName });
+                  setConfirmedNannyInfo({
+                    phone: result.nannyPhone,
+                    firstName: result.nannyFirstName,
+                  });
                 }
               }}
               onClose={() => {
@@ -1258,10 +1462,13 @@ function BSRDetailModal({
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
                     <CheckCircle className="h-6 w-6 text-green-600" />
                   </div>
-                  <h3 className="text-lg font-semibold text-slate-900">Babysitter Confirmed!</h3>
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    Babysitter Confirmed!
+                  </h3>
                   {confirmedNannyInfo.firstName && (
                     <p className="text-slate-600">
-                      {confirmedNannyInfo.firstName} has been confirmed for your babysitting job.
+                      {confirmedNannyInfo.firstName} has been confirmed for your
+                      babysitting job.
                     </p>
                   )}
                   {confirmedNannyInfo.phone && (
@@ -1273,7 +1480,8 @@ function BSRDetailModal({
                     </div>
                   )}
                   <p className="text-sm text-slate-500">
-                    Please contact your babysitter directly to confirm all the details.
+                    Please contact your babysitter directly to confirm all the
+                    details.
                   </p>
                   <Button
                     className="w-full bg-violet-500 hover:bg-violet-600"
@@ -1308,7 +1516,10 @@ function BSRDetailModal({
                 )}
                 <div className="flex-1">
                   <p className="text-sm font-medium text-green-900">
-                    {request.acceptedNanny.firstName}{calcAge(request.acceptedNanny.dateOfBirth) !== null ? `, ${calcAge(request.acceptedNanny.dateOfBirth)}` : ""}
+                    {request.acceptedNanny.firstName}
+                    {calcAge(request.acceptedNanny.dateOfBirth) !== null
+                      ? `, ${calcAge(request.acceptedNanny.dateOfBirth)}`
+                      : ""}
                   </p>
                   {request.acceptedNanny.distanceKm !== null && (
                     <p className="text-xs text-green-700">
@@ -1334,7 +1545,8 @@ function BSRDetailModal({
                   {request.acceptedNanny.phone ?? "Phone not available"}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
-                  Please contact your babysitter directly to confirm all details.
+                  Please contact your babysitter directly to confirm all
+                  details.
                 </p>
               </div>
             </div>
@@ -1375,8 +1587,7 @@ function BSRDetailModal({
                   {formatSlotDate(slot.slot_date)}
                 </span>
                 <span className="text-sm text-slate-500">
-                  {formatTime(slot.start_time)} –{" "}
-                  {formatTime(slot.end_time)}
+                  {formatTime(slot.start_time)} – {formatTime(slot.end_time)}
                 </span>
               </div>
             ))}
@@ -1397,7 +1608,7 @@ function BSRDetailModal({
                 if (s.start_time && s.end_time) {
                   const [sh, sm] = s.start_time.split(":").map(Number);
                   const [eh, em] = s.end_time.split(":").map(Number);
-                  mins += (eh * 60 + em) - (sh * 60 + sm);
+                  mins += eh * 60 + em - (sh * 60 + sm);
                 }
               }
               const hrs = Math.round((mins / 60) * 10) / 10;
@@ -1417,7 +1628,7 @@ function BSRDetailModal({
                     if (s.start_time && s.end_time) {
                       const [sh, sm] = s.start_time.split(":").map(Number);
                       const [eh, em] = s.end_time.split(":").map(Number);
-                      mins += (eh * 60 + em) - (sh * 60 + sm);
+                      mins += eh * 60 + em - (sh * 60 + sm);
                     }
                   }
                   const hrs = Math.round((mins / 60) * 10) / 10;
@@ -1449,7 +1660,9 @@ function BSRDetailModal({
 
           {(isOpen || isFilled) && showConfirmCancel && (
             <div className="flex items-center gap-2">
-              <p className="text-sm text-slate-600">{isFilled ? "Cancel this booking?" : "Cancel this request?"}</p>
+              <p className="text-sm text-slate-600">
+                {isFilled ? "Cancel this booking?" : "Cancel this request?"}
+              </p>
               <Button
                 variant="ghost"
                 size="sm"
@@ -1519,15 +1732,24 @@ function NannyMiniPopup({
           {/* Photo + Name */}
           <div className="flex items-center gap-3">
             {nanny.profilePicUrl ? (
-              <img src={nanny.profilePicUrl} alt="" className="h-14 w-14 rounded-full object-cover" />
+              <img
+                src={nanny.profilePicUrl}
+                alt=""
+                className="h-14 w-14 rounded-full object-cover"
+              />
             ) : (
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-violet-100">
-                <span className="text-lg font-semibold text-violet-600">{nanny.firstName[0]}</span>
+                <span className="text-lg font-semibold text-violet-600">
+                  {nanny.firstName[0]}
+                </span>
               </div>
             )}
             <div>
               <p className="text-base font-semibold text-slate-900">
-                {nanny.firstName}{calcAge(nanny.dateOfBirth) !== null ? `, ${calcAge(nanny.dateOfBirth)}` : ""}
+                {nanny.firstName}
+                {calcAge(nanny.dateOfBirth) !== null
+                  ? `, ${calcAge(nanny.dateOfBirth)}`
+                  : ""}
               </p>
               {nanny.suburb && (
                 <p className="text-sm text-slate-500">{nanny.suburb}</p>
@@ -1574,10 +1796,24 @@ function NannyMiniPopup({
           {/* Actions */}
           <div className="space-y-2">
             <p className="text-[10px] text-slate-400 text-center">
-              By accepting, your full booking address will be shared with your babysitter.{" "}
-              <Link href="/legal/client-terms" target="_blank" className="text-violet-500 hover:underline">Terms</Link>
-              {" "}&amp;{" "}
-              <Link href="/legal/privacy-policy" target="_blank" className="text-violet-500 hover:underline">Privacy Policy</Link>.
+              By accepting, your full booking address will be shared with your
+              babysitter.{" "}
+              <Link
+                href="/legal/client-terms"
+                target="_blank"
+                className="text-violet-500 hover:underline"
+              >
+                Terms
+              </Link>{" "}
+              &amp;{" "}
+              <Link
+                href="/legal/privacy-policy"
+                target="_blank"
+                className="text-violet-500 hover:underline"
+              >
+                Privacy Policy
+              </Link>
+              .
             </p>
             <Button
               className="w-full bg-violet-500 hover:bg-violet-600"

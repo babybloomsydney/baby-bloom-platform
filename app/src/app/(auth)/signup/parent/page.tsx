@@ -26,11 +26,18 @@ import {
   parseFunnelSource,
   funnelSourceToSignupSource,
 } from "@/lib/funnel/source";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2 } from "lucide-react";
+import { formatAuMobile, isAuMobile } from "@/lib/au-contact";
 
 const parentSignupSchema = z
   .object({
     email: z.string().email("Please enter a valid email address"),
+    mobile: z
+      .string()
+      .min(1, "Mobile number is required")
+      .refine((v) => isAuMobile(v), {
+        message: "Please enter a valid Australian mobile (04XX XXX XXX)",
+      }),
     password: z.string().min(8, "Password must be at least 8 characters"),
     confirmPassword: z.string(),
     firstName: z.string().min(1, "First name is required"),
@@ -78,6 +85,7 @@ function ParentSignupForm() {
     resolver: zodResolver(parentSignupSchema),
     defaultValues: {
       email: "",
+      mobile: "",
       password: "",
       confirmPassword: "",
       firstName: "",
@@ -112,6 +120,9 @@ function ParentSignupForm() {
     formData.append("password", data.password);
     formData.append("firstName", data.firstName);
     formData.append("lastName", data.lastName);
+    // Send raw user input — server is the canonical normalisation point
+    // (signUp() calls normaliseAuMobile + isAuMobile defence-in-depth).
+    formData.append("mobile_number", data.mobile);
     formData.append("role", "parent");
     if (inviteToken) formData.append("invite_token", inviteToken);
     if (signupSourceFromUrl)
@@ -221,6 +232,58 @@ function ParentSignupForm() {
                 <FormMessage />
               </FormItem>
             )}
+          />
+
+          <FormField
+            control={form.control}
+            name="mobile"
+            render={({ field, fieldState }) => {
+              const valid = isAuMobile(field.value);
+              return (
+                <FormItem>
+                  <FormLabel>Mobile number</FormLabel>
+                  <div className="flex gap-2">
+                    <div
+                      aria-hidden="true"
+                      className="flex h-10 flex-shrink-0 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700"
+                    >
+                      +61
+                    </div>
+                    <FormControl>
+                      <Input
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel-national"
+                        placeholder="04XX XXX XXX"
+                        maxLength={12}
+                        disabled={isLoading}
+                        aria-invalid={fieldState.invalid}
+                        {...field}
+                        onChange={(e) => {
+                          const cleaned = e.target.value.replace(
+                            /[^0-9 ]/g,
+                            "",
+                          );
+                          field.onChange(cleaned);
+                        }}
+                      />
+                    </FormControl>
+                  </div>
+                  {valid && (
+                    <p
+                      className="flex items-center gap-1 text-xs font-medium text-green-700"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {formatAuMobile(field.value)}
+                      <span className="sr-only"> is a valid mobile number</span>
+                      <Check className="h-3 w-3" aria-hidden="true" />
+                    </p>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
 
           <FormField

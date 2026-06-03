@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { getStripeClient } from "@/lib/stripe/client";
 import {
   POSITION_STAGE,
   POSITION_STATUS,
@@ -713,6 +714,14 @@ export async function deactivateParentAccount(): Promise<{
       .in("status", ["pending", "accepted"]);
   }
 
+  // S10 — payments cascade. Cancel any active Stripe subscription
+  // (immediate, not period-end), anonymise child records, end nanny
+  // placements. Best-effort: failures here are logged but do not
+  // abort the deactivation — the user has already chosen to leave.
+  await cascadePaymentsOnAccountClose(user.id, admin).catch((err) => {
+    console.error("[deactivateParentAccount] payments cascade error", err);
+  });
+
   await admin.from("activity_logs").insert({
     user_id: user.id,
     action: "account_deactivated",
@@ -721,6 +730,131 @@ export async function deactivateParentAccount(): Promise<{
 
   await supabase.auth.signOut();
   return { success: true, error: null };
+}
+
+/**
+ * S10 — payments-side cascade on parent account close.
+ *
+ * Spec: `system/APP/PAYMENTS/FRONTEND/03-build-spec.md` §S10.
+ *
+ * Steps:
+ *   1. Cancel any active Stripe subscription (immediate).
+ *   2. Anonymise child_client rows owned by this parent — preserves
+ *      nanny's bapp_logs audit trail per Bailey's Q7 round-2
+ *      answer "option B" (don't delete child entries; tombstone
+ *      identifying info so the nanny's work history stays).
+ *   3. End nanny_placements rows linking this parent.
+ *   4. Update Stripe customer description with closed-account marker
+ *      for ATO 7-year retention. The Stripe row itself is NEVER
+ *      deleted — invoice records support compliance + future
+ *      refunds via Dashboard.
+ *
+ * Deferred (require schema migrations not yet shipped):
+ *   - bapp_logs.author_id anonymisation (FK has no SET NULL clause).
+ *   - email_logs anonymisation.
+ *   - nanny_payouts → 'permanently_frozen' status transition
+ *     (per CHANGE-REQUEST-ACCOUNT-CLOSURE; needs enum extension).
+ *   - auth.users hard delete (currently signOut only).
+ *   - Email confirmation send.
+ */
+async function cascadePaymentsOnAccountClose(
+  parentUserId: string,
+  admin: ReturnType<typeof createAdminClient>,
+): Promise<void> {
+  // 1. Stripe subscription cancel (best-effort, non-blocking).
+  const { data: sub } = await admin
+    .from("parent_subscriptions")
+    .select("id, status, stripe_subscription_id, stripe_customer_id")
+    .eq("parent_user_id", parentUserId)
+    .maybeSingle<{
+      id: string;
+      status: string;
+      stripe_subscription_id: string | null;
+      stripe_customer_id: string | null;
+    }>();
+
+  if (sub) {
+    // `cancelled` deliberately excluded — that state means Stripe was
+    // already asked to cancel-at-period-end. Calling .cancel() again
+    // would either no-op (good) or hit a stale state error (noisy);
+    // either way we have nothing new to ask Stripe to do.
+    const cancellable = [
+      "trial",
+      "active_monthly",
+      "active_upfront",
+      "past_due",
+    ];
+    if (cancellable.includes(sub.status) && sub.stripe_subscription_id) {
+      try {
+        const stripe = getStripeClient();
+        await stripe.subscriptions.cancel(sub.stripe_subscription_id);
+      } catch (err) {
+        console.error(
+          "[cascadePaymentsOnAccountClose] stripe sub cancel failed",
+          err,
+        );
+      }
+    }
+    // 4. Update Stripe customer description for ATO retention marker.
+    if (sub.stripe_customer_id) {
+      try {
+        const stripe = getStripeClient();
+        await stripe.customers.update(sub.stripe_customer_id, {
+          description: `[closed account ${sub.id}]`,
+          metadata: { closed_at: new Date().toISOString() },
+        });
+      } catch (err) {
+        console.error(
+          "[cascadePaymentsOnAccountClose] stripe customer update failed",
+          err,
+        );
+      }
+    }
+  }
+
+  // 2. Anonymise child_client rows (NOT delete — preserve nanny's
+  //    bapp_logs history per option B). Sets first_name + DOB to
+  //    tombstones; clears parent_user_id link.
+  //
+  //    Best-effort: failure here is logged but does NOT abort the
+  //    deactivation. The user has already chosen to leave, and
+  //    leaving residual PII is preferable to leaving the user
+  //    half-deactivated with a confusing error message. Admin can
+  //    re-run anonymisation via a manual queue if this surface.
+  const childAnonResult = await admin
+    .from("child_client")
+    .update({
+      first_name: "[closed]",
+      date_of_birth: null,
+      parent_user_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("parent_user_id", parentUserId);
+  if (childAnonResult.error) {
+    console.error(
+      "[cascadePaymentsOnAccountClose] child_client anonymise failed",
+      childAnonResult.error,
+    );
+  }
+
+  // 3. End nanny_placements for this parent. 'ended' is the live
+  //    status; matches the placement-lifecycle constants used
+  //    elsewhere in the codebase.
+  const placementsResult = await admin
+    .from("nanny_placements")
+    .update({
+      status: "ended",
+      ended_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("parent_user_id", parentUserId)
+    .eq("status", "active");
+  if (placementsResult.error) {
+    console.error(
+      "[cascadePaymentsOnAccountClose] nanny_placements end failed",
+      placementsResult.error,
+    );
+  }
 }
 
 // ── A-05: parent profile picture ─────────────────────────────────────────

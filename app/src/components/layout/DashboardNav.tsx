@@ -5,6 +5,7 @@ import { Settings, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/dashboard/UserAvatar";
 import { useAuth } from "@/contexts/AuthContext";
+import { displayName, displayFullName } from "@/lib/auth/display-name";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,18 +15,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { trackEvent } from "@/lib/analytics/trackEvent";
+import { NannyEarningsBadge } from "./NannyEarningsBadge";
 
 interface DashboardNavProps {
   role: "nanny" | "parent";
 }
 
 export function DashboardNav({ role }: DashboardNavProps) {
-  const { profile, role: authRole, signOut } = useAuth();
+  const { user, profile, role: authRole, signOut } = useAuth();
 
-  const fullName = profile
-    ? `${profile.first_name || ""} ${profile.last_name || ""}`.trim()
-    : "";
-  const firstName = profile?.first_name || "User";
+  const fullName = displayFullName(profile, user);
+  const firstName = displayName(profile, user);
 
   // No border-b on <header> below: the violet horizontal divider on
   // the tab strip (KatieShell → KatieTabs) is the only line between
@@ -72,6 +72,12 @@ export function DashboardNav({ role }: DashboardNavProps) {
           </Link>
         </Button>
         */}
+
+        {/* DSS §8 Q2 — nanny earnings wallet, only on nanny-side routes.
+            Renders inline with the avatar; hides until data lands AND
+            the nanny has at least one connected child. Click routes to
+            /nanny/payouts where the breakdown lives. */}
+        {role === "nanny" && <NannyEarningsBadge />}
 
         {/* User dropdown */}
         <DropdownMenu>

@@ -16,7 +16,9 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { KatieNoteTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BAppLogInsert } from "@/types/bapp";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { resolveChild } from "./utils";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 interface PreparedCustom {
   child: ChildSummary;
@@ -155,6 +157,22 @@ export async function applyCreateTile(
   if (!r.ok) return { ok: false, error: r.error };
   const { child, data, tilePreview, internalNotes } = r.prepared;
 
+  // T-015 media gate.
+  const tileImage =
+    typeof (data as { image_url?: unknown }).image_url === "string"
+      ? ((data as { image_url?: string }).image_url ?? null)
+      : null;
+  if (tileImage) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
+
   // Insert payload typed against `BAppLogInsert` so it stays in
   // sync with the canonical `BAppLog` row shape. Adding a column
   // to BAppLog will surface here as a TS error rather than silent
@@ -185,6 +203,16 @@ export async function applyCreateTile(
     };
   }
   const logId = (inserted as { id: string }).id;
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Katie writes on behalf of the nanny (ctx.userId).
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "custom",
+    logContext: "adhoc",
+  });
 
   // INSIGHTS — A-09 deferred-by-design.
   //
@@ -302,6 +330,7 @@ export const feedWriterModule: BloomBotModule = {
   name: "Feed Writer",
   description:
     "Drafts custom tiles for the child-shared feed (bapp_logs type='custom'). The feed is visible to BOTH the nanny and the child's parent. ONLY for content about the child; anything private goes through agent-memory instead.",
+  childScoped: true,
 
   tools: [
     {

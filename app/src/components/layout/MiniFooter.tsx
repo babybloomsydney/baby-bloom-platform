@@ -9,6 +9,8 @@ const HIDDEN_PATHS = [
   "/matchmaking/onboarding",
   "/bb/test/onboarding-verification",
   "/nanny/onboarding-verification",
+  // T-022 — same hide-footer treatment as the verification flow.
+  "/nanny/onboarding/add-child",
   "/apply",
 ];
 
@@ -31,10 +33,10 @@ function MiniFooterInner() {
         About
       </Link>
       <Link href="/legal/privacy-policy" className="hover:underline">
-        Privacy
+        Privacy Policy
       </Link>
       <Link href="/legal/client-terms" className="hover:underline">
-        Terms
+        Terms and Conditions
       </Link>
     </div>
   );

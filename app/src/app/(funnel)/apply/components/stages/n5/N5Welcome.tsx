@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { StageProps } from '../../FunnelOrchestrator';
-import Image from 'next/image';
-import { Sparkles, Bell, Eye } from 'lucide-react';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { StageProps } from "../../FunnelOrchestrator";
+import Image from "next/image";
+import { Sparkles, Bell, Eye } from "lucide-react";
 
 export function N5Welcome({ state }: StageProps) {
   const router = useRouter();
@@ -41,7 +41,7 @@ export function N5Welcome({ state }: StageProps) {
         ) : (
           <div className="w-14 h-14 rounded-full bg-violet-100 flex items-center justify-center flex-shrink-0 border-2 border-violet-200">
             <span className="text-xl font-bold text-violet-600">
-              {state.first_name?.[0]?.toUpperCase() || '?'}
+              {state.first_name?.[0]?.toUpperCase() || "?"}
             </span>
           </div>
         )}
@@ -50,14 +50,18 @@ export function N5Welcome({ state }: StageProps) {
             {state.first_name} {state.last_name}
           </p>
           <p className="text-xs text-slate-500 line-clamp-2">
-            {(state.ai_content?.headline as string)?.replace(/<[^>]*>/g, '').trim() || 'Professional nanny'}
+            {(state.ai_content?.headline as string)
+              ?.replace(/<[^>]*>/g, "")
+              .trim() || "Professional nanny"}
           </p>
         </div>
       </div>
 
       {/* Next steps */}
       <div className="flex flex-col gap-3 max-w-sm w-full text-left">
-        <p className="text-sm font-semibold text-slate-700">Here&apos;s what happens next:</p>
+        <p className="text-sm font-semibold text-slate-700">
+          Here&apos;s what happens next:
+        </p>
         <div className="flex items-start gap-3">
           <Eye className="w-4 h-4 text-violet-500 mt-0.5 flex-shrink-0" />
           <p className="text-sm text-slate-600">
@@ -67,7 +71,8 @@ export function N5Welcome({ state }: StageProps) {
         <div className="flex items-start gap-3">
           <Sparkles className="w-4 h-4 text-violet-500 mt-0.5 flex-shrink-0" />
           <p className="text-sm text-slate-600">
-            We&apos;ll start matching you with families based on your preferences
+            We&apos;ll start matching you with families based on your
+            preferences
           </p>
         </div>
         <div className="flex items-start gap-3">
@@ -84,17 +89,19 @@ export function N5Welcome({ state }: StageProps) {
           <div className="w-10 h-10 rounded-xl bg-violet-100 flex items-center justify-center flex-shrink-0">
             <Sparkles className="w-5 h-5 text-violet-600" />
           </div>
-          <p className="text-sm font-semibold text-slate-800 text-left">Get more opportunities</p>
+          <p className="text-sm font-semibold text-slate-800 text-left">
+            Get more opportunities
+          </p>
         </div>
         <div className="text-sm text-slate-600 text-left leading-relaxed">
           <p>Share your childcare profile to:</p>
           <ul className="mt-1 ml-1 flex flex-col gap-0.5 text-green-600">
-            <li>+ Be included in parents matchmaking results</li>
+            <li>+ Be included in parents&apos; matchmaking results</li>
             <li>+ Receive live babysitting opportunities</li>
           </ul>
         </div>
         <Button
-          onClick={() => router.push('/nanny/share')}
+          onClick={() => router.push("/nanny/share")}
           className="w-full bg-violet-600 hover:bg-violet-700 text-white h-11 px-6 rounded-lg font-medium text-sm"
         >
           Share Your Profile
@@ -112,9 +119,17 @@ export function N5Welcome({ state }: StageProps) {
       {showConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full flex flex-col gap-4 shadow-xl animate-in zoom-in-95 duration-200">
-            <h3 className="text-lg font-semibold text-slate-800">Are you sure?</h3>
+            <h3 className="text-lg font-semibold text-slate-800">
+              Are you sure?
+            </h3>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Nannies who share their profile get up to <span className="font-semibold text-slate-800">10x more matches</span> with families. It also helps us bring more families onto the platform, which means more opportunities for you and every nanny on Baby Bloom. You can always do this later from your dashboard.
+              Nannies who share their profile get up to{" "}
+              <span className="font-semibold text-slate-800">
+                10x more matches
+              </span>{" "}
+              with families. It also helps us bring more families onto the
+              platform, which means more opportunities for you and every nanny
+              on Baby Bloom. You can always do this later from your dashboard.
             </p>
             <div className="flex flex-col gap-2 pt-2">
               <Button
@@ -124,7 +139,7 @@ export function N5Welcome({ state }: StageProps) {
                 Go Back and Share
               </Button>
               <button
-                onClick={() => router.push('/nanny')}
+                onClick={() => router.push("/nanny")}
                 className="w-full text-sm text-slate-400 hover:text-slate-500 py-2 transition-colors"
               >
                 Skip for now

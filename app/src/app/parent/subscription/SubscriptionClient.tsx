@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ExternalLink, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  ExternalLink,
+  Heart,
+  Loader2,
+  Sparkles,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createPortalSession } from "@/lib/actions/payments/portal";
+import { formatAuDate } from "@/lib/format/date";
 
 interface SubscriptionRow {
   status:
@@ -28,6 +35,18 @@ interface SubscriptionRow {
 
 interface SubscriptionClientProps {
   subscription: SubscriptionRow | null;
+  /**
+   * `true` when the user just returned from Checkout with
+   * `?status=success` on the URL. Drives the full-page activation
+   * overlay + the post-checkout `router.refresh()` loop that pulls
+   * the new subscription state once the webhook lands, then
+   * redirects the parent to the child's development page.
+   */
+  justSubscribed?: boolean;
+  /** Used for the auto-redirect target after activation confirms. */
+  childId?: string | null;
+  childFirstName?: string | null;
+  nannyFirstName?: string | null;
 }
 
 const STATUS_LABELS: Record<NonNullable<SubscriptionRow["status"]>, string> = {
@@ -39,19 +58,50 @@ const STATUS_LABELS: Record<NonNullable<SubscriptionRow["status"]>, string> = {
   lapsed: "Lapsed",
 };
 
-function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-AU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
+export function SubscriptionClient({
+  subscription,
+  justSubscribed,
+  childId,
+  childFirstName,
+  nannyFirstName,
+}: SubscriptionClientProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Post-checkout activation overlay (Bailey 2026-05-13 rework). When
+  // the parent returns from Checkout with ?status=success:
+  //   1. Render a full-page activation screen (NOT the management
+  //      page) so the parent sees nothing but the conversion moment.
+  //   2. Poll `router.refresh()` every 1.5s until the subscription
+  //      row reports active_* (or 8 cycles ≈ 12s failsafe).
+  //   3. Once confirmed, show a congrats message + auto-redirect to
+  //      the child's development page after 2s.
+  // No "Stripe" wording anywhere — implementation detail, not user
+  // concern.
+  const refreshTickCountRef = useRef<number>(0);
+  const stateConfirmed =
+    subscription?.status === "active_monthly" ||
+    subscription?.status === "active_upfront";
+
+  useEffect(() => {
+    if (!justSubscribed) return;
+    if (stateConfirmed) return; // landed; no more polling needed
+    if (refreshTickCountRef.current >= 8) return;
+    const timer = setTimeout(() => {
+      refreshTickCountRef.current += 1;
+      router.refresh();
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [justSubscribed, stateConfirmed, router]);
+
+  // Auto-redirect to the child's dev page once activation is confirmed.
+  useEffect(() => {
+    if (!justSubscribed || !stateConfirmed || !childId) return;
+    const timer = setTimeout(() => {
+      router.push(`/parent/development/${childId}`);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [justSubscribed, stateConfirmed, childId, router]);
 
   function openPortal() {
     setError(null);
@@ -64,6 +114,22 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
       // Open in same tab — Stripe portal handles its own session.
       window.location.href = result.data.url;
     });
+  }
+
+  // Full-page activation overlay — wins over everything else when the
+  // parent has just returned from Checkout. Renders a clean loading
+  // screen that resolves into a congrats moment and auto-redirects
+  // to the child's dev page. The management surface below is never
+  // rendered in this state.
+  if (justSubscribed) {
+    return (
+      <ActivationOverlay
+        stateConfirmed={stateConfirmed}
+        childFirstName={childFirstName ?? "your child"}
+        nannyFirstName={nannyFirstName ?? null}
+        willRedirect={Boolean(childId)}
+      />
+    );
   }
 
   // No subscription row → never subscribed → drop them on the subscribe page.
@@ -101,7 +167,9 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
     <div className="mx-auto max-w-2xl px-4 py-12">
       <h1 className="text-2xl font-bold text-slate-900">Subscription</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Manage your Baby Bloom subscription.
+        Your subscription helps us contribute to the developmental work your
+        nanny is doing — we&apos;re all on the same team, working towards the
+        betterment of young children.
       </p>
 
       {error && (
@@ -155,7 +223,7 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
                     : "Next charge / renewal"}
               :{" "}
               <strong className="text-slate-900">
-                {formatDate(accessEndsAt)}
+                {formatAuDate(accessEndsAt)}
               </strong>
             </p>
           )}
@@ -163,9 +231,37 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
       </Card>
 
       <div className="mt-6 flex flex-col gap-3">
-        {(status === "active_monthly" ||
-          status === "active_upfront" ||
-          status === "past_due") && (
+        {(status === "active_monthly" || status === "active_upfront") && (
+          <>
+            {/* Cancel routes to our own reason-capture flow (S9), NOT
+                the Stripe Customer Portal. Spec § "Customer Portal —
+                when we use it" — Portal is for card updates only. */}
+            <Button
+              size="lg"
+              className="w-full justify-center bg-violet-600 hover:bg-violet-700"
+              onClick={() => router.push("/parent/subscription/cancel")}
+            >
+              Cancel subscription
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full justify-center"
+              disabled={isPending}
+              onClick={openPortal}
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <>
+                  Update payment method <ExternalLink className="h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </>
+        )}
+
+        {status === "past_due" && (
           <Button
             size="lg"
             className="w-full justify-center bg-violet-600 hover:bg-violet-700"
@@ -176,48 +272,30 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                Cancel or update card <ExternalLink className="h-4 w-4" />
+                Update payment method <ExternalLink className="h-4 w-4" />
               </>
             )}
           </Button>
         )}
 
-        {(status === "cancelled" || status === "lapsed") && (
+        {(status === "trial" ||
+          status === "cancelled" ||
+          status === "lapsed") && (
           <Button
             size="lg"
             className="w-full bg-violet-600 hover:bg-violet-700"
             onClick={() => router.push("/parent/subscribe")}
           >
-            Subscribe
-          </Button>
-        )}
-
-        {status === "trial" && (
-          <Button
-            size="lg"
-            className="w-full bg-violet-600 hover:bg-violet-700"
-            onClick={() => router.push("/parent/subscribe")}
-          >
-            Choose a paid plan
+            Continue Development
           </Button>
         )}
       </div>
 
-      {(status === "active_monthly" || status === "active_upfront") && (
-        <div className="mt-6 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          <p>
-            Looking for a refund?{" "}
-            <Link
-              href="/contact"
-              className="font-medium text-violet-700 underline-offset-2 hover:underline"
-            >
-              Get in touch
-            </Link>{" "}
-            and tell us what&apos;s going on. We review every request
-            individually and respond within 14 business days.
-          </p>
-        </div>
-      )}
+      {/* Refund copy intentionally removed per DSS §3.1 + §8 Q5
+          (Bailey 2026-05-12). Users who want to discuss billing
+          navigate to /contact themselves; the product never invites
+          the thought. Legal pages retain the statutory ACL refund
+          clauses (different surface, different audience). */}
 
       <div className="mt-10 border-t border-slate-200 pt-6">
         <Link
@@ -226,6 +304,87 @@ export function SubscriptionClient({ subscription }: SubscriptionClientProps) {
         >
           ← Back to dashboard
         </Link>
+      </div>
+    </div>
+  );
+}
+
+/** Full-page post-checkout activation screen. Two states:
+ *    - pending: spinner + "Setting up {child}'s development" copy.
+ *    - confirmed: heart icon + "You're in" + auto-redirect notice.
+ *  No mention of Stripe / payment processor — implementation detail
+ *  that doesn't belong in user-facing copy (Bailey 2026-05-13). */
+function ActivationOverlay({
+  stateConfirmed,
+  childFirstName,
+  nannyFirstName,
+  willRedirect,
+}: {
+  stateConfirmed: boolean;
+  childFirstName: string;
+  nannyFirstName: string | null;
+  /** Auto-redirect only fires when a childId is known. When false,
+   *  the confirmed-state copy reads as a final celebration without
+   *  promising a redirect that will never happen. */
+  willRedirect: boolean;
+}) {
+  return (
+    <div className="flex min-h-[70vh] items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md text-center">
+        {stateConfirmed ? (
+          <>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+              <Heart
+                className="h-8 w-8 text-emerald-700"
+                aria-hidden="true"
+                fill="currentColor"
+              />
+            </div>
+            <h1 className="mt-6 text-2xl font-bold text-slate-900">
+              You&apos;re in.
+            </h1>
+            <p className="mt-2 text-base text-slate-600">
+              Welcome to Baby Bloom for {childFirstName}
+              {nannyFirstName ? ` and ${nannyFirstName}` : ""}.
+              {willRedirect
+                ? ` We're taking you to ${childFirstName}'s development page now.`
+                : ""}
+            </p>
+            {willRedirect && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-6 inline-flex items-center gap-2 text-sm text-slate-500"
+              >
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                Redirecting…
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-violet-100">
+              <Sparkles
+                className="h-8 w-8 text-violet-700 animate-pulse"
+                aria-hidden="true"
+              />
+            </div>
+            <h1 className="mt-6 text-2xl font-bold text-slate-900">
+              Setting up {childFirstName}&apos;s development
+            </h1>
+            <p className="mt-2 text-base text-slate-600">
+              Just a few seconds — we&apos;ll have everything ready in a moment.
+            </p>
+            <div
+              role="status"
+              aria-live="polite"
+              className="mt-6 inline-flex items-center gap-2 text-sm text-slate-500"
+            >
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Activating
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

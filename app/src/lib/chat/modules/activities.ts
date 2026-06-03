@@ -23,7 +23,9 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ActivityChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import { generate, GEMINI_MODELS } from "@/lib/ai/gemini-client";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 import {
   ACTIVITY_SYSTEM_PROMPT,
   buildActivityUserPrompt,
@@ -340,6 +342,22 @@ export async function applyPlanActivity(
     activityData = { ...activityData, image_url: null };
   }
 
+  // T-015 media gate.
+  const activityImageUrl =
+    typeof (activityData as { image_url?: unknown }).image_url === "string"
+      ? ((activityData as { image_url?: string }).image_url ?? null)
+      : null;
+  if (activityImageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
+
   const { data: inserted, error: insertErr } = await ctx.supabase
     .from("bapp_logs")
     .insert({
@@ -360,6 +378,24 @@ export async function applyPlanActivity(
     };
   }
   const logId = (inserted as { id: string }).id;
+
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper.
+  //
+  // NOTE — Katie-path is the GOOD case: the activity tile lands at
+  // `status='ready'` because Gemini ran inline at propose time, so the
+  // parent's email link resolves to a fully-rendered tile. (The bapp-side
+  // `actions/bapp/activities.ts:generateActivity` path has the opposite
+  // shape — it inserts at `status='pending'` and the email arrives before
+  // OpenAI finishes. KEY decision deferred to BAI at Phase D smoke per
+  // T-033 PROGRESS § decisions.)
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "activity",
+    logContext: "adhoc",
+  });
 
   const title =
     typeof activityData.title === "string"
@@ -661,6 +697,18 @@ export async function applyCompleteActivity(
     };
   }
 
+  // T-015 media gate.
+  if (imageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
+
   // 1. Insert the report log (parent_log_id = activityId)
   const { data: reportRow, error: reportErr } = await ctx.supabase
     .from("bapp_logs")
@@ -765,6 +813,19 @@ export async function applyCompleteActivity(
       : `Couldn't mark the activity completed: ${updateErr.message}.`;
   }
 
+  // 5. Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Only the HEAD `report` insert (context='adhoc')
+  // triggers an email — the progress + observation sub-tiles above carry
+  // context='activity', which the helper's 4th skip rule would short-
+  // circuit anyway, so we don't wire them.
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "report",
+    logContext: "adhoc",
+  });
+
   const nowIso = new Date().toISOString();
   return {
     ok: true,
@@ -792,6 +853,7 @@ export const activitiesModule: BloomBotModule = {
   name: "Activities",
   description:
     "Drafts activity plans targeting specific milestones, and closes the loop by completing them after they've been done. Generation for plans runs at propose time so the user sees the plan before accepting; Accept inserts the bapp_logs row. Completion runs the full report cascade on Accept.",
+  childScoped: true,
 
   tools: [
     {

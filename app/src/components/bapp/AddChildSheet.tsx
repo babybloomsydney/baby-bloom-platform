@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
@@ -13,16 +14,50 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check, Copy, Loader2 } from "lucide-react";
 import { createChild } from "@/lib/actions/bapp/child-clients";
+import {
+  earliestAllowedDobIso,
+  todayIso,
+  validateChildDob,
+} from "@/lib/bapp/child-age";
 
 interface AddChildSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * T-022 — onboarding contributions flow opt-ins. All four default to
+   * the current children-tab behaviour so existing callers don't have
+   * to change. The contributions page sets all four to opt the drawer
+   * into onboarding mode (terms text instead of checkbox, custom title
+   * + success route, bonus-program attribution forwarded to createChild).
+   */
+  /** When true: replace the violet guardian-permission checkbox with a
+   * single-line terms statement linking to /legal/professional-terms.
+   * Auto-sets `guardian_permission_confirmed: true` on submit. */
+  hideGuardianCheckbox?: boolean;
+  /** When set: overrides the form-view SheetTitle. The invite-view title
+   * ("Share with the parent") is unaffected — it serves both flows. */
+  title?: string;
+  /** When set: Done routes here instead of the default
+   * `/nanny/development/{childId}`. Used by the contributions page to
+   * continue into verification at Step 1. */
+  successHref?: string;
+  /** When true: forwarded to createChild → mintChildInvite as
+   * `bonusProgram`. Persists `child_invites.bonus_program=true` and
+   * stamps `nannies.bonus_program_completed_at`. */
+  fromBonusProgram?: boolean;
 }
 
 const DISCLAIMER_TEXT =
   "I confirm I have the child's legal guardian's permission to add this child to Baby Bloom.";
 
-export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
+export function AddChildSheet({
+  open,
+  onOpenChange,
+  hideGuardianCheckbox = false,
+  title,
+  successHref,
+  fromBonusProgram = false,
+}: AddChildSheetProps) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [dob, setDob] = useState("");
@@ -48,7 +83,27 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!firstName.trim() || !dob || !permissionConfirmed) return;
+    // When the checkbox is hidden (onboarding flow) the guardian-permission
+    // attestation is satisfied by the terms line above the submit button —
+    // the submit click itself is the affirmation, mirroring the mockup.
+    if (
+      !firstName.trim() ||
+      !dob ||
+      (!hideGuardianCheckbox && !permissionConfirmed)
+    )
+      return;
+
+    const localCheck = validateChildDob(dob);
+    if (!localCheck.ok) {
+      setError(
+        localCheck.error === "child_too_old"
+          ? "Baby Bloom supports children under 3."
+          : localCheck.error === "date_of_birth_in_future"
+            ? "Date of birth can't be in the future."
+            : "Please enter a valid date of birth.",
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -57,7 +112,12 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
       first_name: firstName.trim(),
       date_of_birth: dob,
       gender: gender || null,
-      guardian_permission_confirmed: permissionConfirmed,
+      // When the checkbox is hidden, the terms line above the submit
+      // button is the disclosure surface; treat submission as affirmation.
+      guardian_permission_confirmed: hideGuardianCheckbox
+        ? true
+        : permissionConfirmed,
+      fromBonusProgram,
     });
 
     setLoading(false);
@@ -67,7 +127,18 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
       return;
     }
 
-    setInviteResult({ childId: result.data.id, url: result.data.inviteUrl });
+    // Compose the share URL from the current browser origin instead of
+    // the server-returned `inviteUrl` (which depends on
+    // NEXT_PUBLIC_INVITE_BASE_URL — sensitive to env-paste artefacts
+    // like a trailing newline). Mirrors how every other share surface
+    // in the app builds links (BsrShareClient, PositionShareClient,
+    // NannyShareClient). The token half is what the server actually
+    // controls; the host half is whatever the user is currently on
+    // (prod, preview, localhost — same code, all environments).
+    const inviteUrl = `${
+      typeof window !== "undefined" ? window.location.origin : ""
+    }/invite/${result.data.inviteToken}`;
+    setInviteResult({ childId: result.data.id, url: inviteUrl });
   }
 
   async function handleCopy() {
@@ -86,7 +157,9 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
     const childId = inviteResult?.childId;
     resetForm();
     onOpenChange(false);
-    if (childId) {
+    if (successHref) {
+      router.push(successHref);
+    } else if (childId) {
       router.push(`/nanny/development/${childId}`);
     }
   }
@@ -99,11 +172,28 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
         onOpenChange(val);
       }}
     >
-      <SheetContent side="bottom" className="rounded-t-2xl">
+      <SheetContent
+        side="bottom"
+        className="rounded-t-2xl"
+        onOpenAutoFocus={(event) => {
+          // Default Radix behaviour focuses the close button. For a form
+          // drawer the natural target is the first input — push focus there
+          // unless we're in the post-submit invite view.
+          if (!inviteResult) {
+            event.preventDefault();
+            document.getElementById("add-first-name")?.focus();
+          }
+        }}
+      >
         <SheetHeader>
           <SheetTitle>
-            {inviteResult ? "Share with the parent" : "Add a Child"}
+            {inviteResult ? "Share with the parent" : (title ?? "Add a Child")}
           </SheetTitle>
+          <SheetDescription className="sr-only">
+            {inviteResult
+              ? "Copy the invite link to share with the child's parent."
+              : "Enter the child's first name, date of birth, and gender to create their profile."}
+          </SheetDescription>
         </SheetHeader>
 
         {inviteResult ? (
@@ -166,8 +256,19 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
                 type="date"
                 value={dob}
                 onChange={(e) => setDob(e.target.value)}
+                min={earliestAllowedDobIso()}
+                max={todayIso()}
                 required
+                aria-describedby={
+                  error
+                    ? "add-dob-helper add-child-form-error"
+                    : "add-dob-helper"
+                }
+                aria-invalid={error ? true : undefined}
               />
+              <p id="add-dob-helper" className="mt-1 text-xs text-slate-500">
+                Baby Bloom supports children under 3.
+              </p>
             </div>
 
             <div>
@@ -184,19 +285,40 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
               </select>
             </div>
 
-            <label className="flex items-start gap-2 rounded-lg bg-violet-50 px-3 py-3 text-sm text-violet-900">
-              <input
-                type="checkbox"
-                checked={permissionConfirmed}
-                onChange={(e) => setPermissionConfirmed(e.target.checked)}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
-                required
-              />
-              <span>{DISCLAIMER_TEXT}</span>
-            </label>
+            {hideGuardianCheckbox ? (
+              <p
+                id="add-child-terms-agreement"
+                className="text-center text-xs leading-relaxed text-slate-600"
+              >
+                By continuing, you agree to our{" "}
+                <a
+                  href="/legal/professional-terms"
+                  className="font-medium text-violet-700 underline underline-offset-2 hover:text-violet-800"
+                >
+                  Terms &amp; Conditions
+                </a>{" "}
+                and confirm you have the child&apos;s legal guardian&apos;s
+                permission to add them to Baby Bloom.
+              </p>
+            ) : (
+              <label className="flex items-start gap-2 rounded-lg bg-violet-50 px-3 py-3 text-sm text-violet-900">
+                <input
+                  type="checkbox"
+                  checked={permissionConfirmed}
+                  onChange={(e) => setPermissionConfirmed(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-violet-600"
+                  required
+                />
+                <span>{DISCLAIMER_TEXT}</span>
+              </label>
+            )}
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              <p
+                id="add-child-form-error"
+                role="alert"
+                className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2"
+              >
                 {error}
               </p>
             )}
@@ -204,7 +326,13 @@ export function AddChildSheet({ open, onOpenChange }: AddChildSheetProps) {
             <Button
               type="submit"
               disabled={
-                loading || !firstName.trim() || !dob || !permissionConfirmed
+                loading ||
+                !firstName.trim() ||
+                !dob ||
+                (!hideGuardianCheckbox && !permissionConfirmed)
+              }
+              aria-describedby={
+                hideGuardianCheckbox ? "add-child-terms-agreement" : undefined
               }
               className="w-full bg-emerald-600 hover:bg-emerald-700"
             >

@@ -243,7 +243,7 @@ async function fireAiFull(
 
   // Resolve children + memory + system prompt up-front. The cron path
   // doesn't have a currentSurface (no UI in flight) — pass null.
-  const children = await getUserChildren(bot.user_id);
+  const children = await getUserChildren(bot.user_id, bot.role);
   const memoryTable = await buildMemoryTable({
     botId: bot.id,
     childIds: children.map((c) => c.id),

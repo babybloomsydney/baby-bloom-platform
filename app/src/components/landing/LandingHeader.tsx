@@ -19,7 +19,7 @@ const HIDDEN_PATHS = ["/matchmaking/onboarding", "/position/"];
 // wrapping the body in our own Suspense localises that cost to the header
 // rather than bailing every page out of static optimisation.
 function LandingHeaderInner() {
-  const { user, role, isLoading } = useAuth();
+  const { user, role } = useAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const dashboard = role ? DASHBOARDS[role] : null;
@@ -32,6 +32,11 @@ function LandingHeaderInner() {
 
   if (HIDDEN_PATHS.some((p) => pathname.startsWith(p))) return null;
 
+  // Default to the logged-out variant so the right side never goes blank
+  // during the useAuth() bootstrap window. The Back-to-Dashboard swap
+  // happens whenever user + dashboard are both populated — no isLoading
+  // gate, so the swap is the same render React already handles for any
+  // state change.
   return (
     <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
       <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
@@ -40,38 +45,37 @@ function LandingHeaderInner() {
           <span className="text-xl font-bold text-violet-500">Bloom</span>
         </Link>
 
-        {!isLoading &&
-          (user && dashboard ? (
-            <Link href={dashboard}>
+        {user && dashboard ? (
+          <Link href={dashboard}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-sm text-violet-600"
+            >
+              Back to Dashboard
+            </Button>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Link href="/login">
               <Button
-                size="sm"
                 variant="ghost"
-                className="text-sm text-violet-600"
+                size="sm"
+                className="text-sm text-slate-600"
               >
-                Back to Dashboard
+                Sign In
               </Button>
             </Link>
-          ) : (
-            <div className="flex items-center gap-3">
-              <Link href="/login">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-sm text-slate-600"
-                >
-                  Sign In
-                </Button>
-              </Link>
-              <Link href="/signup">
-                <Button
-                  size="sm"
-                  className="bg-violet-500 hover:bg-violet-600 text-sm"
-                >
-                  Get Started
-                </Button>
-              </Link>
-            </div>
-          ))}
+            <Link href="/signup">
+              <Button
+                size="sm"
+                className="bg-violet-500 hover:bg-violet-600 text-sm"
+              >
+                Get Started
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
     </header>
   );

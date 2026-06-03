@@ -8,6 +8,7 @@ import { generateTileInsight, getChildContext } from "./insights";
 import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 /**
  * submitReport — Report Cascade
@@ -156,6 +157,21 @@ export async function submitReport(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper. Only the HEAD `report` insert (context='adhoc')
+    // triggers an email — the two sub-tiles above (the `progress` + the
+    // optional `observation`) carry context='activity', which the helper's
+    // 4th skip rule would short-circuit anyway, so we don't wire them
+    // (avoids a wasted child_client DB round-trip × 2 per report submit).
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "report",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("submitReport unexpected error:", err);

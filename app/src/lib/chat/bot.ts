@@ -96,7 +96,7 @@ export async function getOrCreateBot(
   // Idempotent inside seedDefaultSchedules itself, so a racy second
   // caller is safe.
   try {
-    const children = await getUserChildren(userId);
+    const children = await getUserChildren(userId, role);
     const tz =
       (created.settings as { waking_hours?: { timezone?: string } } | null)
         ?.waking_hours?.timezone ?? "Australia/Sydney";
@@ -167,20 +167,38 @@ function ageBracket(months: number): string {
  *
  * Returns ChildSummary[] ready for ModuleContext.children.
  */
-export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
+export async function getUserChildren(
+  userId: string,
+  role: "nanny" | "parent" | "admin",
+): Promise<ChildSummary[]> {
   const admin = createAdminClient();
 
-  // Step 1: child_client rows where the user is the direct nanny owner
+  // Role-aware enumeration (per Bailey's correction 2026-05-12):
+  // - Nanny: their direct nanny ownership + placements where they are
+  //   the nanny. They never see parent-only children even if they
+  //   happen to also be a parent of some other family.
+  // - Parent: their direct parent ownership + placements where they
+  //   are the parent. Symmetric to the above.
+  // - Admin: returns empty here. Admin context for Katie uses the
+  //   admin module path (system inventory, prompt edits, etc.), not
+  //   the per-family children enumeration.
+  if (role === "admin") {
+    return [];
+  }
+
+  const isNanny = role === "nanny";
+
+  // Step 1: child_client rows where the user owns the role-side column.
+  const ownerColumn = isNanny ? "nanny_user_id" : "parent_user_id";
   const { data: direct } = await admin
     .from("child_client")
     .select("id, first_name, gender, date_of_birth")
-    .eq("nanny_user_id", userId)
+    .eq(ownerColumn, userId)
     .eq("under_three", true);
 
-  // Step 2: placement-based access — children linked to placements where
-  // the user is either the nanny (via nannies.user_id) or the parent
-  // (via parents.user_id). nanny_placements.status = 'active' is a real
-  // literal value (see user_has_child_access() PG function).
+  // Step 2: placement-based access for the same role only. Placements
+  // join to BOTH nannies + parents; filter to the side that matches
+  // this user's role.
   const { data: placements } = await admin
     .from("nanny_placements")
     .select(
@@ -189,11 +207,12 @@ export async function getUserChildren(userId: string): Promise<ChildSummary[]> {
     .eq("status", "active");
 
   const viaPlacement = (placements ?? []).filter((p) => {
+    if (isNanny) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (p.nannies as any)?.user_id === userId;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const nannyUid = (p.nannies as any)?.user_id;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const parentUid = (p.parents as any)?.user_id;
-    return nannyUid === userId || parentUid === userId;
+    return (p.parents as any)?.user_id === userId;
   });
 
   // Deduplicate by child_client.id

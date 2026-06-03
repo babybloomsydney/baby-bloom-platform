@@ -15,10 +15,12 @@ import type { BloomBotModule, ToolResult, ChildSummary } from "./types";
 import type { ObservationChatTile } from "@/lib/chat/tiles";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveChild } from "./utils";
+import { hasParentMediaConsent } from "@/lib/legal/media-consent-gate";
 import {
   recalculateProgress,
   writeHistorySnapshot,
 } from "@/lib/actions/bapp/progress";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 const OBSERVATION_DOMAINS = [
   "General",
@@ -282,6 +284,24 @@ export async function applyLogObservation(
   }
   const { child, milestoneId, score, observationData } = r.prepared;
 
+  // T-015 media gate — Katie tile-accept path. If the tile includes
+  // an image_url, the parent must have current `parent-app-consent`
+  // for this child.
+  const imageUrl =
+    typeof (observationData as { image_url?: unknown }).image_url === "string"
+      ? ((observationData as { image_url?: string }).image_url ?? null)
+      : null;
+  if (imageUrl) {
+    const gate = await hasParentMediaConsent(
+      { childId: child.id },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { admin: ctx.supabase as any },
+    );
+    if (!gate.allowed) {
+      return { ok: false, error: "media_consent_required" };
+    }
+  }
+
   const { data: inserted, error: insertError } = await ctx.supabase
     .from("bapp_logs")
     .insert({
@@ -332,6 +352,19 @@ export async function applyLogObservation(
     }
   }
 
+  // Email the linked parent that a new tile landed (non-fatal — internal
+  // errors are absorbed, never cause action failure). Skip rules + lookups
+  // are inside the helper. Placed AFTER the cascade block for readability:
+  // the cascade is wrapped in its own try/catch, so placement does NOT
+  // affect exception safety — the email semantically belongs at the end,
+  // after the post-insert side-effects have settled.
+  await notifyParentOfFeedPost({
+    childId: child.id,
+    authorId: ctx.userId,
+    logType: "observation",
+    logContext: "adhoc",
+  });
+
   const nowIso = new Date().toISOString();
   return {
     ok: true,
@@ -358,6 +391,7 @@ export const observationsModule: BloomBotModule = {
   name: "Observations",
   description:
     "Drafts observations about a child. Passing a milestone_id + score (1-4) cascades — on Accept — into a progress recalculation and a history snapshot.",
+  childScoped: true,
 
   proactiveTriggers: [
     {

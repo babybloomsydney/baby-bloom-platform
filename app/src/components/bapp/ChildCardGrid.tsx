@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Baby } from "lucide-react";
+import { Plus, Baby, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChildClient } from "@/types/bapp";
 import { AddChildSheet } from "./AddChildSheet";
@@ -39,9 +39,24 @@ const STATUS_BADGE: Record<string, { label: string; color: string }> = {
 interface ChildCardGridProps {
   children: ChildClient[];
   role: "nanny" | "parent";
+  /**
+   * Set of child_client.id values whose family is currently subscribed
+   * (parent_subscriptions.status in trial/active_monthly/active_upfront).
+   * Renders a small green tick on those tiles — the only positive-state
+   * indicator on the nanny child grid per DSS §8 Q8 (Bailey 2026-05-12).
+   * Unsubscribed tiles render normally (no negative-state indicator;
+   * gates handle that elsewhere).
+   *
+   * Optional. Callers that don't pass it get no ticks.
+   */
+  subscribedChildIds?: Set<string>;
 }
 
-export function ChildCardGrid({ children, role }: ChildCardGridProps) {
+export function ChildCardGrid({
+  children,
+  role,
+  subscribedChildIds,
+}: ChildCardGridProps) {
   const router = useRouter();
   const [chooserOpen, setChooserOpen] = useState(false);
   const [addNannySheetOpen, setAddNannySheetOpen] = useState(false);
@@ -76,6 +91,7 @@ export function ChildCardGrid({ children, role }: ChildCardGridProps) {
               STATUS_BADGE[child.status] ?? STATUS_BADGE.created_auto;
             const isShell = !child.onboarded;
             const hasPhoto = !!child.profile_picture_url;
+            const isSubscribed = subscribedChildIds?.has(child.id) ?? false;
 
             return (
               <button
@@ -88,6 +104,19 @@ export function ChildCardGrid({ children, role }: ChildCardGridProps) {
                     : "border-slate-200",
                 )}
               >
+                {/* Subscribed-family tick — DSS §8 Q8 (Bailey 2026-05-12).
+                    Top-right of the tile, small + emerald. Only visible
+                    for nanny role (parents always own their own family
+                    subscription state; the tick on the parent side
+                    would be tautological). */}
+                {isSubscribed && role === "nanny" && (
+                  <span
+                    className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm"
+                    aria-label="Family subscribed"
+                  >
+                    <Check className="h-3 w-3" aria-hidden="true" />
+                  </span>
+                )}
                 {/* Avatar — prefers the child's profile picture; falls
                     back to the Baby icon when none uploaded yet (per
                     user feedback 2026-05-07: never show first-letter
@@ -159,7 +188,7 @@ export function ChildCardGrid({ children, role }: ChildCardGridProps) {
           </div>
           <p className="text-base font-semibold text-slate-900">Add Child</p>
           <p className="max-w-xs text-center text-xs text-slate-500">
-            Add your first child to start tracking their development
+            Add your first child to start following their development
           </p>
         </button>
       )}

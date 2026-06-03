@@ -23,19 +23,14 @@ import {
   calculateScheduledReleaseAt,
   calculateCommissionPeriod,
   type CommissionPlan,
-  type CommissionTrigger,
 } from "./commission-engine";
 
 export interface ScheduleCommissionInput {
   /** parent_subscriptions.id (UUID). */
   parentSubscriptionId: string;
-  trigger: CommissionTrigger;
   /** Which cycle this row covers (1-indexed). For monthly always 1.
    *  For upfront 1 / 2 / 3. */
   cycleIndex: 1 | 2 | 3;
-  /** End of the cycle just completed. Required when
-   *  trigger=cycle_completed; ignored on subscription_started. */
-  cycleEndsAt?: Date;
 }
 
 export type ScheduleCommissionResult =
@@ -138,10 +133,9 @@ export async function scheduleCommissionFor(
   try {
     amountCents = calculateCommissionCents({
       plan,
-      trigger: input.trigger,
       cycleIndex: input.cycleIndex,
     });
-  } catch (err) {
+  } catch (err: unknown) {
     return {
       ok: false,
       reason: "db_error",
@@ -149,26 +143,47 @@ export async function scheduleCommissionFor(
     };
   }
 
-  const paidStart = sub.paid_period_starts_at
+  // Payment-landed anchor (Bailey 2026-05-13 schedule lock-in):
+  //   - Monthly: anchor = paid_period_starts_at (this cycle's payment).
+  //   - Upfront: anchor = paid_period_starts_at (the single upfront
+  //     payment), cycleIndex 1/2/3 then dictates which release window.
+  // Falls back to "now" when paid_period_starts_at is missing (should
+  // only happen pre-payment; rare).
+  const paymentLandedAt = sub.paid_period_starts_at
     ? new Date(sub.paid_period_starts_at)
     : new Date();
   const scheduledRelease = calculateScheduledReleaseAt({
-    trigger: input.trigger,
-    paidPeriodStartsAt: paidStart,
-    cycleEndsAt: input.cycleEndsAt,
+    plan,
+    paymentLandedAt,
+    cycleIndex: input.cycleIndex,
   });
   const period = calculateCommissionPeriod({
-    trigger: input.trigger,
-    paidPeriodStartsAt: paidStart,
-    trialStartedAt: sub.trial_started_at
-      ? new Date(sub.trial_started_at)
-      : null,
-    trialEndsAt: sub.trial_ends_at ? new Date(sub.trial_ends_at) : null,
-    cycleEndsAt: input.cycleEndsAt,
+    plan,
+    paymentLandedAt,
+    cycleIndex: input.cycleIndex,
   });
+  // H2 (2026-05-13): for monthly, prefer Stripe's authoritative
+  // `paid_period_ends_at` over the engine's synthetic +30d. Months
+  // aren't 30 days, and renewals shift the boundary — using Stripe's
+  // value keeps reconciliation against Stripe invoices clean.
+  // Upfront has no Stripe cycle; the engine's bucket calculation is
+  // the source of truth there.
+  const periodEndIsoDate =
+    plan === "monthly" && sub.paid_period_ends_at
+      ? sub.paid_period_ends_at.slice(0, 10)
+      : period.periodEnd.toISOString().slice(0, 10);
 
-  // Determine initial status — `pending` if nanny is approved AND
-  // payouts_enabled, else `held`.
+  // T-018 — Determine initial status: `pending` if nanny is verified
+  // AND payouts_enabled, else `held`.
+  //
+  // Previously the gate compared against `"approved"`, but no code path
+  // ever writes that value — `handleAccountUpdated` (the Stripe Connect
+  // onboarding webhook) sets `"verified"`. The mismatch meant ALL
+  // commission rows were stuck at `'held'` and the release cron never
+  // saw them. Lock 4 fix: align the gate with the value actually
+  // written so commissions reach `pending` and become eligible for the
+  // release-payouts cron. Permissive match accepts both `"verified"`
+  // (current) and `"approved"` (defensive forward-compat).
   const { data: nannyRow } = await admin
     .from("nannies")
     .select("payout_application_status, payouts_enabled")
@@ -178,7 +193,8 @@ export async function scheduleCommissionFor(
       payouts_enabled: boolean | null;
     }>();
   const initialStatus: "pending" | "held" =
-    nannyRow?.payout_application_status === "approved" &&
+    (nannyRow?.payout_application_status === "verified" ||
+      nannyRow?.payout_application_status === "approved") &&
     nannyRow?.payouts_enabled === true
       ? "pending"
       : "held";
@@ -192,7 +208,7 @@ export async function scheduleCommissionFor(
       parent_user_id: sub.parent_user_id,
       nanny_user_id: nannyUserId,
       period_start: period.periodStart.toISOString().slice(0, 10), // DATE column
-      period_end: period.periodEnd.toISOString().slice(0, 10),
+      period_end: periodEndIsoDate,
       amount_aud_cents: amountCents,
       commission_model_version: "v1_flat",
       status: initialStatus,
@@ -217,8 +233,11 @@ export async function scheduleCommissionFor(
     return { ok: false, reason: "db_error", detail: "no row returned" };
   }
 
-  // Audit log.
-  await admin.from("activity_logs").insert({
+  // Audit log. The payout row is already committed at this point —
+  // a logging failure must NOT poison the success path, but it must
+  // also not silently disappear. Log loudly on error so the admin
+  // audit trail's gaps are visible during reconciliation.
+  const { error: logErr } = await admin.from("activity_logs").insert({
     user_id: sub.parent_user_id,
     action_type: "commission_scheduled",
     action_details: {
@@ -226,13 +245,18 @@ export async function scheduleCommissionFor(
       parent_subscription_id: sub.id,
       nanny_user_id: nannyUserId,
       plan,
-      trigger: input.trigger,
       cycle_index: input.cycleIndex,
       amount_aud_cents: amountCents,
       initial_status: initialStatus,
       scheduled_release_at: scheduledRelease.toISOString(),
     },
   });
+  if (logErr) {
+    console.error("[scheduleCommissionFor] activity_log insert failed", {
+      payoutId: insertResult.id,
+      error: logErr,
+    });
+  }
 
   return {
     ok: true,

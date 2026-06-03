@@ -6,13 +6,19 @@
  * Spec: `system/APP/PAYMENTS/04-stripe-integration.md` §5b (Create
  * Checkout Session).
  *
- * Idempotency: `checkout-${parentUserId}-${cycleNumber}`. The cycle number
- * scopes the key so that a parent who cancels + resubscribes gets a fresh
- * session instead of the prior one.
+ * **No idempotency key.** Bailey 2026-05-14: Session creation is
+ * non-destructive (mints a URL; no money moves, $0 cost to duplicate).
+ * The actual charge happens INSIDE Checkout, where Stripe handles
+ * idempotency internally. Two completed checkouts → duplicate-refund
+ * branch in handleCheckoutCompleted handles cleanup. Idempotency on
+ * Session creation served no purpose AND introduced a 24-hour-cached-
+ * error foot-gun that locked customers out after any transient 4xx.
  *
- * Two-tab race defence (the webhook handler refunding the duplicate)
- * lives at the action / webhook layer — this wrapper is a thin
- * pass-through.
+ * Idempotency stays on real-money operations: refunds.create,
+ * transfers.create, customers.create.
+ *
+ * `cycleNumber` is now Session metadata only — it tells support which
+ * iteration of subscribing this is, but is not part of any key.
  */
 
 import { getStripeClient } from "./client";
@@ -84,9 +90,25 @@ export async function createCheckoutSession(
       },
     };
 
-    const session = await stripe.checkout.sessions.create(params, {
-      idempotencyKey: `checkout-${parentUserId}-${cycleNumber}`,
-    });
+    // No idempotency key. Bailey 2026-05-14 — root cause of two
+    // separate "stuck at checkout" incidents this week was Stripe's
+    // 24-hour idempotency-cache replaying a stale 4xx. The
+    // mechanism wasn't earning its keep here:
+    //
+    //   - Creating a Checkout Session is non-destructive (just
+    //     mints a URL; no money moves, no charges, $0 cost to
+    //     duplicate).
+    //   - A duplicate Session orphan expires harmlessly after 24h.
+    //   - The actual charge happens INSIDE Checkout when the
+    //     customer clicks Pay — Stripe handles that idempotency
+    //     internally.
+    //   - Our webhook handler already de-duplicates the dangerous
+    //     case (two completed checkouts → duplicate refund branch
+    //     in handleCheckoutCompleted).
+    //
+    // Idempotency keys stay on real-money operations only:
+    // refunds.create, transfers.create, customers.create.
+    const session = await stripe.checkout.sessions.create(params);
 
     if (!session.url) {
       return {

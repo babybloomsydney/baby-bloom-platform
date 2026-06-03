@@ -33,6 +33,16 @@ export const metadata: Metadata = {
   },
   description:
     "Find trusted, WWCC-verified nannies in Sydney. Baby Bloom matches families with background-checked, education-focused childcare professionals.",
+  // Declares the icon links explicitly so Safari stops probing
+  // /apple-touch-icon.png + /apple-touch-icon-precomposed.png on
+  // every page load (those 404s were cosmetic but cluttered the
+  // dev console — Bailey 2026-05-14). Points at the existing
+  // favicon + logo so no new assets are required.
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/logo.svg",
+  },
   openGraph: {
     siteName: "Baby Bloom Sydney",
     locale: "en_AU",

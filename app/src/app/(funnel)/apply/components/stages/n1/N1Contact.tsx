@@ -1,47 +1,59 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { StageProps } from '../../FunnelOrchestrator';
-import { CompoundPageShell } from '../../shared/CompoundPageShell';
-import { ProgressiveReveal } from '../../shared/ProgressiveReveal';
-import { createNannyLead } from '@/lib/actions/nanny-leads';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Loader2, Check } from 'lucide-react';
-import Link from 'next/link';
+import { useState, useCallback } from "react";
+import { StageProps } from "../../FunnelOrchestrator";
+import { CompoundPageShell } from "../../shared/CompoundPageShell";
+import { ProgressiveReveal } from "../../shared/ProgressiveReveal";
+import { createNannyLead } from "@/lib/actions/nanny-leads";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2, Check } from "lucide-react";
+import Link from "next/link";
 
 const AU_MOBILE_REGEX = /^04\d{8}$/;
 
 function normalisePhone(val: string): string {
-  let digits = val.replace(/\s+/g, '');
+  let digits = val.replace(/\s+/g, "");
   if (/^4\d{8}$/.test(digits)) {
-    digits = '0' + digits;
+    digits = "0" + digits;
   }
   return digits;
 }
 
 function formatPhoneDisplay(raw: string): string {
   const n = normalisePhone(raw);
-  if (!AU_MOBILE_REGEX.test(n)) return '';
+  if (!AU_MOBILE_REGEX.test(n)) return "";
   const digits = n.slice(1);
   return `+61 (0) ${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
 }
 
-export function N1Contact({ state, dispatch, goNext, goBack, progress, questionNumber }: StageProps) {
+export function N1Contact({
+  state,
+  dispatch,
+  goNext,
+  goBack,
+  progress,
+  questionNumber,
+}: StageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const updateContact = useCallback(
-    (payload: Partial<Pick<typeof state, 'first_name' | 'last_name' | 'email' | 'phone'>>) => {
-      dispatch({ type: 'UPDATE_CONTACT', payload });
+    (
+      payload: Partial<
+        Pick<typeof state, "first_name" | "last_name" | "email" | "phone">
+      >,
+    ) => {
+      dispatch({ type: "UPDATE_CONTACT", payload });
     },
-    [dispatch]
+    [dispatch],
   );
 
-  const hasNames = state.first_name.trim() !== '' && state.last_name.trim() !== '';
+  const hasNames =
+    state.first_name.trim() !== "" && state.last_name.trim() !== "";
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(state.email);
-  const hasEmail = state.email.trim() !== '' && emailValid;
+  const hasEmail = state.email.trim() !== "" && emailValid;
   const phoneValid = AU_MOBILE_REGEX.test(normalisePhone(state.phone));
   const canSubmit = hasNames && hasEmail && phoneValid;
 
@@ -60,13 +72,14 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
       experience: state.experience,
       qualifications: state.qualifications,
       residency: state.residency,
+      lead_signals: state.lead_signals,
     });
 
     if (result.success && result.leadId) {
-      dispatch({ type: 'SET_LEAD_ID', payload: result.leadId });
+      dispatch({ type: "SET_LEAD_ID", payload: result.leadId });
       goNext();
     } else {
-      setError(result.error || 'Something went wrong. Please try again.');
+      setError(result.error || "Something went wrong. Please try again.");
     }
 
     setSubmitting(false);
@@ -85,7 +98,9 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
         {/* First & last name on same row */}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label className="text-sm font-medium text-slate-700">First name</Label>
+            <Label className="text-sm font-medium text-slate-700">
+              First name
+            </Label>
             <Input
               type="text"
               value={state.first_name}
@@ -95,7 +110,9 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-sm font-medium text-slate-700">Last name</Label>
+            <Label className="text-sm font-medium text-slate-700">
+              Last name
+            </Label>
             <Input
               type="text"
               value={state.last_name}
@@ -109,7 +126,9 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
         {/* Email — reveals after names filled */}
         <ProgressiveReveal show={hasNames}>
           <div className="flex flex-col gap-1.5 pt-1">
-            <Label className="text-sm font-medium text-slate-700">Email address</Label>
+            <Label className="text-sm font-medium text-slate-700">
+              Email address
+            </Label>
             <Input
               type="email"
               value={state.email}
@@ -123,7 +142,9 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
         {/* Phone — reveals after email filled, AU format with +61 prefix */}
         <ProgressiveReveal show={hasEmail}>
           <div className="flex flex-col gap-1.5 pt-1">
-            <Label className="text-sm font-medium text-slate-700">Phone number</Label>
+            <Label className="text-sm font-medium text-slate-700">
+              Phone number
+            </Label>
             <div className="flex gap-2">
               <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 h-11 text-sm text-slate-700 flex-shrink-0">
                 <span>+61</span>
@@ -133,7 +154,7 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
                   type="tel"
                   value={state.phone}
                   onChange={(e) => {
-                    const cleaned = e.target.value.replace(/[^0-9 ]/g, '');
+                    const cleaned = e.target.value.replace(/[^0-9 ]/g, "");
                     updateContact({ phone: cleaned });
                   }}
                   placeholder="04XX XXX XXX"
@@ -151,7 +172,7 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
           </div>
         </ProgressiveReveal>
 
-        {error === 'account_exists' && (
+        {error === "account_exists" && (
           <div className="bg-violet-50 border border-violet-200 rounded-lg px-4 py-3 flex flex-col gap-2">
             <p className="text-sm text-violet-700 font-medium">
               An account with this email already exists.
@@ -164,8 +185,10 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
           </div>
         )}
 
-        {error && error !== 'account_exists' && (
-          <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">{error}</p>
+        {error && error !== "account_exists" && (
+          <p className="text-sm text-red-600 bg-red-50 px-4 py-2 rounded-lg">
+            {error}
+          </p>
         )}
 
         <ProgressiveReveal show={canSubmit}>
@@ -182,7 +205,7 @@ export function N1Contact({ state, dispatch, goNext, goBack, progress, questionN
                     Submitting...
                   </>
                 ) : (
-                  'Submit Application'
+                  "Submit Application"
                 )}
               </Button>
             </div>

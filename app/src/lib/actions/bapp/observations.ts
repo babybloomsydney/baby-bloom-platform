@@ -9,6 +9,8 @@ import { MASTERY_LABELS } from "@/lib/bapp-constants";
 import type { MasteryScore } from "@/lib/bapp-constants";
 import { dispatchActionTriggeredInBackground } from "@/lib/chat/proactive/action-triggered";
 import { requireChildFamilyAccess } from "@/lib/payments/access-gate";
+import { requireMediaConsentForImageWrite } from "@/lib/legal/require-media-consent";
+import { notifyParentOfFeedPost } from "@/lib/email/feed-post-notification";
 
 // ---------------------------------------------------------------------------
 // Helper: transition child to active_nanny on first action
@@ -71,6 +73,17 @@ export async function logObservation(
     const gate = await requireChildFamilyAccess(childId);
     if (!gate.hasAccess) {
       return { success: false, error: "subscription_required" };
+    }
+
+    // Media consent gate (T-015) — block image writes when parent
+    // hasn't given current consent on this child. Text observations
+    // still work; the image_url is what's gated.
+    const mediaGate = await requireMediaConsentForImageWrite({
+      childId,
+      imageUrl: data.image_url,
+    });
+    if (!mediaGate.ok) {
+      return { success: false, error: mediaGate.error };
     }
 
     const admin = createAdminClient();
@@ -165,6 +178,17 @@ export async function logObservation(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "observation",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("logObservation unexpected error:", err);
@@ -199,6 +223,15 @@ export async function logBulkProgress(
     const gate = await requireChildFamilyAccess(childId);
     if (!gate.hasAccess) {
       return { success: false, error: "subscription_required" };
+    }
+
+    // Media consent gate (T-015).
+    const mediaGate = await requireMediaConsentForImageWrite({
+      childId,
+      imageUrl,
+    });
+    if (!mediaGate.ok) {
+      return { success: false, error: mediaGate.error };
     }
 
     const admin = createAdminClient();
@@ -269,6 +302,17 @@ export async function logBulkProgress(
 
     revalidatePath(`/nanny/development/${childId}`);
     revalidatePath(`/parent/development/${childId}`);
+
+    // Email the linked parent that a new tile landed (non-fatal — internal
+    // errors are absorbed, never cause action failure). Skip rules + lookups
+    // are inside the helper.
+    await notifyParentOfFeedPost({
+      childId,
+      authorId: user.id,
+      logType: "progress",
+      logContext: "adhoc",
+    });
+
     return { success: true, error: null };
   } catch (err) {
     console.error("logBulkProgress unexpected error:", err);
