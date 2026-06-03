@@ -1,277 +1,428 @@
 {
-  "generated_at": "2026-05-08T06:10:26.026Z",
+  "generated_at": "2026-06-03T03:57:08.839Z",
   "summary": {
-    "route_count": 53,
-    "page_count": 99,
-    "cron_count": 7,
-    "migration_count": 16,
-    "server_action_file_count": 36
+    "route_count": 59,
+    "page_count": 101,
+    "cron_count": 12,
+    "migration_count": 19,
+    "server_action_file_count": 41
   },
   "routes": [
     {
       "path": "/api/address-search",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/address-search/route.ts"
     },
     {
       "path": "/api/admin/analytics",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/admin/analytics/route.ts"
     },
     {
       "path": "/api/admin/debug",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/admin/debug/route.ts"
     },
     {
       "path": "/api/admin/pipeline-snapshots",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/admin/pipeline-snapshots/route.ts"
     },
     {
       "path": "/api/admin/reconcile-nannies",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/admin/reconcile-nannies/route.ts"
     },
     {
       "path": "/api/admin",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/admin/route.ts"
     },
     {
       "path": "/api/ai",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/ai/route.ts"
     },
     {
       "path": "/api/analytics/visit",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/analytics/visit/route.ts"
     },
     {
       "path": "/api/auth/callback",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/auth/callback/route.ts"
     },
     {
       "path": "/api/auth",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/auth/route.ts"
     },
     {
       "path": "/api/auth/signout",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/auth/signout/route.ts"
     },
     {
       "path": "/api/babysitting",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/babysitting/route.ts"
     },
     {
       "path": "/api/bookings",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/bookings/route.ts"
     },
     {
       "path": "/api/chat/bot-info",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/bot-info/route.ts"
     },
     {
       "path": "/api/chat/bsr/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/bsr/[id]/route.ts"
     },
     {
       "path": "/api/chat/connections/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/connections/[id]/route.ts"
     },
     {
       "path": "/api/chat/drafts/accept",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/chat/drafts/accept/route.ts"
     },
     {
       "path": "/api/chat/job-matches/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/job-matches/[id]/route.ts"
     },
     {
       "path": "/api/chat/mark-read",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/chat/mark-read/route.ts"
     },
     {
       "path": "/api/chat/messages",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/messages/route.ts"
     },
     {
       "path": "/api/chat/placement/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/placement/[id]/route.ts"
     },
     {
       "path": "/api/chat/position/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/chat/position/[id]/route.ts"
     },
     {
       "path": "/api/chat",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/chat/route.ts"
     },
     {
       "path": "/api/chat/upload",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/chat/upload/route.ts"
     },
     {
       "path": "/api/check-share-screenshot",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/check-share-screenshot/route.ts"
     },
     {
       "path": "/api/cron/cleanup-orphan-children",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/cleanup-orphan-children/route.ts"
     },
     {
       "path": "/api/cron/compact-daily",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/compact-daily/route.ts"
     },
     {
       "path": "/api/cron/dfy-waves",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/dfy-waves/route.ts"
     },
     {
+      "path": "/api/cron/expire-cancelled-subscriptions",
+      "methods": [
+        "GET"
+      ],
+      "file": "src/app/api/cron/expire-cancelled-subscriptions/route.ts"
+    },
+    {
       "path": "/api/cron/expire-connections",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/expire-connections/route.ts"
     },
     {
+      "path": "/api/cron/expire-past-due",
+      "methods": [
+        "GET"
+      ],
+      "file": "src/app/api/cron/expire-past-due/route.ts"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "methods": [
+        "GET"
+      ],
+      "file": "src/app/api/cron/expire-trials/route.ts"
+    },
+    {
       "path": "/api/cron/proactive",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/proactive/route.ts"
     },
     {
+      "path": "/api/cron/schedule-upfront-cycles",
+      "methods": [
+        "GET"
+      ],
+      "file": "src/app/api/cron/schedule-upfront-cycles/route.ts"
+    },
+    {
       "path": "/api/cron/send-delayed-emails",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/send-delayed-emails/route.ts"
     },
     {
       "path": "/api/cron/snapshot-pipeline",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/cron/snapshot-pipeline/route.ts"
     },
     {
+      "path": "/api/cron/soft-lock-stale-children",
+      "methods": [
+        "GET"
+      ],
+      "file": "src/app/api/cron/soft-lock-stale-children/route.ts"
+    },
+    {
       "path": "/api/interviews",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/interviews/route.ts"
     },
     {
       "path": "/api/legal/cookie-consent",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/legal/cookie-consent/route.ts"
     },
     {
       "path": "/api/nannies",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/nannies/route.ts"
     },
     {
       "path": "/api/og/babysitting/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/og/babysitting/[id]/route.tsx"
     },
     {
       "path": "/api/og/nanny/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/og/nanny/[id]/route.tsx"
     },
     {
       "path": "/api/og/nanny-v2/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/og/nanny-v2/[id]/route.tsx"
     },
     {
       "path": "/api/og/position/[id]",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/og/position/[id]/route.tsx"
     },
     {
       "path": "/api/parent-verification-status",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/parent-verification-status/route.ts"
     },
     {
       "path": "/api/parents",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/parents/route.ts"
     },
     {
       "path": "/api/positions/[id]",
-      "methods": ["GET", "PATCH", "DELETE"],
+      "methods": [
+        "GET",
+        "PATCH",
+        "DELETE"
+      ],
       "file": "src/app/api/positions/[id]/route.ts"
     },
     {
       "path": "/api/positions",
-      "methods": ["GET", "POST"],
+      "methods": [
+        "GET",
+        "POST"
+      ],
       "file": "src/app/api/positions/route.ts"
     },
     {
       "path": "/api/public/quick-match",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/public/quick-match/route.ts"
     },
     {
       "path": "/api/run-verification",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/run-verification/route.ts"
     },
     {
       "path": "/api/sydney-postcodes",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/sydney-postcodes/route.ts"
     },
     {
       "path": "/api/test-email",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/test-email/route.ts"
     },
     {
       "path": "/api/upload/development-image",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/upload/development-image/route.ts"
     },
     {
       "path": "/api/upload/nanny-photo",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/upload/nanny-photo/route.ts"
     },
     {
       "path": "/api/validate-wwcc-pdf",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/validate-wwcc-pdf/route.ts"
     },
     {
       "path": "/api/verification-status",
-      "methods": ["GET"],
+      "methods": [
+        "GET"
+      ],
       "file": "src/app/api/verification-status/route.ts"
     },
     {
       "path": "/api/webhooks/ocg-verification",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/webhooks/ocg-verification/route.ts"
     },
     {
       "path": "/api/webhooks",
-      "methods": ["POST"],
+      "methods": [
+        "POST"
+      ],
       "file": "src/app/api/webhooks/route.ts"
+    },
+    {
+      "path": "/api/webhooks/stripe",
+      "methods": [
+        "POST"
+      ],
+      "file": "src/app/api/webhooks/stripe/route.ts"
     }
   ],
   "pages": [
@@ -640,6 +791,14 @@
       "file": "src/app/parent/settings/page.tsx"
     },
     {
+      "path": "/parent/subscribe",
+      "file": "src/app/parent/subscribe/page.tsx"
+    },
+    {
+      "path": "/parent/subscription",
+      "file": "src/app/parent/subscription/page.tsx"
+    },
+    {
       "path": "/parent/verification",
       "file": "src/app/parent/verification/page.tsx"
     },
@@ -700,6 +859,26 @@
     {
       "path": "/api/cron/snapshot-pipeline",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/expire-trials",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-past-due",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/expire-cancelled-subscriptions",
+      "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/cron/soft-lock-stale-children",
+      "schedule": "15 3 * * *"
+    },
+    {
+      "path": "/api/cron/schedule-upfront-cycles",
+      "schedule": "0 4 * * *"
     }
   ],
   "migrations": [
@@ -769,6 +948,21 @@
       "modified_at": "2026-03-20T02:09:28.782Z"
     },
     {
+      "filename": "payments-foundation-rollback.sql",
+      "bytes": 3561,
+      "modified_at": "2026-05-11T01:20:41.461Z"
+    },
+    {
+      "filename": "payments-foundation.sql",
+      "bytes": 22403,
+      "modified_at": "2026-05-11T01:20:39.193Z"
+    },
+    {
+      "filename": "relax-email-logs-email-type-constraint.sql",
+      "bytes": 1866,
+      "modified_at": "2026-06-01T02:51:46.448Z"
+    },
+    {
       "filename": "reset-test-user.sql",
       "bytes": 1289,
       "modified_at": "2026-03-20T02:09:28.783Z"
@@ -787,7 +981,15 @@
   "server_actions": [
     {
       "file": "src/lib/actions/account-security.ts",
-      "functions": ["requestPasswordChange"]
+      "functions": [
+        "requestPasswordChange"
+      ]
+    },
+    {
+      "file": "src/lib/actions/admin/test-user-flag.ts",
+      "functions": [
+        "setTestUserFlag"
+      ]
     },
     {
       "file": "src/lib/actions/admin.ts",
@@ -803,6 +1005,12 @@
         "adminRejectParentIdentity",
         "adminRegenerateNannyBio",
         "adminSendEmail"
+      ]
+    },
+    {
+      "file": "src/lib/actions/autofire-matchmaking.ts",
+      "functions": [
+        "autofireMatchmaking"
       ]
     },
     {
@@ -825,11 +1033,16 @@
     },
     {
       "file": "src/lib/actions/bapp/activities-feed.ts",
-      "functions": ["getActivities"]
+      "functions": [
+        "getActivities"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/activities.ts",
-      "functions": ["generateActivity", "getActivity"]
+      "functions": [
+        "generateActivity",
+        "getActivity"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/child-clients.ts",
@@ -862,35 +1075,54 @@
     },
     {
       "file": "src/lib/actions/bapp/diary.ts",
-      "functions": ["logDiaryEntry"]
+      "functions": [
+        "logDiaryEntry"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/feed.ts",
-      "functions": ["getFeed"]
+      "functions": [
+        "getFeed"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/insights.ts",
-      "functions": ["generateTileInsight", "getChildContext"]
+      "functions": [
+        "generateTileInsight",
+        "getChildContext"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/library.ts",
-      "functions": ["getLibraryImages"]
+      "functions": [
+        "getLibraryImages"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/logs.ts",
-      "functions": ["softDeleteBAppLog"]
+      "functions": [
+        "softDeleteBAppLog"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/milestones.ts",
-      "functions": ["getMilestones"]
+      "functions": [
+        "getMilestones"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/observations.ts",
-      "functions": ["logObservation", "logBulkProgress"]
+      "functions": [
+        "logObservation",
+        "logBulkProgress"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/onboarding-banner.ts",
-      "functions": ["getOnboardingBannerStatus", "dismissOnboardingBanner"]
+      "functions": [
+        "getOnboardingBannerStatus",
+        "dismissOnboardingBanner"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/progress.ts",
@@ -904,15 +1136,21 @@
     },
     {
       "file": "src/lib/actions/bapp/reports.ts",
-      "functions": ["submitReport"]
+      "functions": [
+        "submitReport"
+      ]
     },
     {
       "file": "src/lib/actions/bapp/upload-image.ts",
-      "functions": ["uploadImage"]
+      "functions": [
+        "uploadImage"
+      ]
     },
     {
       "file": "src/lib/actions/browse.ts",
-      "functions": ["fetchBrowseNannies"]
+      "functions": [
+        "fetchBrowseNannies"
+      ]
     },
     {
       "file": "src/lib/actions/connection-helpers.ts",
@@ -939,7 +1177,10 @@
     },
     {
       "file": "src/lib/actions/contact.ts",
-      "functions": ["submitContactRequest", "submitPublicContactRequest"]
+      "functions": [
+        "submitContactRequest",
+        "submitPublicContactRequest"
+      ]
     },
     {
       "file": "src/lib/actions/inbox.ts",
@@ -963,11 +1204,15 @@
     },
     {
       "file": "src/lib/actions/jobs.ts",
-      "functions": ["applyToPosition"]
+      "functions": [
+        "applyToPosition"
+      ]
     },
     {
       "file": "src/lib/actions/lead-conversion.ts",
-      "functions": ["signUpAndConvertLead"]
+      "functions": [
+        "signUpAndConvertLead"
+      ]
     },
     {
       "file": "src/lib/actions/matching.ts",
@@ -996,7 +1241,9 @@
     },
     {
       "file": "src/lib/actions/nanny-onboarding-ai.ts",
-      "functions": ["generateOnboardingAIContent"]
+      "functions": [
+        "generateOnboardingAIContent"
+      ]
     },
     {
       "file": "src/lib/actions/nanny.ts",
@@ -1016,7 +1263,9 @@
     },
     {
       "file": "src/lib/actions/parent-leads.ts",
-      "functions": ["saveParentLead"]
+      "functions": [
+        "saveParentLead"
+      ]
     },
     {
       "file": "src/lib/actions/parent-verification.ts",
@@ -1039,6 +1288,24 @@
         "updateParentAccountSettings",
         "deactivateParentAccount",
         "updateParentProfilePictureUrl"
+      ]
+    },
+    {
+      "file": "src/lib/actions/payments/checkout.ts",
+      "functions": [
+        "createCheckoutSession"
+      ]
+    },
+    {
+      "file": "src/lib/actions/payments/customer.ts",
+      "functions": [
+        "ensureStripeCustomer"
+      ]
+    },
+    {
+      "file": "src/lib/actions/payments/portal.ts",
+      "functions": [
+        "createPortalSession"
       ]
     },
     {

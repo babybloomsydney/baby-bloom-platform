@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { SessionProvider } from "@/components/providers/SessionProvider";
 import { VisitorTracker } from "@/components/providers/VisitorTracker";
+import { MetaPixel } from "@/components/analytics/MetaPixel";
 import { DevToolbar } from "@/components/dev/DevToolbar";
 import { DevSidebar } from "@/components/dev/DevSidebar";
 import { KatieShell } from "@/components/katie/KatieShell";
@@ -77,6 +78,7 @@ export default function RootLayout({
         />
         <SessionProvider>
           <VisitorTracker />
+          <MetaPixel />
           {isDevMode && <DevSidebar />}
           {/* MiniFooter passed as a separate slot so the shell can
               wrap the page content in a flex-grow div above it.
