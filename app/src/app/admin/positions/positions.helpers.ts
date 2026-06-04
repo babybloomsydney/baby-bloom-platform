@@ -28,6 +28,8 @@ export interface DfyMatchRow {
   match_score: number | null;
   distance_km: number | null;
   notified_at: string | null;
+  viewed_at: string | null;
+  responded_at: string | null;
   connection_id: string | null;
   connection_stage: number | null;
 }
