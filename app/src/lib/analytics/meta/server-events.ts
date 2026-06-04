@@ -7,9 +7,9 @@
  *
  * Spec: system/FB/Plan/01-A2-conversion-events-build-plan.md §5a.
  */
-import { randomUUID } from "node:crypto";
 import { sendMetaEvent } from "./capi";
 import { META_EVENTS, metaContentCategory } from "./events";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Raw identity for a new account (PII hashing happens downstream in `./capi`). */
 export interface SignupConversionInput {
@@ -34,7 +34,8 @@ export async function fireSignupConversion(
     if (!content_category) return; // admin / unknown — not a conversion audience
     await sendMetaEvent({
       eventName: META_EVENTS.completeRegistration,
-      eventId: randomUUID(),
+      // Deterministic per user → a retried signUp dedups on Meta's side.
+      eventId: `completeregistration-${input.userId}`,
       userData: {
         email: input.email,
         firstName: input.firstName,
@@ -46,6 +47,65 @@ export async function fireSignupConversion(
   } catch (err) {
     console.error(
       "[signUp.Role] CompleteRegistration fire failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+export interface PositionConversionInput {
+  parentId: string;
+  positionId: string;
+  /** Optional path label ("advanced" | "dashboard" | "typeform") for reporting
+   *  segmentation — does NOT split Meta's optimization signal. */
+  flow?: string;
+}
+
+/**
+ * `SubmitApplication` — fire for a newly-created parent position (the PRIMARY
+ * optimization event). Always `content_category=parent` (positions are
+ * parent-only by construction). Looks up the parent's identity (userId + email)
+ * for match quality; uses a deterministic `event_id` per position so a
+ * double-fire deduplicates. Never throws. Call at the position-creation action
+ * (NOT inside `autofireMatchmaking`).
+ */
+export async function fireParentPositionConversion(
+  input: PositionConversionInput,
+): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { data: parent } = await admin
+      .from("parents")
+      .select("user_id")
+      .eq("id", input.parentId)
+      .single();
+    // The admin client is untyped (Database type is a placeholder), so the
+    // query results are `any` — guard with runtime typeof checks to keep the
+    // string|undefined claim honest.
+    const rawUserId: unknown = parent?.user_id;
+    const userId: string | undefined =
+      typeof rawUserId === "string" ? rawUserId : undefined;
+    let email: string | undefined;
+    if (userId) {
+      const { data: profile } = await admin
+        .from("user_profiles")
+        .select("email")
+        .eq("user_id", userId)
+        .single();
+      const rawEmail: unknown = profile?.email;
+      email = typeof rawEmail === "string" ? rawEmail : undefined;
+    }
+    await sendMetaEvent({
+      eventName: META_EVENTS.submitApplication,
+      eventId: `submitapplication-${input.positionId}`,
+      userData: { email, externalId: userId },
+      customData: {
+        content_category: "parent",
+        ...(input.flow ? { flow: input.flow } : {}),
+      },
+    });
+  } catch (err) {
+    console.error(
+      "[SubmitApplication] position conversion fire failed:",
       err instanceof Error ? err.message : String(err),
     );
   }

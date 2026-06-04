@@ -45,14 +45,16 @@ export function metaContentCategory(role: string): MetaContentCategory | null {
 
 /**
  * Custom data sent alongside an event. All optional; Meta ignores unknown
- * keys. `value`/`currency` apply to Purchase; `flow` distinguishes the
- * position-created path ("one_go" vs "later") WITHOUT splitting the
- * optimization signal.
+ * keys. `value`/`currency` apply to Purchase; `flow` labels the path that
+ * created the conversion (positions: "dashboard" | "typeform" | "advanced")
+ * for reporting segmentation, WITHOUT splitting the optimization signal.
+ *
+ * No index signature — keeping the fields named catches typos (a misspelled
+ * key would otherwise be silently forwarded + dropped by Meta).
  */
 export interface MetaCustomData {
   content_category?: MetaContentCategory;
   currency?: string;
   value?: number;
   flow?: string;
-  [key: string]: string | number | undefined;
 }

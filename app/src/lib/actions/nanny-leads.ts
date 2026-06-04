@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { capitalizeName } from "@/lib/utils";
 import { sendEmail } from "@/lib/email/resend";
+import { fireSignupConversion } from "@/lib/analytics/meta/server-events";
 import {
   NannyLeadIdentity,
   NannyLeadExperience,
@@ -531,6 +532,18 @@ export async function convertLeadToAccount(
         emailType: "welcome",
         recipientUserId: userId,
       }).catch((err) => console.error("[Signup] ACC-001 email error:", err));
+
+      // Meta conversion — signUp.Role.Nanny (CompleteRegistration), server-side
+      // for the /apply nanny path. Awaited (reliable delivery), fail-safe,
+      // additive. content_category=nanny → kept out of the parent conversions;
+      // dormant until nanny ads run, then it's already flowing.
+      await fireSignupConversion({
+        role: "nanny",
+        userId,
+        email: finalEmail,
+        firstName: lead.first_name,
+        lastName: lead.last_name,
+      });
 
       return { success: true, redirectTo: "/nanny" };
     } catch (innerError) {

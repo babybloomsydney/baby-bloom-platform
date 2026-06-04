@@ -10,6 +10,7 @@ import {
 import { POSITION_STAGE, POSITION_STATUS } from "@/lib/position/constants";
 import type { TypeformFormData } from "@/app/parent/request/questions";
 import { autofireMatchmaking } from "./autofire-matchmaking";
+import { fireParentPositionConversion } from "@/lib/analytics/meta/server-events";
 import { sendEmail } from "@/lib/email/resend";
 import { buildWelcomeAdvParentEmail } from "@/lib/email/templates/welcome-adv-parent";
 import { buildWelcomeParentEmail } from "@/lib/email/templates/welcome-parent";
@@ -196,6 +197,16 @@ export async function signUpAndConvertLead(
       if (schedErr)
         console.error("[lead-conversion] Schedule error:", schedErr);
     }
+
+    // Meta conversion — SubmitApplication (parent position created via the
+    // advanced funnel; same parent that fired CompleteRegistration at signup).
+    // Fired after the position + children + schedule persist, inside the try
+    // where parentId is in scope; fail-safe, so it can't roll back the caller.
+    await fireParentPositionConversion({
+      parentId,
+      positionId,
+      flow: "advanced",
+    });
 
     // Step 6: Mark lead as converted
     await adminClient
