@@ -32,6 +32,18 @@ export type MetaEventName = (typeof META_EVENTS)[keyof typeof META_EVENTS];
 export type MetaContentCategory = "parent" | "nanny";
 
 /**
+ * The single parent/nanny differentiator: maps a user role → the Meta
+ * `content_category` tag. This is the ONE place that decision is made — never
+ * derive role from a URL/page. Returns `null` for non-audience roles (e.g.
+ * `admin`) so the caller fires nothing.
+ */
+export function metaContentCategory(role: string): MetaContentCategory | null {
+  if (role === "parent") return "parent";
+  if (role === "nanny") return "nanny";
+  return null;
+}
+
+/**
  * Custom data sent alongside an event. All optional; Meta ignores unknown
  * keys. `value`/`currency` apply to Purchase; `flow` distinguishes the
  * position-created path ("one_go" vs "later") WITHOUT splitting the
