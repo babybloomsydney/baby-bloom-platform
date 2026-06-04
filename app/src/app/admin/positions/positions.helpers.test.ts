@@ -5,6 +5,9 @@ import {
   splitConnectionsByOrigin,
   stageTimestamp,
   formatSydneyTime,
+  getConnectionStageBadgeVariant,
+  dfyMatchStatusVariant,
+  dfyMatchStatusLabel,
   type DfyStateInput,
   type ConnRow,
 } from "./positions.helpers";
@@ -266,5 +269,67 @@ describe("formatSydneyTime", () => {
     const out = formatSydneyTime("2026-06-03T05:30:00.000Z");
     expect(out).toMatch(/Jun/); // month: short
     expect(out).toMatch(/\d{1,2}:\d{2}/); // hour:minute
+  });
+});
+
+describe("getConnectionStageBadgeVariant", () => {
+  it("returns inactive for null", () => {
+    expect(getConnectionStageBadgeVariant(null)).toBe("inactive");
+  });
+  it("maps REQUEST_SENT (0) to pending", () => {
+    expect(getConnectionStageBadgeVariant(0)).toBe("pending");
+  });
+  it("maps applied/accepted incl. held variants (4/5/9/10) to info", () => {
+    expect(getConnectionStageBadgeVariant(4)).toBe("info");
+    expect(getConnectionStageBadgeVariant(5)).toBe("info");
+    expect(getConnectionStageBadgeVariant(9)).toBe("info");
+    expect(getConnectionStageBadgeVariant(10)).toBe("info");
+  });
+  it("maps meet/awaiting/offered (20/30/33) to verified", () => {
+    expect(getConnectionStageBadgeVariant(20)).toBe("verified");
+    expect(getConnectionStageBadgeVariant(30)).toBe("verified");
+    expect(getConnectionStageBadgeVariant(33)).toBe("verified");
+  });
+  it("maps confirmed/active (34/40) to active", () => {
+    expect(getConnectionStageBadgeVariant(34)).toBe("active");
+    expect(getConnectionStageBadgeVariant(40)).toBe("active");
+  });
+  it("maps declined/not-hired/cancelled (2/35/50) to failed", () => {
+    expect(getConnectionStageBadgeVariant(2)).toBe("failed");
+    expect(getConnectionStageBadgeVariant(35)).toBe("failed");
+    expect(getConnectionStageBadgeVariant(50)).toBe("failed");
+  });
+  it("maps expired/finished/incomplete (1/11/41) to inactive", () => {
+    expect(getConnectionStageBadgeVariant(1)).toBe("inactive");
+    expect(getConnectionStageBadgeVariant(11)).toBe("inactive");
+    expect(getConnectionStageBadgeVariant(41)).toBe("inactive");
+  });
+});
+
+describe("dfyMatchStatusVariant", () => {
+  it("maps each known status to its variant", () => {
+    expect(dfyMatchStatusVariant("pending_wave")).toBe("pending");
+    expect(dfyMatchStatusVariant("notified")).toBe("info");
+    expect(dfyMatchStatusVariant("viewed")).toBe("info");
+    expect(dfyMatchStatusVariant("interested")).toBe("verified");
+    expect(dfyMatchStatusVariant("declined")).toBe("failed");
+    expect(dfyMatchStatusVariant("expired")).toBe("inactive");
+  });
+  it("falls back to inactive for an unknown status", () => {
+    expect(dfyMatchStatusVariant("approved")).toBe("inactive");
+  });
+});
+
+describe("dfyMatchStatusLabel", () => {
+  it("maps each known status to a human label", () => {
+    expect(dfyMatchStatusLabel("pending_wave")).toBe("Matched");
+    expect(dfyMatchStatusLabel("notified")).toBe("Contacted");
+    expect(dfyMatchStatusLabel("viewed")).toBe("Viewed");
+    expect(dfyMatchStatusLabel("interested")).toBe("Interested");
+    expect(dfyMatchStatusLabel("declined")).toBe("Declined");
+    expect(dfyMatchStatusLabel("expired")).toBe("Expired");
+  });
+  it("passes an unknown status through as the label", () => {
+    expect(dfyMatchStatusLabel("approved")).toBe("approved");
   });
 });

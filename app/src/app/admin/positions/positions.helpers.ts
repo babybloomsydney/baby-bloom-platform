@@ -228,3 +228,114 @@ export function formatSydneyTime(iso: string | null): string {
     minute: "2-digit",
   });
 }
+
+// ─── Badge variants (shared by the table + the panels) ───
+
+/**
+ * The StatusBadge variant union used across the admin Positions surface. This mirrors a subset of
+ * StatusBadge's own `StatusVariant` (it omits 'unattempted'); keep it in sync if that type changes.
+ * (Not derived via import to keep this change isolated to admin/positions.)
+ */
+export type BadgeVariant =
+  | "active"
+  | "pending"
+  | "verified"
+  | "inactive"
+  | "failed"
+  | "info";
+
+/** Connection stages held pending OCG clearance for a verification-level-3 nanny (badged "pending OCG"). */
+export const HELD_CONNECTION_STAGES: number[] = [
+  CONNECTION_STAGE.NANNY_APPLIED_PENDING,
+  CONNECTION_STAGE.ACCEPTED_PENDING,
+];
+
+/** Map a connection stage to a StatusBadge variant (held variants 4/5/9 included). */
+export function getConnectionStageBadgeVariant(
+  stage: number | null,
+): BadgeVariant {
+  if (stage == null) return "inactive";
+  if (stage === CONNECTION_STAGE.REQUEST_SENT) return "pending";
+  if (
+    stage === CONNECTION_STAGE.NANNY_APPLIED_PENDING ||
+    stage === CONNECTION_STAGE.NANNY_APPLIED
+  )
+    return "info";
+  if (
+    stage === CONNECTION_STAGE.ACCEPTED_PENDING ||
+    stage === CONNECTION_STAGE.ACCEPTED
+  )
+    return "info";
+  if (
+    (
+      [
+        CONNECTION_STAGE.INTRO_SCHEDULED,
+        CONNECTION_STAGE.INTRO_COMPLETE,
+        CONNECTION_STAGE.AWAITING_RESPONSE,
+        CONNECTION_STAGE.TRIAL_ARRANGED,
+        CONNECTION_STAGE.TRIAL_COMPLETE,
+        CONNECTION_STAGE.OFFERED,
+      ] as number[]
+    ).includes(stage)
+  ) {
+    return "verified";
+  }
+  if (
+    (
+      [CONNECTION_STAGE.CONFIRMED, CONNECTION_STAGE.ACTIVE] as number[]
+    ).includes(stage)
+  )
+    return "active";
+  if (
+    (
+      [
+        CONNECTION_STAGE.DECLINED,
+        CONNECTION_STAGE.REQUEST_CANCELLED,
+        CONNECTION_STAGE.NOT_HIRED,
+        CONNECTION_STAGE.NOT_SELECTED,
+        CONNECTION_STAGE.CANCELLED_BY_PARENT,
+        CONNECTION_STAGE.CANCELLED_BY_NANNY,
+      ] as number[]
+    ).includes(stage)
+  ) {
+    return "failed";
+  }
+  return "inactive"; // REQUEST_EXPIRED, SCHEDULE_EXPIRED, INTRO_INCOMPLETE, FINISHED
+}
+
+/** Map a dfy_match_notifications status to a StatusBadge variant. */
+export function dfyMatchStatusVariant(status: string): BadgeVariant {
+  switch (status) {
+    case "pending_wave":
+      return "pending";
+    case "notified":
+    case "viewed":
+      return "info";
+    case "interested":
+      return "verified";
+    case "declined":
+      return "failed";
+    default:
+      return "inactive"; // expired + anything unexpected
+  }
+}
+
+/** Human label for a dfy_match_notifications status. */
+export function dfyMatchStatusLabel(status: string): string {
+  switch (status) {
+    case "pending_wave":
+      return "Matched";
+    case "notified":
+      return "Contacted";
+    case "viewed":
+      return "Viewed";
+    case "interested":
+      return "Interested";
+    case "declined":
+      return "Declined";
+    case "expired":
+      return "Expired";
+    default:
+      return status;
+  }
+}
