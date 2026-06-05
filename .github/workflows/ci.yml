@@ -16,10 +16,18 @@ defaults:
     working-directory: ./app
 
 env:
-  # Dummy values so Next.js `next build` doesn't crash on missing public env.
-  # Real values come from Vercel at deploy time.
+  # Non-functional placeholders so `next build` + the test suite don't crash on
+  # missing env at module-load / prerender time. Real values come from Vercel at
+  # deploy time; the build only collects page data, it never calls these services.
+  # Without these, `next build` throws "Missing API key" (Resend) or
+  # "Missing Supabase admin credentials" while prerendering. (T-048.)
   NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
   NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+  SUPABASE_SERVICE_ROLE_KEY: ci-placeholder-service-role-key
+  RESEND_API_KEY: re_ci_placeholder
+  OPENAI_API_KEY: sk-ci-placeholder
+  GOOGLE_AI_API_KEY: ci-placeholder
+  STRIPE_SECRET_KEY: sk_test_ci_placeholder
 
 jobs:
   install:
