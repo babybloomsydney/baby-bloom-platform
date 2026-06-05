@@ -12,6 +12,7 @@ import {
 import { funnelLog } from "@/lib/position/logger";
 import { createInboxMessage } from "./connection-helpers";
 import { autofireMatchmaking } from "./autofire-matchmaking";
+import { fireParentPositionConversion } from "@/lib/analytics/meta/server-events";
 
 export interface Position {
   id: string;
@@ -271,6 +272,14 @@ export async function createPosition(
   // T-040: Autofire Advanced matchmaking on create. Failures are swallowed by the helper.
   await autofireMatchmaking(position.id);
 
+  // Meta conversion — SubmitApplication (parent position created). Fired at the
+  // creation action, NOT inside autofireMatchmaking. Fail-safe + awaited.
+  await fireParentPositionConversion({
+    parentId,
+    positionId: position.id,
+    flow: "dashboard",
+  });
+
   revalidatePath("/parent");
   return { success: true, error: null, positionId: position.id };
 }
@@ -448,6 +457,13 @@ export async function saveTypeformPosition(
     // T-040: Autofire Advanced matchmaking ONLY on the CREATE branch (fire-once-on-edit).
     // The UPDATE branch above must not re-trigger the blast.
     await autofireMatchmaking(positionId);
+
+    // Meta conversion — SubmitApplication (parent position created, typeform path).
+    await fireParentPositionConversion({
+      parentId,
+      positionId,
+      flow: "typeform",
+    });
   }
 
   // Children: delete existing and recreate

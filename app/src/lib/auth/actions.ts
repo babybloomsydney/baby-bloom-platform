@@ -12,6 +12,7 @@ import { buildWelcomeInviteParentEmail } from "@/lib/email/templates/welcome-inv
 import { capitalizeName } from "@/lib/utils";
 import { signupViaInvite } from "@/lib/actions/bapp/child-invites";
 import { isAuMobile, normaliseAuMobile } from "@/lib/au-contact";
+import { fireSignupConversion } from "@/lib/analytics/meta/server-events";
 
 const INVITE_TOKEN_REGEX = /^[A-HJKMN-Z2-9]{4}-[A-HJKMN-Z2-9]{4}$/;
 
@@ -385,6 +386,14 @@ export async function signUp(formData: FormData): Promise<ActionResult> {
         recipientUserId: userId,
       }).catch((err) => console.error("[Signup] ACC-002 email error:", err));
     }
+
+    // 6b. Meta conversion — signUp.Role.<role> (CompleteRegistration), fired
+    //     server-side for every successful signup. Awaited so it reliably
+    //     lands before the serverless function returns; fail-safe (never
+    //     throws) + capped at 5s, so it can't break or meaningfully delay
+    //     signup. Independent of the marketing-cookie toggle per BAI —
+    //     account creation is gated on the AGR-01 agreement.
+    await fireSignupConversion({ role, userId, email, firstName, lastName });
 
     // 7. If signup came in via an invite link, stamp recipient_user_id
     //    on the invite row and route the user to the invite landing page
